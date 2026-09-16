@@ -15,3 +15,6 @@ node_modules/
 
 # transient release hand-off file (scripts/pack.mjs --json)
 pack-result.json
+
+# staged publish tree (scripts/pack.mjs --stage-out)
+dist-stage/

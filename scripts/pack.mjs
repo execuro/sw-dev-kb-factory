@@ -49,13 +49,18 @@ function listFiles(dir, base = dir) {
 
 function main() {
   const argv = process.argv.slice(2);
-  const opts = { dryRun: false, json: false, skipBuild: false, outDir: resolve(ROOT, "dist-pack") };
+  const opts = { dryRun: false, json: false, skipBuild: false, outDir: resolve(ROOT, "dist-pack"), stageOut: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--json") opts.json = true;
     else if (a === "--skip-build") opts.skipBuild = true;
     else if (a === "--out-dir") opts.outDir = resolve(argv[++i]);
+    // Keep the verified staging tree so a release can run `npm publish` from a directory, which
+    // is the form npm documents for trusted publishing; publishing a pre-packed tarball path is
+    // undocumented there. The directory is the same tree the tarball is made from, so the gates
+    // above still describe exactly what ships.
+    else if (a === "--stage-out") opts.stageOut = resolve(argv[++i]);
     else {
       process.stderr.write(`pack: unknown argument ${a}\n`);
       return 2;
@@ -150,6 +155,13 @@ function main() {
       const tarball = execFileSync("npm", ["pack", "--pack-destination", opts.outDir], { cwd: staging, encoding: "utf8" }).trim();
       result.tarball = resolve(opts.outDir, tarball);
       log(`packed: ${result.tarball}`);
+      if (opts.stageOut) {
+        rmSync(opts.stageOut, { recursive: true, force: true });
+        mkdirSync(dirname(opts.stageOut), { recursive: true });
+        cpSync(staging, opts.stageOut, { recursive: true });
+        result.stageDir = opts.stageOut;
+        log(`staged: ${result.stageDir}`);
+      }
     }
   } finally {
     rmSync(staging, { recursive: true, force: true });

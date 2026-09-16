@@ -85,7 +85,7 @@ jobs:
       # next step dies parsing it. The script writes only JSON to stdout; its progress
       # output goes to stderr.
       - name: Pack (real pack, not --dry-run)
-        run: node scripts/pack.mjs --json > pack-result.json
+        run: node scripts/pack.mjs --json --stage-out dist-stage > pack-result.json
 
       - name: Locate the packed tarball
         run: |
@@ -95,12 +95,15 @@ jobs:
             exit 1
           fi
           tarball="$(node -p "require('./pack-result.json').tarball ?? ''")"
-          if [ -z "$tarball" ]; then
-            echo "::error::pack did not report a tarball path (see pack-result.json)"
+          stage="$(node -p "require('./pack-result.json').stageDir ?? ''")"
+          if [ -z "$tarball" ] || [ -z "$stage" ]; then
+            echo "::error::pack did not report a tarball path and staging directory (see pack-result.json)"
             cat pack-result.json
             exit 1
           fi
+          [ -f "$stage/package.json" ] || { echo "::error::staged package at $stage has no package.json"; exit 1; }
           echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+          echo "STAGE=$stage" >> "$GITHUB_ENV"
 
       - name: Publish to npm (OIDC trusted publishing)
         run: |
@@ -113,7 +116,16 @@ jobs:
             fi
           done
           echo "id-token permission present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          npm publish "$TARBALL" --provenance --access public
+          # Publish from the staged directory, not from the .tgz path. npm documents trusted
+          # publishing for `npm publish` run in a package directory; the tarball-path form is
+          # undocumented there. The directory is the exact tree the verified tarball was packed
+          # from, so every gate above still describes what ships.
+          #
+          # No --provenance: with trusted publishing npm generates and publishes provenance
+          # automatically for a public package from a public repository. Passing the flag is
+          # redundant and one more thing that can disagree with the OIDC path.
+          cd "$STAGE"
+          npm publish --access public
 
       # The MCP Registry lists this server; it stores metadata only, never the artifact, so it
       # must run AFTER the npm publish above — the registry validates that the npm package it
