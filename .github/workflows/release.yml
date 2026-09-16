@@ -74,14 +74,25 @@ jobs:
       # Builds the real tarball this release ships: staged tree, the file allow-list, the
       # docs-corpus config filter and the KB_CORPUS=docs refusal probe (scripts/pack.mjs).
       # `npm publish` below publishes exactly this tarball, so what was verified is what ships.
+      # Run the script directly rather than through `npm run`: npm prints its own
+      # `> package@version pack` banner to stdout before the script's output, so piping
+      # `npm run pack --json` into a file yields something that is not valid JSON and the
+      # next step dies parsing it. The script writes only JSON to stdout; its progress
+      # output goes to stderr.
       - name: Pack (real pack, not --dry-run)
-        run: npm run pack -- --json | tee pack-result.json
+        run: node scripts/pack.mjs --json > pack-result.json
 
       - name: Locate the packed tarball
         run: |
-          tarball="$(node -p "require('./pack-result.json').tarball")"
-          if [ -z "$tarball" ] || [ "$tarball" = "undefined" ]; then
+          if ! node -e "JSON.parse(require('fs').readFileSync('pack-result.json','utf8'))" 2>/dev/null; then
+            echo "::error::pack-result.json is not valid JSON — something wrote to stdout alongside the pack result"
+            echo "--- pack-result.json ---"; cat pack-result.json
+            exit 1
+          fi
+          tarball="$(node -p "require('./pack-result.json').tarball ?? ''")"
+          if [ -z "$tarball" ]; then
             echo "::error::pack did not report a tarball path (see pack-result.json)"
+            cat pack-result.json
             exit 1
           fi
           echo "TARBALL=$tarball" >> "$GITHUB_ENV"

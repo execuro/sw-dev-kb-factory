@@ -74,6 +74,23 @@ jobs:
       - name: Pack dry run (tarball allow-list + corpus filter gate)
         run: npm run pack -- --dry-run
 
+      # The release workflow packs for real and then reads the tarball path out of the script's
+      # JSON. That hand-off is only exercised during a release, which is where it broke once:
+      # `npm run pack --json` piped to a file captured npm's own banner ahead of the JSON, and
+      # the release died parsing it, after the tag was already pushed. Run the same three
+      # operations here, on every push, so the failure surfaces before a tag exists.
+      - name: Release hand-off (pack JSON is machine-readable)
+        run: |
+          node scripts/pack.mjs --json > pack-result.json
+          node -e "JSON.parse(require('fs').readFileSync('pack-result.json','utf8'))" \
+            || { echo '::error::pack-result.json is not valid JSON'; cat pack-result.json; exit 1; }
+          tarball="$(node -p "require('./pack-result.json').tarball ?? ''")"
+          [ -n "$tarball" ] || { echo '::error::pack reported no tarball path'; cat pack-result.json; exit 1; }
+          [ -f "$tarball" ] || { echo "::error::pack reported a tarball that does not exist: $tarball"; exit 1; }
+          echo "release hand-off ok: $tarball"
+          rm -f pack-result.json
+          rm -rf dist-pack
+
   # ------------------------------------------------------------------------------------------
   # `verify` above runs in a checkout that, by accident of how this package grew up, still
   # satisfies assumptions a genuine fresh clone of github.com/execuro/sw-dev-kb-factory

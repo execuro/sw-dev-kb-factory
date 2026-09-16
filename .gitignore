@@ -12,3 +12,6 @@ node_modules/
 
 # Test fixtures are always tracked, whatever they are named.
 !test/fixtures/**
+
+# transient release hand-off file (scripts/pack.mjs --json)
+pack-result.json
