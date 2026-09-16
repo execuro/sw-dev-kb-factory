@@ -1,8 +1,8 @@
 # Releasing `@execuro-sw-ecosystem/sw-dev-knowledge-base-mcp`
 
 The maintainer checklist for everything `scripts/pack.mjs` and `.github/workflows/release.yml`
-cannot do on their own: the one-time npm setup, tagging, the MCP Registry follow-up, and
-post-publish verification.
+cannot do on their own: the one-time npm and registry setup, tagging, and post-publish
+verification.
 
 **Command discipline.** This document *describes* what a human runs; read each step before typing
 it. Several are irreversible — see [§4](#4-irreversibility--read-before-publishing).
@@ -60,26 +60,43 @@ Then watch the release workflow run for that tag (GitHub Actions tab). It re-run
 `npm test`, `wiki:lint`, `pack` (real pack, not dry-run) and only then
 `npm publish --provenance --access public`.
 
-### The MCP Registry entry is a manual follow-up
+### The MCP Registry entry
 
-The workflow's last step only prints instructions; it is `continue-on-error`, so it shows a
-warning rather than failing the run, and it submits nothing. Submission is deliberately not
-automated: the non-interactive OIDC login flags for the registry CLI are not confirmed, and a
-guessed step would fail mid-release, after `npm publish` has already burned the version.
+The release workflow submits it. `server.json` at the repository root is the manifest; the
+workflow checks it agrees with `package.json`, installs the `mcp-publisher` CLI, authenticates
+with `mcp-publisher login github-oidc` and publishes, then polls the registry until the entry
+resolves.
 
-After the workflow finishes, a maintainer must:
+Three things about this are worth knowing before you change any of it:
 
-1. Build or install `mcp-publisher` from <https://github.com/modelcontextprotocol/registry>
-   (`make publisher`). It is not an npm package and is not a devDependency here.
-2. Write or update `server.json` at the repository root, against the schema the registry
-   documents. Its `name` must equal `package.json`'s `mcpName`
-   (`io.github.execuro/sw-dev-knowledge-base-mcp`), and its `version`, plus
-   `packages[0].version`, must match the version just published;
-   `packages[0].identifier` is the npm package name.
-3. `mcp-publisher login github` — the device-code flow, as a maintainer with access to the
-   `execuro` namespace, since an `io.github.execuro/…` name authenticates as that GitHub org.
-4. `mcp-publisher publish` from the repository root, then confirm the
-   <https://modelcontextprotocol.io/registry> entry shows the published version.
+- **It runs after the npm publish, and it must.** The registry stores metadata only, never the
+  artifact. It validates that the npm version `server.json` points at actually exists, and that
+  that package's own `mcpName` matches `server.json`'s `name` — so the package has to be on npm
+  first.
+- **OIDC, not a token.** The namespace `io.github.execuro/…` is granted by the OIDC token's
+  repository owner, so nothing needs storing or rotating. The job already requests
+  `id-token: write` for npm provenance and the same permission covers this. A personal access
+  token would work too (`login github --token`, needing `read:org` and `read:user`), but it is a
+  secret someone has to own.
+- **The step is allowed to fail the job.** A release that reaches npm but silently skips the
+  registry leaves consumers finding a version the registry never hears about. It runs last, so a
+  failure cannot roll back or obscure a successful npm publish, and re-running it is safe.
+
+`server.json` drift is caught locally by `test/version.test.ts` as well, so a forgotten version
+bump fails a test rather than a release.
+
+**If you ever need to submit by hand** — a failed workflow, or a first entry for a version that
+is already on npm:
+
+```sh
+curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+./mcp-publisher login github     # device-code flow, as a maintainer in the execuro org
+./mcp-publisher publish          # from the repository root, next to server.json
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.execuro/sw-dev-knowledge-base-mcp"
+```
+
+The registry is in preview and warns that breaking changes or data resets may occur, so an entry
+disappearing is not necessarily your mistake.
 
 ## 3. After publishing
 

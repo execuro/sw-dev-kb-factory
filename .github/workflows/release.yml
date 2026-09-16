@@ -89,41 +89,53 @@ jobs:
       - name: Publish to npm (OIDC trusted publishing)
         run: npm publish "$TARBALL" --provenance --access public
 
-      # The MCP Registry entry (mcpName in package.json) must be submitted with this package's
-      # first release and kept in step on every later one, version-matched to what was
-      # just published. This repository has no server.json manifest and no registry CLI/config
-      # committed anywhere under it, so submission is a MANUAL follow-up, not an automated step,
-      # by design — see below for what is and is not confirmed.
+      # The MCP Registry lists this server; it stores metadata only, never the artifact, so it
+      # must run AFTER the npm publish above — the registry validates that the npm package it
+      # points at exists and that the package's own `mcpName` matches server.json's `name`.
       #
-      # Confirmed from the official registry repo (github.com/modelcontextprotocol/registry):
-      #   - The submission tool is the `mcp-publisher` CLI, built from that repo (`make
-      #     publisher`); it is not an npm package and is not in this repo's devDependencies.
-      #   - It needs a server.json manifest (schema at
-      #     https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json) whose
-      #     "name" must equal package.json's mcpName (io.github.execuro/sw-dev-knowledge-base-mcp)
-      #     and whose "version" must match the npm package version just published
-      #     ($RELEASE_VERSION above) — this repo has no such file yet.
-      #   - `io.github.execuro/...` names authenticate as the GitHub user/org `execuro` via
-      #     `mcp-publisher login github` (interactive device-code flow) or GitHub OIDC from
-      #     Actions.
-      # NOT confirmed (do not automate until a human verifies these against the current
-      # registry docs and this repo's execuro org settings, then delete this step):
-      #   - The exact non-interactive flags/token exchange for GitHub OIDC login from *this*
-      #     workflow (only the interactive `mcp-publisher login github` device flow is
-      #     documented as certain; the CI/OIDC login flags were not found).
-      #   - Whether any repo/org secret needs adding for that OIDC exchange.
-      # Guessing either of these and wiring it into a release pipeline would fail silently or
-      # loudly mid-release, after `npm publish` has already burned the version — worse than a
-      # manual step. This step is intentionally non-blocking (continue-on-error) so a missing
-      # registry submission never blocks or rolls back a successful npm publish; it prints the
-      # exact manual actions instead of attempting a publish.
-      - name: MCP Registry entry — MANUAL follow-up, not automated
-        continue-on-error: true
+      # OIDC is used rather than a PAT: the token's repository owner is what grants the
+      # `io.github.execuro/` namespace, so there is no secret to hold or rotate. The job already
+      # requests `id-token: write` for npm provenance and the same permission covers this.
+      #
+      # This step is NOT continue-on-error: a release that publishes to npm but silently skips
+      # the registry leaves consumers discovering a version that the registry never learns about.
+      # It runs last, so a failure here cannot roll back or obscure a successful npm publish, and
+      # re-running it after a fix is safe.
+      - name: Check server.json is in step with this release
         run: |
-          echo "::warning::MCP Registry submission is a manual follow-up for this release (io.github.execuro/sw-dev-knowledge-base-mcp v$RELEASE_VERSION)."
-          echo "A human must, after this workflow finishes:"
-          echo "  1. Build/install mcp-publisher from github.com/modelcontextprotocol/registry (make publisher)."
-          echo "  2. Write or update server.json at the repo root: name=io.github.execuro/sw-dev-knowledge-base-mcp, version=$RELEASE_VERSION, packages[0].identifier=$(node -p "require('./package.json').name"), packages[0].version=$RELEASE_VERSION."
-          echo "  3. Run: mcp-publisher login github   (device-code flow, as a maintainer with access to the execuro namespace)."
-          echo "  4. Run: mcp-publisher publish   from the repo root, and confirm the registry entry shows v$RELEASE_VERSION."
-          echo "This step performs no submission; it never fails the job (continue-on-error)."
+          name="$(node -p "require('./server.json').name")"
+          mcp="$(node -p "require('./package.json').mcpName")"
+          sver="$(node -p "require('./server.json').version")"
+          pident="$(node -p "require('./server.json').packages[0].identifier")"
+          pver="$(node -p "require('./server.json').packages[0].version")"
+          pkgname="$(node -p "require('./package.json').name")"
+          fail=0
+          [ "$name" = "$mcp" ] || { echo "::error::server.json name ($name) != package.json mcpName ($mcp)"; fail=1; }
+          [ "$sver" = "$RELEASE_VERSION" ] || { echo "::error::server.json version ($sver) != released version ($RELEASE_VERSION)"; fail=1; }
+          [ "$pver" = "$RELEASE_VERSION" ] || { echo "::error::server.json packages[0].version ($pver) != released version ($RELEASE_VERSION)"; fail=1; }
+          [ "$pident" = "$pkgname" ] || { echo "::error::server.json packages[0].identifier ($pident) != package name ($pkgname)"; fail=1; }
+          exit $fail
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help >/dev/null
+
+      - name: Authenticate to the MCP Registry (OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to the MCP Registry
+        run: ./mcp-publisher publish
+
+      - name: Confirm the registry entry resolves
+        run: |
+          name="$(node -p "require('./server.json').name")"
+          # The registry is read-after-write eventually consistent in practice; retry briefly
+          # rather than failing a release on a propagation lag.
+          for i in 1 2 3 4 5; do
+            if curl -fsS "https://registry.modelcontextprotocol.io/v0.1/servers?search=$name" | grep -q "\"$name\""; then
+              echo "registry entry for $name is live"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::the registry has no entry for $name after publishing"; exit 1
