@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-16
+
+### Fixed
+
+- Release automation only: re-running a release whose npm publish had already succeeded failed
+  on npm's refusal to republish an existing version, so the MCP Registry submission that follows
+  it never ran. The publish step now treats an already-published version as success and
+  continues. No runtime change from 0.1.2.
+
 ## [0.1.2] - 2026-09-16
 
 ### Fixed

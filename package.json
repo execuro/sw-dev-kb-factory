@@ -1,6 +1,6 @@
 {
   "name": "@execuro-sw-ecosystem/sw-dev-knowledge-base-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ShopwareDevKnowledgeBase - read-only STDIO MCP server over a local LLM wiki (list_docs, grep_docs, read_doc, kb_status)",
   "private": true,
   "license": "MIT",

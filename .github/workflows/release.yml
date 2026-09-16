@@ -124,8 +124,27 @@ jobs:
           # No --provenance: with trusted publishing npm generates and publishes provenance
           # automatically for a public package from a public repository. Passing the flag is
           # redundant and one more thing that can disagree with the OIDC path.
+          # Idempotent: a release can fail in a later step (the registry submission has, more
+          # than once) and re-running it must not die on npm's 409 for an existing version.
+          # Publishing is the irreversible part; everything after it is safe to repeat.
+          pkg="$(node -p "require('./package.json').name")"
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/$pkg/$RELEASE_VERSION")" = "200" ]; then
+            echo "::notice::$pkg@$RELEASE_VERSION is already on npm; skipping the publish"
+            exit 0
+          fi
           cd "$STAGE"
-          npm publish --access public
+          # npm refuses to republish an existing version. That refusal means the version is
+          # already there, which is the state this step wants — so treat it as success and let
+          # the registry steps run. Any other failure is real and fails the job.
+          # (The version endpoint above can still 404 while npm finishes validating a version
+          # that is in fact published, so this second check is what actually makes a re-run work.)
+          out="$(npm publish --access public 2>&1)" && { echo "$out"; exit 0; }
+          echo "$out"
+          if printf '%s' "$out" | grep -qiE 'cannot publish over|previously published|EPUBLISHCONFLICT|403 Forbidden - PUT .* - You cannot publish over'; then
+            echo "::notice::$pkg@$RELEASE_VERSION is already published; continuing to the registry steps"
+            exit 0
+          fi
+          exit 1
 
       # The MCP Registry lists this server; it stores metadata only, never the artifact, so it
       # must run AFTER the npm publish above — the registry validates that the npm package it
