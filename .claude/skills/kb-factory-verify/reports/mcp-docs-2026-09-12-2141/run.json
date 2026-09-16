@@ -1,0 +1,239 @@
+{
+  "run": "mcp-docs-2026-09-12-2141",
+  "mode": "mcp-docs",
+  "options": [
+    "mcp-docs"
+  ],
+  "casesSelector": "all",
+  "cases": [
+    "dev-01",
+    "dev-02",
+    "dev-03",
+    "dev-04",
+    "dev-05",
+    "dev-06",
+    "dev-07",
+    "dev-08",
+    "dev-09",
+    "dev-10",
+    "dev-11",
+    "dev-12",
+    "dev-13",
+    "dev-14",
+    "dev-15",
+    "dev-16",
+    "dev-17",
+    "dev-18",
+    "dev-19",
+    "dev-20",
+    "dev-21",
+    "dev-22",
+    "dev-23",
+    "dev-24",
+    "dev-25",
+    "dev-26",
+    "dev-27",
+    "dev-28",
+    "dev-29",
+    "dev-30",
+    "dev-31",
+    "dev-32",
+    "dev-33",
+    "dev-34",
+    "dev-35",
+    "dev-36",
+    "dev-37",
+    "dev-38",
+    "dev-39",
+    "dev-40",
+    "dev-41",
+    "dev-42",
+    "dev-43",
+    "dev-44",
+    "dev-45",
+    "dev-46",
+    "dev-47",
+    "dev-48",
+    "dev-49",
+    "dev-50",
+    "dev-51",
+    "dev-52",
+    "dev-53",
+    "dev-54",
+    "dev-55",
+    "dev-56",
+    "dev-57",
+    "dev-58",
+    "dev-59",
+    "dev-60",
+    "dev-61",
+    "dev-62",
+    "dev-63",
+    "dev-64",
+    "dev-65",
+    "dev-66",
+    "dev-67",
+    "dev-68",
+    "dev-69",
+    "dev-70",
+    "dev-71",
+    "func-01",
+    "func-02",
+    "func-03",
+    "func-04",
+    "func-05",
+    "func-06",
+    "func-07",
+    "func-08",
+    "func-09",
+    "func-10",
+    "func-11",
+    "func-12",
+    "edge-01",
+    "edge-02",
+    "edge-03",
+    "edge-04",
+    "edge-05",
+    "edge-06",
+    "edge-07",
+    "edge-08",
+    "edge-09",
+    "gap-01",
+    "gap-02",
+    "gap-03",
+    "gap-04",
+    "gap-05",
+    "gap-06",
+    "gap-07",
+    "gap-08"
+  ],
+  "label": "",
+  "model": null,
+  "startedAt": "2026-09-12T21:41:06Z",
+  "endedAt": "2026-09-13T05:37:15.623Z",
+  "corpus": {
+    "name": "docs",
+    "fingerprint": {
+      "developer": {
+        "commit": "3a7f3af9c19f737ef8b8252cc2a599354065cbb9",
+        "committedAt": "2026-09-11T18:13:30+02:00"
+      },
+      "merchant": {
+        "commit": "fd093eda5f71bb4fe5759d95e4ea841ccce519e7",
+        "committedAt": "2026-09-11T03:37:21Z"
+      }
+    },
+    "probe": {
+      "ok": true,
+      "detail": "kb_status reports corpus.name=docs with both entry points present",
+      "kbStatus": {
+        "contract": 1,
+        "layers": [
+          {
+            "layer": "developer",
+            "status": "implemented",
+            "synonyms": false,
+            "integrity": "unverified",
+            "notices": [
+              "manifest.json missing"
+            ]
+          },
+          {
+            "layer": "marketplace",
+            "status": "planned",
+            "synonyms": false,
+            "integrity": "unverified",
+            "notices": [
+              "[marketplace] planned: marketplace-layer wiki not built yet (no marketplace/index.md under the wiki root)."
+            ]
+          },
+          {
+            "layer": "merchant",
+            "status": "implemented",
+            "synonyms": false,
+            "integrity": "unverified",
+            "notices": [
+              "manifest.json missing"
+            ]
+          },
+          {
+            "layer": "platform",
+            "status": "planned",
+            "synonyms": false,
+            "integrity": "unverified",
+            "notices": [
+              "[platform] planned: platform-layer wiki not built yet (no platform/index.md under the wiki root)."
+            ]
+          },
+          {
+            "layer": "project",
+            "status": "planned",
+            "synonyms": false,
+            "integrity": "unverified",
+            "notices": [
+              "[project] planned: project-layer wiki not built yet (no project/index.md under the wiki root); read the repository directly."
+            ]
+          }
+        ],
+        "corpus": {
+          "name": "docs",
+          "root": "<home>/projects/host-project/docs/shopware-knowledge-bases",
+          "developer": "developer",
+          "merchant": "merchant/content/en/shopware-6",
+          "entryPoints": [
+            {
+              "path": "developer/index.md",
+              "present": true
+            },
+            {
+              "path": "merchant/index.md",
+              "present": true
+            }
+          ],
+          "configSource": "config",
+          "configPath": "<home>/projects/host-project/.claude/extras/ShopwareDevKnowledgeBase/kb.config.json"
+        }
+      }
+    }
+  },
+  "yardstick": {
+    "rubricVersion": 2,
+    "casesMdSha": "ef932d8ea59512d528b53bda5c794f13c456b7004a91778207a613a71bce4f6b",
+    "expectedSha": "26c226deb022d7d1c6615368cb9fce0519fe1ce6ce6f2ced99bdc9f58f77cfdd",
+    "rubricSha": "0619994319cb650a4bd36befbf254eb9dee95c9ce06c37b344aa4ca9e2ddab99",
+    "briefSha": "e256f8be01c0aeea4b392f6f9478318c6dee22a904493a67604d8104ce9fc19f",
+    "auditorBriefSha": "4bd00bc68a48c35c0158ff2ac4a0efdbc681d533061c13d6a40db52bf438c185",
+    "accuracyBriefSha": "9009d748d1cfbe9503a039b3370e0a50bc8be379be58d90fe8beb2d26c3f2f15"
+  },
+  "caseStatus": {
+    "confirmed": 99,
+    "draft": 0,
+    "contradictory": 1
+  },
+  "execution": {
+    "discoverBatchSize": 10,
+    "scorerShardSize": 25,
+    "mode": "batched"
+  },
+  "fence": {
+    "active": true,
+    "script": ".claude/hooks/kb-verify-scope-fence.sh",
+    "fenceDenialLogging": "not-implemented"
+  },
+  "warnings": [
+    "audit: casesWithSelfReportDelta (29 cases) — see per-case selfReportDelta.missing for details: dev-05,dev-11,dev-12,dev-13,dev-16,dev-19,dev-21,dev-23,dev-25,dev-26,dev-28,dev-33,dev-35,dev-36,dev-41,dev-44,dev-49,dev-51,dev-57,dev-62,dev-64,dev-66,dev-67,func-07,func-10,func-11,edge-01,edge-05,edge-08 (auditor flagged; scorers judged materiality per-case — several scored honesty=0, most were non-material navigational omissions)",
+    "audit: blind-brief query drift (backtick markup dropped from stored query field, not resolved) on dev-62,dev-63,dev-65,dev-67,dev-69,dev-70",
+    "rescore dev-04: citation 100 -> 40",
+    "rescore dev-08: citation 100 -> 40",
+    "rescore dev-21: citation 100 -> 40",
+    "rescore func-01: groundingRelevance 100 -> 70",
+    "rescore func-01: accuracy 70 -> 40",
+    "rescore func-01: actionability 100 -> 70",
+    "rescore func-02: citation 100 -> 40",
+    "rescore func-02: actionability 100 -> 70",
+    "rescore edge-02: completeness 100 -> 70",
+    "rescore edge-02: actionability 100 -> 70",
+    "accuracy pass: all 84 flagged cases were confirmed status; settled against code evidence, zero live fetches, zero bands changed",
+    "rescore pass: borderline cases (10) re-scored independently; lower band taken per dimension on disagreement, moving dev-21 and gap-05 from partly to fail"
+  ]
+}

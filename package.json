@@ -1,0 +1,71 @@
+{
+  "name": "@execuro-sw-ecosystem/sw-dev-knowledge-base-mcp",
+  "version": "0.1.1",
+  "description": "ShopwareDevKnowledgeBase - read-only STDIO MCP server over a local LLM wiki (list_docs, grep_docs, read_doc, kb_status)",
+  "private": true,
+  "license": "MIT",
+  "author": "Execuro UG (haftungsbeschränkt)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/execuro/sw-dev-kb-factory.git"
+  },
+  "homepage": "https://github.com/execuro/sw-dev-kb-factory#readme",
+  "bugs": {
+    "url": "https://github.com/execuro/sw-dev-kb-factory/issues"
+  },
+  "keywords": [
+    "shopware",
+    "mcp",
+    "model-context-protocol",
+    "documentation",
+    "knowledge-base"
+  ],
+  "mcpName": "io.github.execuro/sw-dev-knowledge-base-mcp",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "sw-dev-knowledge-base-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist/",
+    "kb.config.json",
+    "wiki/",
+    "README.md",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:ingest": "tsc -p ingest/tsconfig.json --noEmit",
+    "setup": "node scripts/setup-sources.mjs && node scripts/setup-docs.mjs",
+    "setup:sources": "node scripts/setup-sources.mjs",
+    "setup:docs": "node scripts/setup-docs.mjs",
+    "config:package": "node scripts/build-package-config.mjs",
+    "pack": "node scripts/pack.mjs",
+    "build": "npm run typecheck && esbuild src/server.ts --bundle --platform=node --format=esm --target=node20 --minify-syntax --alias:ajv=./src/shims/ajv.ts --alias:ajv-formats=./src/shims/ajv-formats.ts --outfile=dist/server.js --banner:js=\"$(cat esbuild-banner.txt)\" && chmod +x dist/server.js",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "test": "npm run build && node --test ${KB_TEST_REPORTER:-} --import tsx --test-concurrency=1 test/*.test.ts",
+    "wiki:sync": "tsx ingest/shared/cli.ts sync --layer platform",
+    "wiki:pages": "tsx ingest/shared/cli.ts pages --layer platform",
+    "wiki:hubs": "tsx ingest/shared/cli.ts hubs --layer platform",
+    "wiki:guidelines": "tsx ingest/shared/cli.ts guidelines --layer platform",
+    "wiki:build": "tsx ingest/shared/cli.ts build --layer platform",
+    "wiki:synonyms": "tsx ingest/shared/cli.ts synonyms --layer platform",
+    "wiki:lint": "tsx ingest/shared/cli.ts lint --layer platform",
+    "wiki:eval": "tsx ingest/shared/cli.ts eval --layer platform",
+    "wiki:clean": "tsx ingest/shared/cli.ts clean --layer platform"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0"
+  }
+}

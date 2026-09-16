@@ -1,0 +1,133 @@
+# `func-07` — expected answer
+
+<!-- expected:start -->
+| | |
+| --- | --- |
+| Case | `func-07` · `func` · `Merchant` |
+| Version | `6.6 + 6.7` |
+| Status | **confirmed** — verified against shopware/core 6.7.13.0 |
+| Reviewed | `2026-09-12` · run `cases-review-2026-09-12-1011-find-cases-that-are-not` |
+| Core version | `6.7.13.0` |
+
+**Query:** How do I import products from a CSV with an import/export profile — column mapping, matching identifiers and a dry run?
+
+**Expected answer — every fact an answer must contain:**
+
+1. The module's menu parent differs by version: **Settings > Shop** in 6.6, **Settings > Automation** in 6.7 (the 6.6 `sw-import-export` module's `settingsItem.group` is a callback returning `'shop'` unless the `v6.7.0.0` flag is active; 6.7 hard-codes `'automation'`; route `sw.import.export.index`, privilege `system.import_export` in both). Only `text/csv` is accepted, and the field/string separator is **not** a system requirement but the profile's own Required `delimiter` and `enclosure` fields. A mapping row is `key` (the DAL property path, dot notation for associations) → `mappedKey` (the CSV header, defaulting to `key`), plus `position`, `requiredByUser`, `useDefaultValue`/`defaultValue`; a mapping without `key` is rejected. `[code: 6.6 Administration sw-import-export/index.js:143-152 (ref v6.6.10.0) and vendor/shopware/administration/.../sw-import-export/index.js:141-146; Content/ImportExport/Processing/Mapping/Mapping.php:16-27,66-71; Content/DependencyInjection/import_export.xml:11-13]`
+2. The matching identifier is the profile's `updateBy` config: `PrimaryKeyResolver` looks the mapped value up with an `EqualsFilter` (limit 1, `firstId()`) and writes the found id into the record, turning an insert into an update; a row with no value for that field fails with `UpdatedByValueNotFoundException`, and `updateBy` is ignored when the named field is the `IdField` or `mappedKey` is empty. Without a usable match every row receives a fresh UUID and is inserted. **Mapping one DAL `key` to two CSV columns is not rejected but silently collapses**: `MappingCollection` is keyed by the DAL key, so the second mapping overwrites the first, and on import both CSV columns resolve to that one key — whichever column comes later in the row wins, with no warning. `[code: Content/ImportExport/DataAbstractionLayer/Serializer/PrimaryKeyResolver.php:68-78,85-89,107-120; Content/ImportExport/Processing/Mapping/MappingCollection.php:26-56; Content/ImportExport/Processing/Pipe/KeyMappingPipe.php:37-92]`
+3. **Start dry run is not a write-free validation pass:** it logs activity `dryrun`, performs the real writes and rolls the DBAL transaction back at the end — so entity data is undone, but everything outside that window survives: the `import_export_log` and `import_export_file` rows and the invalid-records CSV (written *after* `rollBack()`), the progress bookkeeping, and any media file written or deleted by `FileSaver`/`MediaFileCleanupService` on the filesystem. What an import can remove also depends on the field kind: to-many and many-to-many associations are **patched** (nothing prunes children absent from the row, so an existing sales-channel assignment cannot be removed by omission), whereas a whole-column JSON field such as `price` is **replaced** — a profile mapping only some currencies rewrites the column and the unmapped currency prices are lost. An empty cell cannot clear a field: it deserialises to `null` and is dropped before the record is written. `[code: Content/ImportExport/ImportExport.php:116-118,180-182,191-194,196-210; Content/ImportExport/Service/FileService.php:41-71; Content/ImportExport/DataAbstractionLayer/Serializer/Field/PriceSerializer.php:63-97; Framework/DataAbstractionLayer/FieldSerializer/OneToManyAssociationFieldSerializer.php:84-125; Content/ImportExport/DataAbstractionLayer/Serializer/Entity/EntitySerializer.php:72]`
+
+**Official reference URL:** https://docs.shopware.com/en/shopware-en/settings/importexport
+<!-- expected:end -->
+
+## Evidence — code (decisive)
+
+| fact | citation | excerpt |
+| --- | --- | --- |
+| A profile carries `sourceEntity`, `type`, `fileType`, `delimiter`, `enclosure`, JSON `mapping`, JSON `updateBy` and JSON `config`; delimiter/enclosure/fileType/sourceEntity are Required | `Content/ImportExport/ImportExportProfileDefinition.php` (defineFields) | `(new StringField('delimiter', 'delimiter'))->addFlags(new Required())` … `new JsonField('update_by', 'updateBy', [], []),` |
+| Version delta on profile identity: in 6.6 the translated `label` is Required and `technical_name` only behind the v6.7.0.0 flag; in 6.7.13.0 `technical_name` is unconditionally Required | `https://github.com/shopware/shopware/blob/v6.6.10.0/src/Core/Content/ImportExport/ImportExportProfileDefinition.php#L41-L66` vs `Content/ImportExport/ImportExportProfileDefinition.php` | 6.6 `(new TranslatedField('label'))->addFlags(new Required())` vs 6.7 `(new StringField('technical_name', 'technicalName'))->addFlags(new Required(), …)` |
+| A mapping entry is `key`, `mappedKey` (defaults to `key`), `position`, `requiredByUser`, `useDefaultValue`, `defaultValue` — byte-identical in 6.6.10.0 and 6.7.13.0 | `Content/ImportExport/Processing/Mapping/Mapping.php:16-27` | `$this->mappedKey = $mappedKey ?? $key;` |
+| A mapping without `key` is rejected | `Content/ImportExport/Processing/Mapping/Mapping.php:66-71` | `if (!isset($data['key'])) { throw new \InvalidArgumentException('key is required in mapping'); }` |
+| `requiredByUser` is enforced per row against the raw CSV column; the row lands in the invalid-records file | `Content/ImportExport/ImportExport.php` (ensureUserRequiredFields) | `if (!\array_key_exists($csvKey, $row) \|\| empty($row[$csvKey])) { throw ImportExportException::requiredByUser($csvKey); }` |
+| `useDefaultValue` fills the raw CSV row before deserialisation | `Content/ImportExport/ImportExport.php` (addUserDefaults) | `$row[$csvKey] = $mapping->getDefaultValue();` |
+| The matching identifier is the `updateBy` config: the value is looked up with an `EqualsFilter` (limit 1) and the found id written into the record | `Content/ImportExport/DataAbstractionLayer/Serializer/PrimaryKeyResolver.php:107-120` | `$id = $repository->searchIds($criteria, $context)->firstId(); if ($id) { $record[$primaryKeyProperty] = $id; }` |
+| `updateBy` is ignored when the named field is the IdField or `mappedKey` is empty | `Content/ImportExport/DataAbstractionLayer/Serializer/PrimaryKeyResolver.php:68-78` | `if ($updateByField === null \|\| $updateByField === '' \|\| $definition->getField($updateByField) instanceof IdField) { return $record; }` |
+| A row with no value for the configured `updateBy` field fails instead of being inserted | `Content/ImportExport/DataAbstractionLayer/Serializer/PrimaryKeyResolver.php:85-89` | `$record['_error'] = new UpdatedByValueNotFoundException($definition->getEntityName(), $updateByField);` |
+| Without a usable match, every row gets a fresh UUID — it is inserted | `Content/ImportExport/ImportExport.php` (ensurePrimaryKeys) | `$data[$primaryKey->getPropertyName()] = Uuid::randomHex();` |
+| **Duplicate mappings collapse:** `MappingCollection` is keyed by the DAL key (the random-key branch applies only to the empty key), so a second mapping with the same key overwrites the first; the reverse index keeps both CSV columns pointing at that one survivor | `Content/ImportExport/Processing/Mapping/MappingCollection.php:26-56`; 6.6 `https://raw.githubusercontent.com/shopware/shopware/v6.6.10.0/src/Core/Content/ImportExport/Processing/Mapping/MappingCollection.php:47-48` | `$mappingKey = $mapping->getKey(); if ($mappingKey === '') { … $mappingKey = Uuid::randomHex(); } parent::set($mappingKey, $mapping); $this->reverseIndex[$mapping->getMappedKey()] = $mappingKey;` |
+| On import both duplicate columns write the same DAL key, so the later column in the row silently wins; on export only the surviving mapping's column is emitted at all | `Content/ImportExport/Processing/Pipe/KeyMappingPipe.php:37-92` | import `$flat[$newKey] = $value;`; export `foreach ($this->mapping as $m) { $sorted[$m->getMappedKey()] = …; }` |
+| **Dry run is a rollback, not a write-free pass:** activity `dryrun` opens a DBAL transaction and rolls it back | `Content/ImportExport/ImportExport.php:116-118,180-182` | `if ($this->logEntity->getActivity() === ImportExportLogEntity::ACTIVITY_DRYRUN) { $this->connection->beginTransaction(); }` … `$this->connection->rollBack();` |
+| The invalid-records export runs **after** the rollback, writing a CSV to the filesystem and committing an `import_export_file` and an `import_export_log` row | `Content/ImportExport/ImportExport.php:191-194`; `Content/ImportExport/Service/FileService.php:41-71`; `Content/ImportExport/Service/ImportExportService.php:199-225` | `if ($failedRecords !== []) { $invalidRecordsProgress = $this->exportInvalid($context, $failedRecords);` … `$this->filesystem->writeStream($path, $sourceStream);` … `$this->logRepository->create([$logData], $context);` |
+| Progress/log bookkeeping also runs after the rollback | `Content/ImportExport/ImportExport.php:196-210` | `saveProgress($progress, $overallResults)` at `:210` |
+| Media side effects are non-transactional: the previous file and its thumbnails are deleted from the media filesystem, the new file is written, and a thumbnail message is dispatched | `Content/Media/File/FileSaver.php:79,94,96`; `Content/Media/Upload/MediaFileCleanupService.php:32-46` | `$this->cleanup->removeOldMediaData($currentMedia, $context);` … `$filesystem->delete($media->getPath());` |
+| Same mechanism in 6.6.10.0 (beginTransaction `:111`, rollBack `:175`, exportInvalid `:185`, saveProgress `:203`) | `https://raw.githubusercontent.com/shopware/shopware/v6.6.10.0/src/Core/Content/ImportExport/ImportExport.php:109-111,174-175,185,203` | same ordering |
+| **To-many/M2M associations are patched, never pruned:** the O2M serializer only forwards the supplied subresources and yields nothing else; `ProductSerializer` resolves visibility rows to existing ids so they upsert | `Framework/DataAbstractionLayer/FieldSerializer/OneToManyAssociationFieldSerializer.php:84-125`; `Content/ImportExport/DataAbstractionLayer/Serializer/Entity/ProductSerializer.php:110-140` | `$this->map($field, $parameters, $data); yield from [];` … `yield 'visibilities' => $this->findVisibilityIds($visibilities, $context);` |
+| **Whole-column JSON fields are replaced:** `PriceSerializer` builds a fresh array holding only the mapped currencies and `PriceFieldSerializer` yields it as the single storage value — no read-merge | `Content/ImportExport/DataAbstractionLayer/Serializer/Field/PriceSerializer.php:63-97`; `Framework/DataAbstractionLayer/FieldSerializer/PriceFieldSerializer.php:41,100-103` | `$prices = [];` … `$prices[$currency] = $priceStruct->jsonSerialize();` … `$value = Json::encode($value); } yield $field->getStorageName() => $value;` |
+| An empty cell cannot clear a field: it deserialises to `null` and the key is dropped before the record | `Content/ImportExport/DataAbstractionLayer/Serializer/Field/FieldSerializer.php:188-190`; `Content/ImportExport/DataAbstractionLayer/Serializer/Entity/EntitySerializer.php:72` | `if (\is_string($value) && trim($value) === '') { return null; }` … `if ($value === null) { continue; }` |
+| `customFields` is the counter-example — the DAL writes it as a `JsonUpdateCommand` (`JSON_SET` per key) when the row exists, i.e. a true patch | `Framework/DataAbstractionLayer/FieldSerializer/CustomFieldsSerializer.php:61-68` | `if ($existence->exists()) { $this->extractJsonUpdate([$field->getStorageName() => $encoded], $existence, $parameters); return; }` |
+| 6.6 vs 6.7 menu parent: `settingsItem.group` is a callback returning `'shop'` unless `v6.7.0.0` is active; 6.7.13.0 hard-codes `'automation'` | `https://raw.githubusercontent.com/shopware/shopware/v6.6.10.0/src/Administration/Resources/app/administration/src/module/sw-import-export/index.js:143-152`; `vendor/shopware/administration/.../sw-import-export/index.js:141-146` | 6.6 `if (!Feature.isActive('v6.7.0.0')) { return 'shop'; } return 'automation';`; 6.7 `group: 'automation', to: 'sw.import.export.index', … privilege: 'system.import_export',` |
+| `ACTIVITY_DRYRUN` exists identically in 6.6.10.0 and 6.7.13.0 | `Content/ImportExport/Aggregate/ImportExportLog/ImportExportLogEntity.php:17-22` | `final public const ACTIVITY_DRYRUN = 'dryrun';` |
+| The admin triggers it as a `dryRun` form field on `POST /api/_action/import-export/prepare` | `Content/ImportExport/Controller/ImportExportActionController.php:79-89` | `$request->request->has('dryRun')` |
+| CLI equivalent `bin/console import:entity … --profile-technical-name=<name> --dryRun` | `Content/ImportExport/Command/ImportEntityCommand.php:59-99` | `$doRollback = $rollbackOnError && !$dryRun;` |
+| Mapping can be generated from an uploaded CSV's first line | `Content/ImportExport/Service/MappingService.php` (getMappingFromTemplate) | `$mappings->add(new Mapping($this->guessKeyFromMappedKey(…), $column, $index));` |
+| Only `text/csv` is accepted | `Content/DependencyInjection/import_export.xml:11-13` | `<parameter key="import_export.supported_file_types" type="collection"><parameter>text/csv</parameter></parameter>` |
+| The administration offers 12 object types, `order` export-only | `administration/.../sw-import-export-edit-profile-general/index.js:51-113` | `{ value: 'order', …, type: profileTypes.EXPORT },` |
+| Import (and dry run) runs through the message bus, so a worker must be running | `Content/ImportExport/Controller/ImportExportActionController.php:107-119` | `$this->messageBus->dispatch($message);` |
+| Flows are suppressed during import | `Content/ImportExport/ImportExport.php:115` | `$context->addState(Context::SKIP_TRIGGER_FLOW);` |
+
+Absences — things the code shows do **not** exist:
+
+| claim checked | verdict | evidence |
+| --- | --- | --- |
+| Dry run validates without touching the database | **absent as described** | The real writes happen inside a transaction that is rolled back; the log/file rows, the invalid-records CSV and media filesystem changes are outside that window (`Content/ImportExport/ImportExport.php:116-118,180-182,191-194`) |
+| The import write path prunes to-many children absent from the CSV row | absent | `OneToManyAssociationFieldSerializer::encode` only forwards the supplied subresources and yields nothing; there is no delete-missing/orphan-removal branch, and nothing in `Content/ImportExport` issues a delete against an association (`…/OneToManyAssociationFieldSerializer.php:84-125`) |
+| Import/export handles inheritance (variant fallback) explicitly | absent | No `considerInheritance`/inheritance handling anywhere under `Content/ImportExport`; the only inheritance-aware line is `FieldSerializer.php:89`, which on **export** emits an explicit null cell. No import path writes NULL to restore inheritance — `EntitySerializer::deserialize` drops nulls |
+| `import_export.supported_entities` limits which entities a profile can address | misleading / not the gate | The parameter lists only customer and product and feeds only `SupportedFeaturesService`; the admin profile editor hard-codes its own 12-entity list (`Content/DependencyInjection/import_export.xml:7-10`) |
+| The import file can be XML, XLSX or JSON | absent | `import_export.supported_file_types` holds exactly `text/csv`, and `MappingService::getMappingFromTemplate` hard-rejects anything else |
+
+Test anchors, where found:
+
+| what it shows | citation |
+| --- | --- |
+| A dry run rolls back the entity writes but leaves the `import_export_log` / `import_export_file` rows behind — the test deletes them itself afterwards | `https://raw.githubusercontent.com/shopware/shopware/v6.6.10.0/tests/integration/Core/Content/ImportExport/ImportExportTest.php:945-990` |
+| Price columns are driven by explicit per-currency mapping keys (`price.DEFAULT.*`), so anything unmapped is simply absent from the deserialised price array | `https://raw.githubusercontent.com/shopware/shopware/v6.6.10.0/tests/integration/Core/Content/ImportExport/ImportExportTest.php:992-1005` |
+
+## Evidence — community (escalation only, never decisive)
+
+| signal | version | state | source |
+| --- | --- | --- | --- |
+| A category-import dry run changed data in the database (broken media, changed-at timestamps from the dry-run time) | unclear | closed | https://github.com/shopware/shopware/issues/6390 |
+| Re-uploading a profile fails with an unsupported mime type; docs say JSON, UI demands text/csv | 6.7 | closed | https://github.com/shopware/shopware/issues/15661 |
+| One database field mapped to two CSV columns: the second mapping is silently dropped | 6.6 + 6.7 | closed | https://github.com/shopware/shopware/issues/15680 |
+| Importing with the standard product profile reset currency-dependent prices, because unmapped currencies were treated as removed | unclear | closed | https://github.com/shopware/shopware/issues/6976 |
+| Maintainer issue: the mapping UI offers every definition field, including unusable ones | unclear | open | https://github.com/shopware/shopware/issues/10599 |
+| The customer `password` mapping is accepted but silently ignored on import | 6.7 | closed | https://github.com/shopware/shopware/issues/14335 |
+| Importing customers does not advance the number range, producing duplicate customer numbers | 6.6 | closed | https://github.com/shopware/shopware/issues/19031 |
+| Price-typed custom fields map to an always-empty column | unclear | closed | https://github.com/shopware/shopware/issues/4136 |
+
+Escalations raised, and how each was settled:
+
+| question | settled by | outcome |
+| --- | --- | --- |
+| Can an import remove existing data (issue 6976)? | code (deep) | It depends on the field kind: associations are patched and never pruned, but whole-column JSON fields such as `price` are replaced, so unmapped currencies are wiped. The old "import can only add" fact was right about associations and wrong as a general statement. |
+| What escapes the dry-run rollback (issue 6390)? | code (deep) | The invalid-records CSV plus its `import_export_file`/`import_export_log` rows (written after `rollBack()`), the progress bookkeeping, and media filesystem writes/deletions by `FileSaver`/`MediaFileCleanupService`. Entity data itself is reliably rolled back. |
+| Can one DAL key be mapped to two CSV columns (issue 15680)? | code (deep) | Configurable but silently collapsed: `MappingCollection` is keyed by the DAL key, so only the last mapping survives; on import the later CSV column wins, on export the duplicate column is not emitted at all. |
+| Where does the administration place the module in 6.6 and 6.7? | code (deep) | 6.6 **Settings > Shop** (`'shop'` unless the `v6.7.0.0` flag is on), 6.7.13.0 **Settings > Automation**. |
+| How is the matching identifier configured? | code | The profile's `updateBy` JSON, resolved by `PrimaryKeyResolver`; without a usable match the row gets a fresh UUID and is inserted. |
+| Is the dry-run feature still present in 6.7? | code | Yes — `ACTIVITY_DRYRUN`, the admin `dryRun` field and the CLI `--dryRun` are identical in both versions. |
+| What file format does the upload accept? | code | `text/csv` only. |
+
+## Evidence — documentation (claims)
+
+| claim | quote | citation | confirmed by code? |
+| --- | --- | --- | --- |
+| The module lives at Settings > Automation > Import/Export | "You can find the menu item in your administration under **Settings > Automation > Import/Export**." | merchant `importexport/v1-4-0-0.md:14` | **only for 6.7** — the 6.6 module's group is `'shop'`, which is what `v1-3-0-0.md:14` says |
+| Files must be UTF-8, semicolon-separated, with quotation marks as string separator | "The **UTF-8** format and the separators **semicolon** and **quotation marks** are the basic requirements…" | merchant `v1-4-0-0.md:20` | no — `delimiter` and `enclosure` are Required **per-profile** fields; the only system gate is the `text/csv` mime type |
+| Prices must use a dot as decimal separator | "Decimal places in the price are always separated by a point." | merchant `v1-4-0-0.md:32` | not checked |
+| Import can only add information, not remove it (example: sales channel assignment) | "Note that you can generally only add information with the import, but not remove it." | merchant `v1-4-0-0.md:30` | **partly** — true for associations (the sales-channel example holds: nothing prunes them), false for whole-column JSON fields such as `price` |
+| The dry run performs the same steps but writes no data to the database tables | "Shopware will perform the same steps as the regular import, but no data will be written to the database tables." | merchant `v1-4-0-0.md:634` | **no** — the writes happen and are rolled back, and the log/file rows, invalid-records CSV and media filesystem changes survive |
+| Erroneous records come back as a CSV with an extra `_error` column | "This file contains only the incorrect records with the additional column _\_error_." | merchant `v1-4-0-0.md:309` | partly — the invalid-records export exists and `_error` is written onto failed records; the exported column set was not read |
+| Import settings control whether new records may be created and existing data updated | "With the button Create new records you define if the import is able to create new records…" | merchant `v1-4-0-0.md:138-139` | not checked |
+| A mapping row carries a database entry, a CSV name, Required, Default Value and Position | "In the database mapping you assign a column from the CSV file to the desired entries from the database." | merchant `v1-4-0-0.md:155-165` | yes — `key`, `mappedKey`, `requiredByUser`, `defaultValue`/`useDefaultValue`, `position` |
+| The Second Unique Identifier (Advanced Settings) replaces the UUID with e.g. `productNumber` | "…you can specify that the productNumber must now be specified instead of the UUID when importing products." | merchant `v1-4-0-0.md:179-181` | yes as a mechanism — this is `updateBy` resolved by `PrimaryKeyResolver` |
+| A non-unique identifier breaks matching: only the first record is identified | "…the system can only identify and import the first data record." | merchant `v1-4-0-0.md:192` | yes — `EqualsFilter` with limit 1 and `firstId()` |
+| A profile must be created with the default system language selected | "…make sure that you have selected the **default system language**…" | merchant `v1-4-0-0.md:113` | not checked |
+
+## Doc/code divergence
+
+| docs claim | code shows | citation |
+| --- | --- | --- |
+| "no data will be written to the database tables" during a dry run | The real writes happen inside a rolled-back transaction; the invalid-records CSV and its `import_export_file`/`import_export_log` rows are created *after* the rollback, and media filesystem writes/deletions are never undone | `Content/ImportExport/ImportExport.php:116-118,180-182,191-194`; `Content/Media/File/FileSaver.php:79,94,96` |
+| "you can generally only add information with the import, but not remove it" | True for to-many/M2M associations (patched, never pruned) but false for whole-column JSON fields: `PriceSerializer` + `PriceFieldSerializer` rewrite the entire `price` column from the mapped currencies alone | `Content/ImportExport/DataAbstractionLayer/Serializer/Field/PriceSerializer.php:63-97`; `Framework/DataAbstractionLayer/FieldSerializer/PriceFieldSerializer.php:100-103` |
+| UTF-8 + semicolon + quotation marks are "the basic requirements for a successful import" | `delimiter` and `enclosure` are Required fields **on the profile**; the system-wide gate is the `text/csv` mime type only | `Content/ImportExport/ImportExportProfileDefinition.php` (defineFields); `Content/DependencyInjection/import_export.xml:11-13` |
+| The profile's object type "specifies which database tables and columns the profile can access" | The admin hard-codes its own 12-entity list; `import_export.supported_entities` (customer, product) feeds only the features endpoint and gates nothing | `administration/.../sw-import-export-edit-profile-general/index.js:51-113`; `Content/DependencyInjection/import_export.xml:7-10` |
+| Two merchant pages with the same declared version range disagree on the menu path (Automation vs Shop) | Both are right for their version: `'shop'` in 6.6, `'automation'` in 6.7 | `6.6 sw-import-export/index.js:143-152`; `vendor/shopware/administration/.../sw-import-export/index.js:141-146` |
+
+## Change log
+
+| old fact (verbatim) | action | why |
+| --- | --- | --- |
+| The module sits under **Settings > Automation > Import/Export**; CSV files must be **UTF-8** with a **semicolon** field separator and **quotation marks** as string separator, and prices must use a decimal point, not a comma. | rewritten | The menu path is version-dependent (Shop in 6.6, Automation in 6.7) and the case is pinned to both. The semicolon/quotation-mark claim is not a system requirement — `delimiter` and `enclosure` are Required per-profile fields; the mapping-row shape replaced it as the load-bearing detail. |
+| **Start dry run** validates without importing; import only *adds* data and cannot remove existing associations such as a product's existing sales-channel assignment, and erroneous records come back as a downloadable CSV with an extra `_error` column. | removed | Both halves are wrong as written. The dry run performs the real writes and rolls them back, leaving the log/file rows, the invalid-records CSV and media filesystem changes behind. "Import only adds" holds for associations but not for whole-column JSON fields — mapping a subset of currencies wipes the rest. Rewritten as fact 3 with both qualifications. |
+| A profile defines **Usage** (import/export/both), **Object type**, **Separator character**, **Enclosure character**, **Import settings** (`Create new records` / `Update existing data`) and per-row **Mappings** (database entry, CSV column name, Required, Default Value, Position); the **Second Unique Identifier** on the profile's Advanced Settings tab replaces the UUID requirement with e.g. `productNumber` for import matching. | rewritten | The matching mechanism is kept and given its code backing (`updateBy` → `PrimaryKeyResolver`, with the IdField/empty-value edge cases), and the duplicate-mapping collapse added as load-bearing; the admin-label enumeration was dropped as it does not decide whether an answer is usable. |
+| _(new)_ | added | One DAL key mapped to two CSV columns silently collapses to one mapping — the later column wins on import and the duplicate column vanishes on export. |

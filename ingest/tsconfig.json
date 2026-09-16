@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "rootDir": "..",
+    "outDir": "../dist-ingest",
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "../src/wiki/**/*.ts", "../src/types.ts", "../src/paths.ts"],
+  "exclude": ["**/.cache/**", "node_modules"]
+}

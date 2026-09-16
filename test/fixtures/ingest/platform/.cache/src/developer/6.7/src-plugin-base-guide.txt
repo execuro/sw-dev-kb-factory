@@ -1,0 +1,4 @@
+# Plugin base guide — verbatim upstream snapshot
+Line two of the raw source.
+Line three of the raw source.
+Line four of the raw source.

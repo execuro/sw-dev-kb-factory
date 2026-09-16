@@ -1,0 +1,644 @@
+{
+  "schemaVersion": 2,
+  "run": "fs-wiki-2026-09-15-1416",
+  "computedAt": "2026-09-15T15:53:21.256Z",
+  "computedBy": "aggregate-costs.mjs",
+  "pricingVersion": 1,
+  "wallClockSeconds": 5680,
+  "options": {
+    "fs-wiki": {
+      "schemaVersion": 2,
+      "scope": "discover",
+      "definition": "Cost = usage of the option's discover agents only, one usage block per API message id (the record carrying the final output_tokens), split into non-cache tokens (input + output + cache writes) and cache-read tokens, computed by scripts/aggregate-costs.mjs from the transcripts. Cache hit rate = cacheRead ÷ (input + cacheCreation + cacheRead). USD is an estimate from reference/pricing.json, labelled so. totalTokens is retired.",
+      "batches": 11,
+      "batchesWithUsage": "11/11",
+      "agents": 11,
+      "retries": 0,
+      "requests": 384,
+      "tokens": {
+        "input": 768,
+        "output": 174687,
+        "cacheCreation": 709930,
+        "cacheCreation5m": 709930,
+        "cacheCreation1h": 0,
+        "cacheRead": 16852737,
+        "nonCache": 885385,
+        "promptTotal": 17563435
+      },
+      "cacheHitRate": 0.9595,
+      "promptTokensPerRequest": 45738,
+      "tokensPerCase": {
+        "nonCache": 8353,
+        "cacheRead": 158988
+      },
+      "casesCounted": 106,
+      "toolCalls": 382,
+      "retrievalCalls": 262,
+      "agentTimeSecondsSummed": 1978.59,
+      "model": {
+        "name": "claude-sonnet-5",
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 384,
+            "input": 768,
+            "output": 174687,
+            "cacheCreation": 709930,
+            "cacheRead": 16852737
+          }
+        }
+      },
+      "longContextRequests": 0,
+      "costUsdEstimate": {
+        "total": 6.89,
+        "byBucket": {
+          "input": 0.0015,
+          "output": 1.7469,
+          "cacheWrite5m": 1.7748,
+          "cacheWrite1h": 0,
+          "cacheRead": 3.3705
+        },
+        "pricingVersion": 1,
+        "pricingSource": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "estimate": true
+      },
+      "dedup": "message-id",
+      "source": "transcript",
+      "batchSources": [
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript"
+      ],
+      "syntheticRecords": 0,
+      "warnings": []
+    }
+  },
+  "batches": {
+    "fs-wiki": [
+      {
+        "batch": 1,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-a989e395c8cbc4e4c.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-01",
+          "dev-02",
+          "dev-03",
+          "dev-04",
+          "dev-05",
+          "dev-06",
+          "dev-07",
+          "dev-08",
+          "dev-09",
+          "dev-10"
+        ],
+        "requests": 36,
+        "tokens": {
+          "input": 72,
+          "output": 17140,
+          "cacheCreation": 73632,
+          "cacheCreation5m": 73632,
+          "cacheCreation1h": 0,
+          "cacheRead": 1420167,
+          "nonCache": 90844,
+          "promptTotal": 1493871
+        },
+        "cacheHitRate": 0.9507,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 36,
+            "input": 72,
+            "output": 17140,
+            "cacheCreation": 73632,
+            "cacheRead": 1420167
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 35,
+        "retrievalCalls": 24,
+        "batchWallSeconds": 188.094,
+        "warnings": []
+      },
+      {
+        "batch": 2,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-a3cdf1e7762d50589.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-11",
+          "dev-12",
+          "dev-13",
+          "dev-14",
+          "dev-15",
+          "dev-16",
+          "dev-17",
+          "dev-18",
+          "dev-19",
+          "dev-20"
+        ],
+        "requests": 32,
+        "tokens": {
+          "input": 64,
+          "output": 16656,
+          "cacheCreation": 71200,
+          "cacheCreation5m": 71200,
+          "cacheCreation1h": 0,
+          "cacheRead": 1349461,
+          "nonCache": 87920,
+          "promptTotal": 1420725
+        },
+        "cacheHitRate": 0.9498,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 32,
+            "input": 64,
+            "output": 16656,
+            "cacheCreation": 71200,
+            "cacheRead": 1349461
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 35,
+        "retrievalCalls": 24,
+        "batchWallSeconds": 184.158,
+        "warnings": []
+      },
+      {
+        "batch": 3,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-a194a68c4b310d288.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-21",
+          "dev-22",
+          "dev-23",
+          "dev-24",
+          "dev-25",
+          "dev-26",
+          "dev-27",
+          "dev-28",
+          "dev-29",
+          "dev-30"
+        ],
+        "requests": 33,
+        "tokens": {
+          "input": 66,
+          "output": 15258,
+          "cacheCreation": 55694,
+          "cacheCreation5m": 55694,
+          "cacheCreation1h": 0,
+          "cacheRead": 1292321,
+          "nonCache": 71018,
+          "promptTotal": 1348081
+        },
+        "cacheHitRate": 0.9586,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 33,
+            "input": 66,
+            "output": 15258,
+            "cacheCreation": 55694,
+            "cacheRead": 1292321
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 32,
+        "retrievalCalls": 21,
+        "batchWallSeconds": 166.02,
+        "warnings": []
+      },
+      {
+        "batch": 4,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-aa92c3e6db87f6ace.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-31",
+          "dev-32",
+          "dev-33",
+          "dev-34",
+          "dev-35",
+          "dev-36",
+          "dev-37",
+          "dev-38",
+          "dev-39",
+          "dev-40"
+        ],
+        "requests": 34,
+        "tokens": {
+          "input": 68,
+          "output": 16588,
+          "cacheCreation": 55751,
+          "cacheCreation5m": 55751,
+          "cacheCreation1h": 0,
+          "cacheRead": 1324370,
+          "nonCache": 72407,
+          "promptTotal": 1380189
+        },
+        "cacheHitRate": 0.9596,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 34,
+            "input": 68,
+            "output": 16588,
+            "cacheCreation": 55751,
+            "cacheRead": 1324370
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 33,
+        "retrievalCalls": 22,
+        "batchWallSeconds": 197.372,
+        "warnings": []
+      },
+      {
+        "batch": 5,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-ad9955182cb5c48a3.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-41",
+          "dev-42",
+          "dev-43",
+          "dev-44",
+          "dev-45",
+          "dev-46",
+          "dev-47",
+          "dev-48",
+          "dev-49",
+          "dev-50"
+        ],
+        "requests": 38,
+        "tokens": {
+          "input": 76,
+          "output": 16288,
+          "cacheCreation": 72253,
+          "cacheCreation5m": 72253,
+          "cacheCreation1h": 0,
+          "cacheRead": 1678949,
+          "nonCache": 88617,
+          "promptTotal": 1751278
+        },
+        "cacheHitRate": 0.9587,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 38,
+            "input": 76,
+            "output": 16288,
+            "cacheCreation": 72253,
+            "cacheRead": 1678949
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 37,
+        "retrievalCalls": 25,
+        "batchWallSeconds": 184.127,
+        "warnings": []
+      },
+      {
+        "batch": 6,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-aa3b15bcd8347c043.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-51",
+          "dev-52",
+          "dev-53",
+          "dev-54",
+          "dev-55",
+          "dev-56",
+          "dev-57",
+          "dev-58",
+          "dev-59",
+          "dev-60"
+        ],
+        "requests": 33,
+        "tokens": {
+          "input": 66,
+          "output": 14667,
+          "cacheCreation": 62831,
+          "cacheCreation5m": 62831,
+          "cacheCreation1h": 0,
+          "cacheRead": 1378211,
+          "nonCache": 77564,
+          "promptTotal": 1441108
+        },
+        "cacheHitRate": 0.9564,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 33,
+            "input": 66,
+            "output": 14667,
+            "cacheCreation": 62831,
+            "cacheRead": 1378211
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 32,
+        "retrievalCalls": 21,
+        "batchWallSeconds": 166.641,
+        "warnings": []
+      },
+      {
+        "batch": 7,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-a29645e6f56820d54.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-61",
+          "dev-62",
+          "dev-63",
+          "dev-64",
+          "dev-65",
+          "dev-66",
+          "dev-67",
+          "dev-68",
+          "dev-69",
+          "dev-70"
+        ],
+        "requests": 32,
+        "tokens": {
+          "input": 64,
+          "output": 14755,
+          "cacheCreation": 68818,
+          "cacheCreation5m": 68818,
+          "cacheCreation1h": 0,
+          "cacheRead": 1449690,
+          "nonCache": 83637,
+          "promptTotal": 1518572
+        },
+        "cacheHitRate": 0.9546,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 32,
+            "input": 64,
+            "output": 14755,
+            "cacheCreation": 68818,
+            "cacheRead": 1449690
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 32,
+        "retrievalCalls": 21,
+        "batchWallSeconds": 170.201,
+        "warnings": []
+      },
+      {
+        "batch": 8,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-aaad202aeb3309746.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "dev-71",
+          "func-01",
+          "func-02",
+          "func-03",
+          "func-04",
+          "func-05",
+          "func-06",
+          "func-07",
+          "func-08",
+          "func-09"
+        ],
+        "requests": 27,
+        "tokens": {
+          "input": 54,
+          "output": 13440,
+          "cacheCreation": 56380,
+          "cacheCreation5m": 56380,
+          "cacheCreation1h": 0,
+          "cacheRead": 1061318,
+          "nonCache": 69874,
+          "promptTotal": 1117752
+        },
+        "cacheHitRate": 0.9495,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 27,
+            "input": 54,
+            "output": 13440,
+            "cacheCreation": 56380,
+            "cacheRead": 1061318
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 27,
+        "retrievalCalls": 16,
+        "batchWallSeconds": 149.497,
+        "warnings": []
+      },
+      {
+        "batch": 9,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-adc7b9856d1c58a57.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "func-10",
+          "func-11",
+          "func-12",
+          "edge-01",
+          "edge-02",
+          "edge-03",
+          "edge-04",
+          "edge-05",
+          "edge-06",
+          "edge-07"
+        ],
+        "requests": 44,
+        "tokens": {
+          "input": 88,
+          "output": 16881,
+          "cacheCreation": 55036,
+          "cacheCreation5m": 55036,
+          "cacheCreation1h": 0,
+          "cacheRead": 1604165,
+          "nonCache": 72005,
+          "promptTotal": 1659289
+        },
+        "cacheHitRate": 0.9668,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 44,
+            "input": 88,
+            "output": 16881,
+            "cacheCreation": 55036,
+            "cacheRead": 1604165
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 44,
+        "retrievalCalls": 32,
+        "batchWallSeconds": 207.385,
+        "warnings": []
+      },
+      {
+        "batch": 10,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-af9fb02633f59e599.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "edge-08",
+          "edge-09",
+          "gap-01",
+          "gap-02",
+          "gap-03",
+          "gap-04",
+          "gap-05",
+          "gap-06",
+          "gap-07",
+          "gap-08"
+        ],
+        "requests": 62,
+        "tokens": {
+          "input": 124,
+          "output": 26970,
+          "cacheCreation": 108253,
+          "cacheCreation5m": 108253,
+          "cacheCreation1h": 0,
+          "cacheRead": 3940743,
+          "nonCache": 135347,
+          "promptTotal": 4049120
+        },
+        "cacheHitRate": 0.9732,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 62,
+            "input": 124,
+            "output": 26970,
+            "cacheCreation": 108253,
+            "cacheRead": 3940743
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 61,
+        "retrievalCalls": 49,
+        "batchWallSeconds": 303.547,
+        "warnings": []
+      },
+      {
+        "batch": 11,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/9ea712aa-93ff-4237-9758-aa4e3a2c67f9/subagents/agent-adf2149db3ce5ca34.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-fs-wiki",
+        "cases": [
+          "rule-01",
+          "rule-02",
+          "rule-03",
+          "rule-04",
+          "rule-05",
+          "rule-06"
+        ],
+        "requests": 13,
+        "tokens": {
+          "input": 26,
+          "output": 6044,
+          "cacheCreation": 30082,
+          "cacheCreation5m": 30082,
+          "cacheCreation1h": 0,
+          "cacheRead": 353342,
+          "nonCache": 36152,
+          "promptTotal": 383450
+        },
+        "cacheHitRate": 0.9215,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 13,
+            "input": 26,
+            "output": 6044,
+            "cacheCreation": 30082,
+            "cacheRead": 353342
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 14,
+        "retrievalCalls": 7,
+        "batchWallSeconds": 61.552,
+        "warnings": []
+      }
+    ]
+  }
+}

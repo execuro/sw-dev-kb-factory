@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kb-factory-verify — run overview</title>
+<!--
+  Payload: <script id="runs-data"> holds a JSON array, one object per kb-factory-verify run:
+  { run, option, access, corpus, model, label, generatedAt, overallPct, overallStatus,
+    developerPct, functionalPct, findable: "N/M", edgePass: "N/M", gapPass: "N/M",
+    pass, partly, fail, unavailable, unscored, weakestDimension,
+    nonCacheTokens, cacheReadTokens, cacheHitPct, costUsd, requests, toolCalls,
+    agentTimeSeconds, wallClockSeconds, costsScope, costsSource, costsSchemaVersion, costModel,
+    reportPath, htmlPath }
+  Cost = usage of the option's discover agents only, one usage block per API message id (the
+  record carrying the final output_tokens), split into non-cache tokens (input + output + cache
+  writes) and cache-read tokens, computed by scripts/aggregate-costs.mjs from the transcripts.
+  Cache hit rate = cacheRead / (input + cacheCreation + cacheRead). USD is an estimate from
+  reference/pricing.json, labelled so. costsSource is "transcript" | "legacy" | "none": legacy
+  rows (pre-dating this accounting) carry null cost
+  fields and render "—" rather than being mixed into the same column as a transcript-costed run.
+  Older rows predate `option`/`access`/`corpus`/`model` and instead carry `source`
+  ("fs" | "mcp"); this file derives the new fields for display:
+    option = r.option || (r.source + "-wiki")
+    access = r.access || r.source
+    corpus = r.corpus || "wiki"
+  The skill rewrites this file in place after every run; do not hand-edit the data block.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --border: #ddd;
+    --pass: #1a7f37; --partly: #9a6700; --fail: #c00; --other: #666;
+    --row-alt: #f7f7f7; --chip-bg: #eee; --chip-active-bg: #1a1a1a; --chip-active-fg: #fff;
+    --card-bg: #f7f7f7;
+    /* Timeline categorical slots — dataviz-skill palette, fixed slot order 1-5
+       (blue/orange/aqua/yellow/magenta), validated adjacent-pairs CVD-safe for a
+       multi-line chart in both modes (node scripts/validate_palette.js). The prior
+       hand-picked set failed the hard normal-vision-floor gate (worst pair ΔE 13.2,
+       below the 15 floor) and never varied by theme; optionColor() below reads
+       these instead of a static object so light/dark both clear the gate. */
+    --series-fs-wiki: #2a78d6; --series-mcp-wiki: #eb6834; --series-fs-docs: #1baf7a;
+    --series-mcp-docs: #eda100; --series-vanilla: #e87ba4;
+    --series-extra-1: #4a3aa7; --series-extra-2: #008300; --series-extra-3: #e34948;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111; --fg: #eee; --muted: #999; --border: #333; --row-alt: #1a1a1a; --chip-bg: #222; --chip-active-bg: #eee; --chip-active-fg: #111; --card-bg: #1a1a1a;
+      --series-fs-wiki: #3987e5; --series-mcp-wiki: #d95926; --series-fs-docs: #199e70;
+      --series-mcp-docs: #c98500; --series-vanilla: #d55181;
+      --series-extra-1: #9085e9; --series-extra-2: #008300; --series-extra-3: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 24px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  p.sub { color: var(--muted); margin: 0 0 20px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
+  .chip-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip-group-label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+  .chip { border: 1px solid var(--border); background: var(--chip-bg); color: var(--fg); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--chip-active-bg); color: var(--chip-active-fg); border-color: var(--chip-active-bg); }
+  .summary-strip { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; }
+  .summary-card { border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); padding: 8px 12px; min-width: 150px; }
+  .summary-card .opt { font-weight: 600; }
+  .summary-card .meta { color: var(--muted); font-size: 12px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; min-width: 900px; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--bg); cursor: pointer; user-select: none; }
+  th:hover { color: var(--partly); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  .status-pass, .verdict-pass { color: var(--pass); font-weight: 600; }
+  .status-partly, .verdict-partly { color: var(--partly); font-weight: 600; }
+  .status-fail, .verdict-fail, .status-unavailable { color: var(--fail); font-weight: 600; }
+  .empty { padding: 20px; color: var(--muted); }
+  a { color: inherit; }
+
+  /* timeline chart */
+  .chart-section { border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); padding: 12px; margin: 0 0 20px; }
+  .chart-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 6px; }
+  .chart-toolbar label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 4px; }
+  .chart-toolbar select { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font: inherit; font-size: 12px; }
+  .chart-range { color: var(--muted); font-size: 12px; margin-left: auto; }
+  #timeline-svg { display: block; width: 100%; height: 320px; touch-action: none; cursor: grab; }
+  #timeline-svg.panning { cursor: grabbing; }
+  #timeline-svg .grid line { stroke: var(--border); opacity: .55; }
+  #timeline-svg .axis line { stroke: var(--border); }
+  #timeline-svg .axis text { fill: var(--muted); font-size: 10px; }
+  #timeline-svg .dot { cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 0; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; background: none; border: 0; color: var(--fg); cursor: pointer; padding: 0; }
+  .legend-item[aria-pressed="false"] { opacity: .35; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .tooltip { position: fixed; z-index: 10; display: none; pointer-events: none; white-space: nowrap; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  .tooltip b { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>kb-factory-verify — run overview</h1>
+<p class="sub">One row per <code>kb-factory-verify</code> run. Click a column header to sort. Data is embedded below — this file is rewritten in place by the skill after every run.</p>
+
+<h2>Latest per option</h2>
+<div id="summary-strip" class="summary-strip"></div>
+
+<div class="chips" id="filters">
+  <div class="chip-group" id="option-filters"><span class="chip-group-label">Option</span></div>
+  <div class="chip-group" id="corpus-filters"><span class="chip-group-label">Corpus</span></div>
+</div>
+
+<h2>Runs over time</h2>
+<div class="chart-section">
+  <div class="chart-toolbar">
+    <label>Metric <select id="metric-select"></select></label>
+    <label>Scale <select id="scale-select">
+      <option value="fit">Fit all runs</option>
+      <option value="hour">Hours</option>
+      <option value="day">Days</option>
+      <option value="week">Weeks</option>
+      <option value="month">Months</option>
+      <option value="custom" hidden>Custom</option>
+    </select></label>
+    <button type="button" class="chip" id="zoom-out" title="Zoom out">−</button>
+    <button type="button" class="chip" id="zoom-in" title="Zoom in">+</button>
+    <button type="button" class="chip" id="zoom-reset" title="Fit all runs">Reset</button>
+    <span class="chart-range" id="range-label"></span>
+  </div>
+  <svg id="timeline-svg" role="img" aria-label="Run metric over time, one colour per option"></svg>
+  <div class="legend" id="timeline-legend"></div>
+  <p class="sub" style="margin:8px 0 0; font-size:12px;">Drag to pan, scroll to zoom, click a legend entry to hide an option.</p>
+</div>
+<div class="tooltip" id="timeline-tooltip"></div>
+
+<h2>All runs</h2>
+<div class="table-wrap">
+  <table id="runs-table">
+    <thead>
+      <tr>
+        <th data-key="run">Run</th>
+        <th data-key="option">Option</th>
+        <th data-key="access">Access</th>
+        <th data-key="corpus">Corpus</th>
+        <th data-key="model">Model</th>
+        <th data-key="label">Label</th>
+        <th data-key="overallPct">Overall %</th>
+        <th data-key="overallStatus">Status</th>
+        <th data-key="developerPct">Dev %</th>
+        <th data-key="functionalPct">Func %</th>
+        <th data-key="findable">Findable</th>
+        <th data-key="edgePass">Edge</th>
+        <th data-key="gapPass">Gap</th>
+        <th data-key="pass">Pass</th>
+        <th data-key="partly">Partly</th>
+        <th data-key="fail">Fail</th>
+        <th data-key="unavailable">Unavail.</th>
+        <th data-key="unscored">Unscored</th>
+        <th data-key="weakestDimension">Weakest dim.</th>
+        <th data-key="nonCacheTokens">Non-cache tokens</th>
+        <th data-key="cacheReadTokens">Cache-read tokens</th>
+        <th data-key="cacheHitPct">Cache hit %</th>
+        <th data-key="costUsd">Est. USD</th>
+        <th data-key="toolCalls">Tool calls</th>
+        <th data-key="agentTimeSeconds">Agent (s)</th>
+        <th data-key="wallClockSeconds">Duration (s)</th>
+        <th data-key="generatedAt">Generated</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+<p class="sub" style="margin:6px 0 0; font-size:12px;">Cost columns (non-cache tokens, cache-read tokens, cache hit %, est. USD) measure the option's discover agents only, per API message — not scorer, audit or orchestrator usage. "—" = not measured under this accounting.</p>
+<p id="empty-msg" class="empty" hidden>No runs recorded yet.</p>
+
+<script type="application/json" id="runs-data">[]</script>
+<script>
+(function () {
+  var dataEl = document.getElementById('runs-data');
+  var rawRuns = [];
+  try { rawRuns = JSON.parse(dataEl.textContent || '[]'); } catch (e) { rawRuns = []; }
+  if (!Array.isArray(rawRuns)) rawRuns = [];
+
+  // Normalise old-shape rows (source instead of option/access/corpus) to the new shape.
+  var runs = rawRuns.map(function (r) {
+    r = r || {};
+    var access = r.access || r.source || null;
+    var corpus = r.corpus || (r.access || r.source ? 'wiki' : null);
+    var option = r.option || (access ? access + '-' + (corpus || 'wiki') : null);
+    return Object.assign({}, r, { option: option, access: access, corpus: corpus });
+  });
+
+  var tbody = document.querySelector('#runs-table tbody');
+  var emptyMsg = document.getElementById('empty-msg');
+  // Default ordering is by run date, newest first. Never sort by `run` by default: a run id is
+  // `<mode>-<YYYY-MM-DD-HHMM>`, so a lexical sort of it groups by mode and only orders by date
+  // inside a mode, which hides the newest run behind whichever mode sorts first.
+  var sortKey = 'generatedAt';
+  var sortDir = -1;
+  var activeOption = null;
+  var activeCorpus = null;
+
+  function statusClass(status) {
+    if (!status) return '';
+    var s = String(status).toLowerCase();
+    if (s.indexOf('ready') === 0 || s.indexOf('kb ready') === 0) return 'status-pass';
+    if (s.indexOf('usable') === 0) return 'status-partly';
+    if (s.indexOf('not ready') === 0) return 'status-fail';
+    return '';
+  }
+
+  function fmtInt(n) {
+    return (n === null || n === undefined || n === '' || isNaN(n)) ? null : Number(n).toLocaleString('en-US');
+  }
+
+  function uniqueSorted(values) {
+    var seen = {};
+    var out = [];
+    values.forEach(function (v) {
+      if (v === null || v === undefined || v === '') return;
+      if (!seen[v]) { seen[v] = true; out.push(v); }
+    });
+    out.sort();
+    return out;
+  }
+
+  function buildChips(containerId, values, getActive, setActive) {
+    var container = document.getElementById(containerId);
+    values.forEach(function (v) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = v;
+      chip.setAttribute('aria-pressed', String(getActive() === v));
+      chip.addEventListener('click', function () {
+        setActive(getActive() === v ? null : v);
+        Array.prototype.forEach.call(container.querySelectorAll('.chip'), function (c) {
+          c.setAttribute('aria-pressed', String(c.textContent === getActive()));
+        });
+        render();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  buildChips('option-filters', uniqueSorted(runs.map(function (r) { return r.option; })),
+    function () { return activeOption; }, function (v) { activeOption = v; });
+  buildChips('corpus-filters', uniqueSorted(runs.map(function (r) { return r.corpus; })),
+    function () { return activeCorpus; }, function (v) { activeCorpus = v; });
+
+  function renderSummaryStrip() {
+    var strip = document.getElementById('summary-strip');
+    strip.innerHTML = '';
+    var byOption = {};
+    runs.forEach(function (r) {
+      var key = r.option || '—';
+      var prev = byOption[key];
+      if (!prev || String(r.generatedAt || '') > String(prev.generatedAt || '')) byOption[key] = r;
+    });
+    var keys = Object.keys(byOption).sort();
+    if (keys.length === 0) { strip.hidden = true; return; }
+    strip.hidden = false;
+    keys.forEach(function (key) {
+      var r = byOption[key];
+      var card = document.createElement('div');
+      card.className = 'summary-card';
+      var opt = document.createElement('div');
+      opt.className = 'opt';
+      opt.textContent = key;
+      var overall = document.createElement('div');
+      overall.textContent = (r.overallPct != null ? r.overallPct + '%' : '—') + ' · ' + (r.overallStatus || '—');
+      overall.className = statusClass(r.overallStatus);
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = 'findable ' + (r.findable || '—') + ' · ' + (r.run || '—');
+      card.appendChild(opt);
+      card.appendChild(overall);
+      card.appendChild(meta);
+      strip.appendChild(card);
+    });
+  }
+
+  function filteredRuns() {
+    return runs.filter(function (r) {
+      if (activeOption && r.option !== activeOption) return false;
+      if (activeCorpus && r.corpus !== activeCorpus) return false;
+      return true;
+    });
+  }
+
+  // ---------------------------------------------------------------- timeline
+  // One colour per option, one point per run, plotted on a real time axis. The
+  // axis is zoomable (scale selector, wheel, +/-) and pannable (drag), so runs
+  // minutes apart and runs weeks apart are both readable on the same chart.
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var MS = { minute: 60000, hour: 3600000, day: 86400000, week: 604800000, month: 2592000000 };
+  var SCALE_SPANS = { hour: 12 * MS.hour, day: 14 * MS.day, week: 12 * MS.week, month: 12 * MS.month };
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var TICK_STEPS = [5 * MS.minute, 15 * MS.minute, 30 * MS.minute, MS.hour, 3 * MS.hour, 6 * MS.hour,
+    12 * MS.hour, MS.day, 2 * MS.day, MS.week, 2 * MS.week, MS.month, 3 * MS.month, 12 * MS.month];
+  // Stable colours for the known main options; anything new takes the next free hue.
+  // Colours themselves come from CSS custom properties (dataviz-skill palette, fixed slot order,
+  // validated adjacent-pairs CVD-safe in both light and dark mode — see the :root block) rather
+  // than a static hex object, so the same five hues actually vary correctly by theme.
+  var OPTION_COLOR_VARS = { 'fs-wiki': '--series-fs-wiki', 'mcp-wiki': '--series-mcp-wiki', 'fs-docs': '--series-fs-docs', 'mcp-docs': '--series-mcp-docs', 'vanilla': '--series-vanilla' };
+  var PALETTE_VARS = ['--series-extra-1', '--series-extra-2', '--series-extra-3'];
+  var extraColors = {};
+  var SIMPLE_SUFFIX = '-simple';
+  var SIMPLE_TINT = 0.45; // fraction blended toward white for a "simple" run's colour
+
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function lightenHex(hex, amount) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!m) return hex;
+    var mix = function (h) {
+      var c = parseInt(h, 16);
+      return Math.round(c + (255 - c) * amount);
+    };
+    var toHex = function (n) { return ('0' + n.toString(16)).slice(-2); };
+    return '#' + toHex(mix(m[1])) + toHex(mix(m[2])) + toHex(mix(m[3]));
+  }
+
+  function optionColor(option) {
+    if (OPTION_COLOR_VARS[option]) return cssVar(OPTION_COLOR_VARS[option]);
+    if (typeof option === 'string' && option.slice(-SIMPLE_SUFFIX.length) === SIMPLE_SUFFIX) {
+      var baseOption = option.slice(0, -SIMPLE_SUFFIX.length);
+      if (OPTION_COLOR_VARS[baseOption]) return lightenHex(cssVar(OPTION_COLOR_VARS[baseOption]), SIMPLE_TINT);
+    }
+    if (!extraColors[option]) {
+      extraColors[option] = cssVar(PALETTE_VARS[Object.keys(extraColors).length % PALETTE_VARS.length]);
+    }
+    return extraColors[option];
+  }
+
+  var METRICS = [
+    { key: 'overallPct', label: 'Overall %', pct: true },
+    { key: 'developerPct', label: 'Developer %', pct: true },
+    { key: 'functionalPct', label: 'Functional %', pct: true },
+    { key: 'findable', label: 'Findable %', pct: true, ratio: true },
+    { key: 'edgePass', label: 'Edge pass %', pct: true, ratio: true },
+    { key: 'gapPass', label: 'Gap pass %', pct: true, ratio: true },
+    { key: 'pass', label: 'Pass cases' },
+    { key: 'fail', label: 'Fail cases' },
+    { key: 'wallClockSeconds', label: 'Duration (s)' },
+    { key: 'agentTimeSeconds', label: 'Agent time (s)' },
+    { key: 'toolCalls', label: 'Tool calls' },
+    { key: 'nonCacheTokens', label: 'Non-cache tokens' },
+    { key: 'cacheReadTokens', label: 'Cache-read tokens' },
+    { key: 'cacheHitPct', label: 'Cache hit %', pct: true },
+    { key: 'costUsd', label: 'Est. USD' }
+  ];
+  var metric = METRICS[0];
+  var view = null;              // { start, end } in ms; null means "fit all"
+  var hiddenOptions = {};
+
+  function metricValue(r) {
+    var raw = r[metric.key];
+    if (raw === null || raw === undefined || raw === '') return null;
+    if (metric.ratio) {
+      var parts = String(raw).split('/');
+      var num = parseFloat(parts[0]), den = parseFloat(parts[1]);
+      if (!isFinite(num) || !isFinite(den) || den === 0) return null;
+      return Math.round(num / den * 1000) / 10;
+    }
+    var n = typeof raw === 'number' ? raw : parseFloat(raw);
+    return isFinite(n) ? n : null;
+  }
+
+  function timelinePoints() {
+    return filteredRuns().map(function (r) {
+      var t = Date.parse(r.generatedAt);
+      var v = metricValue(r);
+      if (!isFinite(t) || v === null) return null;
+      return { run: r, option: r.option || '—', t: t, v: v };
+    }).filter(Boolean);
+  }
+
+  function el(name, attrs) {
+    var node = document.createElementNS(SVG_NS, name);
+    for (var k in attrs) if (attrs.hasOwnProperty(k) && attrs[k] !== null) node.setAttribute(k, attrs[k]);
+    return node;
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function fmtTick(ms, step) {
+    var d = new Date(ms);
+    if (step < MS.day) return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+    if (step < 28 * MS.day) return d.getDate() + ' ' + MONTHS[d.getMonth()];
+    return MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+  }
+
+  function fmtStamp(ms) {
+    var d = new Date(ms);
+    return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  function pickStep(span, target) {
+    for (var i = 0; i < TICK_STEPS.length; i++) {
+      if (span / TICK_STEPS[i] <= target) return TICK_STEPS[i];
+    }
+    return TICK_STEPS[TICK_STEPS.length - 1];
+  }
+
+  function floorTo(t, step) {
+    var d = new Date(t);
+    if (step >= 28 * MS.day) { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (step >= MS.day) { d.setHours(0, 0, 0, 0); return d.getTime(); }
+    var off = d.getTimezoneOffset() * 60000;   // align to local wall-clock, not UTC
+    return Math.floor((t - off) / step) * step + off;
+  }
+
+  function timeTicks(start, end, step) {
+    var out = [];
+    var monthly = step >= 28 * MS.day ? Math.max(1, Math.round(step / MS.month)) : 0;
+    var t = floorTo(start, step);
+    var guard = 0;
+    while (t <= end && guard++ < 500) {
+      if (t >= start) out.push(t);
+      if (monthly) {
+        var d = new Date(t); d.setMonth(d.getMonth() + monthly); t = d.getTime();
+      } else {
+        t += step;
+      }
+    }
+    return out;
+  }
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    var mag = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+    var norm = v / mag;
+    var step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    return step * mag;
+  }
+
+  function dataExtent(pts) {
+    var min = Infinity, max = -Infinity;
+    pts.forEach(function (p) { if (p.t < min) min = p.t; if (p.t > max) max = p.t; });
+    if (!isFinite(min)) { var now = Date.now(); return { start: now - MS.day, end: now }; }
+    if (min === max) return { start: min - MS.hour, end: max + MS.hour };
+    var pad = (max - min) * 0.04;
+    return { start: min - pad, end: max + pad };
+  }
+
+  function clampView(v, extent) {
+    var span = v.end - v.start;
+    if (v.end < extent.start + span * 0.25) { v.start = extent.start - span * 0.75; v.end = v.start + span; }
+    if (v.start > extent.end - span * 0.25) { v.start = extent.end - span * 0.25; v.end = v.start + span; }
+    return v;
+  }
+
+  var svg = document.getElementById('timeline-svg');
+  var tooltip = document.getElementById('timeline-tooltip');
+  var rangeLabel = document.getElementById('range-label');
+  var legendEl = document.getElementById('timeline-legend');
+  var scaleSelect = document.getElementById('scale-select');
+
+  function showTooltip(evt, p) {
+    // Run id, option and label are all skill-generated except `label`, which is
+    // free text from the operator's `--label` flag — never insert any of it via
+    // innerHTML string concatenation (interaction.md: "labels are untrusted data").
+    tooltip.textContent = '';
+    var line1 = document.createElement('b');
+    line1.textContent = p.run.run || '—';
+    tooltip.appendChild(line1);
+    tooltip.appendChild(document.createElement('br'));
+    tooltip.appendChild(document.createTextNode(p.option + ' · ' + metric.label + ' ' + p.v));
+    tooltip.appendChild(document.createElement('br'));
+    tooltip.appendChild(document.createTextNode(fmtStamp(p.t)));
+    tooltip.style.display = 'block';
+    // A keyboard `focus` event carries no pointer position — anchor to the focused
+    // hit target's own on-screen box instead so Tab-navigation gets the same tooltip.
+    var cx, cy;
+    if (typeof evt.clientX === 'number' && (evt.clientX !== 0 || evt.clientY !== 0)) {
+      cx = evt.clientX; cy = evt.clientY;
+    } else if (evt.target && evt.target.getBoundingClientRect) {
+      var r = evt.target.getBoundingClientRect();
+      cx = r.left + r.width / 2; cy = r.top;
+    } else {
+      cx = 0; cy = 0;
+    }
+    var xPos = Math.min(cx + 12, window.innerWidth - tooltip.offsetWidth - 8);
+    tooltip.style.left = xPos + 'px';
+    tooltip.style.top = Math.max(8, cy - tooltip.offsetHeight - 12) + 'px';
+  }
+  function hideTooltip() { tooltip.style.display = 'none'; }
+
+  function renderLegend(options) {
+    legendEl.innerHTML = '';
+    options.forEach(function (opt) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'legend-item';
+      btn.setAttribute('aria-pressed', String(!hiddenOptions[opt]));
+      var sw = document.createElement('span');
+      sw.className = 'legend-swatch';
+      sw.style.background = optionColor(opt);
+      btn.appendChild(sw);
+      btn.appendChild(document.createTextNode(opt));
+      btn.addEventListener('click', function () {
+        hiddenOptions[opt] = !hiddenOptions[opt];
+        renderTimeline();
+      });
+      legendEl.appendChild(btn);
+    });
+  }
+
+  function renderTimeline() {
+    var all = timelinePoints();
+    var options = uniqueSorted(all.map(function (p) { return p.option; }));
+    renderLegend(options);
+    var pts = all.filter(function (p) { return !hiddenOptions[p.option]; });
+
+    var extent = dataExtent(all);
+    if (!view) view = { start: extent.start, end: extent.end };
+    var start = view.start, end = view.end;
+
+    var width = Math.max(320, svg.clientWidth || svg.parentNode.clientWidth || 720);
+    var height = svg.clientHeight || 320;
+    var m = { top: 12, right: 16, bottom: 30, left: 48 };
+    var iw = width - m.left - m.right;
+    var ih = height - m.top - m.bottom;
+    svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    if (all.length === 0) {
+      svg.appendChild(el('text', { x: width / 2, y: height / 2, 'text-anchor': 'middle', fill: 'currentColor', opacity: '.6' }))
+        .appendChild(document.createTextNode('No runs with a value for ' + metric.label + '.'));
+      rangeLabel.textContent = '';
+      return;
+    }
+
+    var visible = pts.filter(function (p) { return p.t >= start && p.t <= end; });
+    var vals = (visible.length ? visible : pts).map(function (p) { return p.v; });
+    var maxV = vals.length ? Math.max.apply(null, vals) : 0;
+    var minV = vals.length ? Math.min.apply(null, vals) : 0;
+    var yMin = 0;
+    var yMax;
+    if (metric.pct) {
+      yMax = 100;
+      // Scores cluster in the top band; lift the floor so run-to-run differences stay
+      // readable. The axis labels always state where the scale starts, so nothing is hidden.
+      if (minV > 40) yMin = Math.max(0, Math.floor((minV - 5) / 10) * 10);
+    } else {
+      yMax = niceMax(maxV * 1.1 || 1);
+    }
+
+    function x(t) { return m.left + (t - start) / (end - start) * iw; }
+    function y(v) { return m.top + ih - (v - yMin) / (yMax - yMin) * ih; }
+
+    var grid = el('g', { class: 'grid' });
+    var axis = el('g', { class: 'axis' });
+
+    // y grid + labels
+    var yTicks = 5;
+    for (var i = 0; i <= yTicks; i++) {
+      var v = yMin + (yMax - yMin) / yTicks * i;
+      var yy = y(v);
+      grid.appendChild(el('line', { x1: m.left, x2: m.left + iw, y1: yy, y2: yy }));
+      var lbl = el('text', { x: m.left - 8, y: yy + 3, 'text-anchor': 'end' });
+      lbl.appendChild(document.createTextNode(yMax >= 1000 ? Math.round(v).toLocaleString() : (Math.round(v * 10) / 10)));
+      axis.appendChild(lbl);
+    }
+
+    // Verdict-threshold reference lines (60% fail/partly, 85% partly/pass) — only meaningful
+    // for the three verdict-scored percentages, never for a ratio or a raw count metric.
+    if (metric.key === 'overallPct' || metric.key === 'developerPct' || metric.key === 'functionalPct') {
+      [[60, 'fail / partly'], [85, 'partly / pass']].forEach(function (pair) {
+        if (pair[0] < yMin || pair[0] > yMax) return;
+        var yy = y(pair[0]);
+        // Solid, per the mark spec (gridlines/axes are hairline and solid, never dashed);
+        // distinguished from the regular y-grid by the muted-ink colour and its label.
+        axis.appendChild(el('line', { x1: m.left, x2: m.left + iw, y1: yy, y2: yy, stroke: 'var(--muted)', opacity: '.6' }));
+        var rl = el('text', { x: m.left + iw, y: yy - 3, 'text-anchor': 'end', opacity: '.7' });
+        rl.appendChild(document.createTextNode(pair[0] + '% ' + pair[1]));
+        axis.appendChild(rl);
+      });
+    }
+
+    // x grid + labels
+    var step = pickStep(end - start, Math.max(3, Math.floor(iw / 110)));
+    var lastDay = null;
+    timeTicks(start, end, step).forEach(function (t) {
+      var xx = x(t);
+      grid.appendChild(el('line', { x1: xx, x2: xx, y1: m.top, y2: m.top + ih }));
+      var tx = el('text', { x: xx, y: m.top + ih + 14, 'text-anchor': 'middle' });
+      tx.appendChild(document.createTextNode(fmtTick(t, step)));
+      axis.appendChild(tx);
+      if (step < MS.day) {
+        var day = new Date(t); day.setHours(0, 0, 0, 0);
+        if (lastDay !== day.getTime()) {
+          lastDay = day.getTime();
+          var dl = el('text', { x: xx, y: m.top + ih + 25, 'text-anchor': 'middle', opacity: '.8' });
+          dl.appendChild(document.createTextNode(day.getDate() + ' ' + MONTHS[day.getMonth()]));
+          axis.appendChild(dl);
+        }
+      }
+    });
+
+    axis.appendChild(el('line', { x1: m.left, x2: m.left + iw, y1: m.top + ih, y2: m.top + ih }));
+    axis.appendChild(el('line', { x1: m.left, x2: m.left, y1: m.top, y2: m.top + ih }));
+    svg.appendChild(grid);
+    svg.appendChild(axis);
+
+    var clipId = 'tl-clip';
+    var defs = el('defs', {});
+    var clip = el('clipPath', { id: clipId });
+    clip.appendChild(el('rect', { x: m.left, y: m.top, width: iw, height: ih }));
+    defs.appendChild(clip);
+    svg.appendChild(defs);
+
+    var plot = el('g', { 'clip-path': 'url(#' + clipId + ')' });
+
+    // one series per option: a trend line through its runs in time order, plus a dot per run
+    options.forEach(function (opt) {
+      if (hiddenOptions[opt]) return;
+      var series = pts.filter(function (p) { return p.option === opt; })
+        .sort(function (a, b) { return a.t - b.t; });
+      if (series.length === 0) return;
+      var color = optionColor(opt);
+      if (series.length > 1) {
+        plot.appendChild(el('polyline', {
+          points: series.map(function (p) { return x(p.t) + ',' + y(p.v); }).join(' '),
+          fill: 'none', stroke: color, 'stroke-width': '1.5', 'stroke-opacity': '.75'
+        }));
+      }
+      series.forEach(function (p) {
+        var cx = x(p.t), cy = y(p.v);
+        var dot = el('circle', { class: 'dot', cx: cx, cy: cy, r: 4.5, fill: color, stroke: 'var(--bg)', 'stroke-width': '1' });
+        plot.appendChild(dot);
+        // A visible 9px dot is a pinpoint nobody hits reliably (interaction.md: >=24px hit
+        // area). Layer a transparent, keyboard-focusable hit target on top rather than
+        // enlarging the mark itself, and give it the same hover/click/open behaviour so
+        // mouse, touch and keyboard users all reach the same tooltip and report link.
+        var hit = el('circle', { cx: cx, cy: cy, r: 12, fill: 'transparent', style: 'cursor:pointer', tabindex: '0', role: 'button' });
+        hit.setAttribute('aria-label', (p.run.run || 'run') + ', ' + p.option + ', ' + metric.label + ' ' + p.v + ', ' + fmtStamp(p.t));
+        hit.addEventListener('mousemove', function (e) { showTooltip(e, p); });
+        hit.addEventListener('mouseleave', hideTooltip);
+        hit.addEventListener('focus', function (e) { showTooltip(e, p); });
+        hit.addEventListener('blur', hideTooltip);
+        if (p.run.htmlPath) {
+          var open = function () { window.open(p.run.htmlPath, '_blank'); };
+          hit.addEventListener('click', open);
+          hit.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+        }
+        plot.appendChild(hit);
+      });
+    });
+    svg.appendChild(plot);
+
+    rangeLabel.textContent = fmtStamp(start) + ' – ' + fmtStamp(end) + ' · ' + visible.length + ' of ' + all.length + ' runs';
+  }
+
+  function setSpan(span, anchorT) {
+    var all = timelinePoints();
+    var extent = dataExtent(all);
+    var anchor = anchorT !== undefined ? anchorT : extent.end;
+    view = clampView({ start: anchor - span, end: anchor }, extent);
+    renderTimeline();
+  }
+
+  function zoomBy(factor, anchorT) {
+    var all = timelinePoints();
+    var extent = dataExtent(all);
+    if (!view) view = { start: extent.start, end: extent.end };
+    var span = view.end - view.start;
+    var newSpan = Math.min(Math.max(span * factor, 5 * MS.minute), 20 * 365 * MS.day);
+    var anchor = anchorT === undefined ? (view.start + span / 2) : anchorT;
+    var ratio = (anchor - view.start) / span;
+    view = clampView({ start: anchor - newSpan * ratio, end: anchor + newSpan * (1 - ratio) }, extent);
+    scaleSelect.value = 'custom';
+    scaleSelect.querySelector('option[value="custom"]').hidden = false;
+    renderTimeline();
+  }
+
+  METRICS.forEach(function (mt) {
+    var opt = document.createElement('option');
+    opt.value = mt.key;
+    opt.textContent = mt.label;
+    document.getElementById('metric-select').appendChild(opt);
+  });
+  document.getElementById('metric-select').addEventListener('change', function () {
+    var found = METRICS.filter(function (mt) { return mt.key === this.value; }, this)[0];
+    metric = found || METRICS[0];
+    renderTimeline();
+  });
+  scaleSelect.addEventListener('change', function () {
+    if (this.value === 'custom') return;
+    if (this.value === 'fit') { view = null; renderTimeline(); return; }
+    setSpan(SCALE_SPANS[this.value]);
+  });
+  document.getElementById('zoom-in').addEventListener('click', function () { zoomBy(1 / 1.6); });
+  document.getElementById('zoom-out').addEventListener('click', function () { zoomBy(1.6); });
+  document.getElementById('zoom-reset').addEventListener('click', function () {
+    view = null;
+    scaleSelect.value = 'fit';
+    renderTimeline();
+  });
+
+  function timeAtClientX(clientX) {
+    if (!view) return undefined;
+    var rect = svg.getBoundingClientRect();
+    var m = { left: 48, right: 16 };
+    var iw = rect.width - m.left - m.right;
+    var frac = (clientX - rect.left - m.left) / iw;
+    frac = Math.min(1, Math.max(0, frac));
+    return view.start + frac * (view.end - view.start);
+  }
+
+  svg.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    if (!view) { var ex = dataExtent(timelinePoints()); view = { start: ex.start, end: ex.end }; }
+    zoomBy(e.deltaY > 0 ? 1.2 : 1 / 1.2, timeAtClientX(e.clientX));
+  }, { passive: false });
+
+  var drag = null;
+  svg.addEventListener('pointerdown', function (e) {
+    if (!view) { var ex = dataExtent(timelinePoints()); view = { start: ex.start, end: ex.end }; }
+    drag = { x: e.clientX, start: view.start, end: view.end };
+    svg.classList.add('panning');
+    svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var rect = svg.getBoundingClientRect();
+    var iw = Math.max(1, rect.width - 64);
+    var dt = (e.clientX - drag.x) / iw * (drag.end - drag.start);
+    var extent = dataExtent(timelinePoints());
+    view = clampView({ start: drag.start - dt, end: drag.end - dt }, extent);
+    hideTooltip();
+    renderTimeline();
+  });
+  function endDrag(e) {
+    if (!drag) return;
+    drag = null;
+    svg.classList.remove('panning');
+    if (e && e.pointerId !== undefined && svg.hasPointerCapture && svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+  svg.addEventListener('mouseleave', hideTooltip);
+  window.addEventListener('resize', function () { renderTimeline(); });
+
+  function render() {
+    var filtered = filteredRuns();
+    renderTimeline();
+
+    function cmp(av, bv) {
+      if (av === undefined || av === null) av = '';
+      if (bv === undefined || bv === null) bv = '';
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortDir;
+      return String(av).localeCompare(String(bv)) * sortDir;
+    }
+
+    var rows = filtered.slice().sort(function (a, b) {
+      // A row with no timestamp cannot be placed on the date axis: park it at the bottom in
+      // either direction rather than letting an empty string float to the top when ascending.
+      var at = a.generatedAt || '', bt = b.generatedAt || '';
+      if (!at !== !bt) return at ? -1 : 1;
+
+      var primary = cmp(a[sortKey], b[sortKey]);
+      if (primary !== 0) return primary;
+      // Deterministic tie-break, so equal values never reorder between renders.
+      var byDate = cmp(at, bt);
+      if (byDate !== 0) return byDate;
+      return cmp(a.run, b.run);
+    });
+
+    tbody.innerHTML = '';
+    emptyMsg.hidden = rows.length > 0;
+
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      function td(text, cls) {
+        var cell = document.createElement('td');
+        cell.textContent = (text === undefined || text === null || text === '') ? '—' : text;
+        if (cls) cell.className = cls;
+        return cell;
+      }
+      tr.appendChild(td(r.run));
+      tr.appendChild(td(r.option));
+      tr.appendChild(td(r.access));
+      tr.appendChild(td(r.corpus));
+      tr.appendChild(td(r.model));
+      tr.appendChild(td(r.label));
+      tr.appendChild(td(r.overallPct != null ? r.overallPct + '%' : null));
+      tr.appendChild(td(r.overallStatus, statusClass(r.overallStatus)));
+      tr.appendChild(td(r.developerPct != null ? r.developerPct + '%' : null));
+      tr.appendChild(td(r.functionalPct != null ? r.functionalPct + '%' : null));
+      tr.appendChild(td(r.findable));
+      tr.appendChild(td(r.edgePass));
+      tr.appendChild(td(r.gapPass));
+      tr.appendChild(td(r.pass));
+      tr.appendChild(td(r.partly));
+      tr.appendChild(td(r.fail));
+      tr.appendChild(td(r.unavailable));
+      tr.appendChild(td(r.unscored));
+      tr.appendChild(td(r.weakestDimension));
+      tr.appendChild(td(fmtInt(r.nonCacheTokens)));
+      tr.appendChild(td(fmtInt(r.cacheReadTokens)));
+      tr.appendChild(td(r.cacheHitPct != null && !isNaN(r.cacheHitPct) ? Number(r.cacheHitPct).toFixed(1) + '%' : null));
+      tr.appendChild(td(r.costUsd != null && !isNaN(r.costUsd) ? '$' + Number(r.costUsd).toFixed(2) : null));
+      tr.appendChild(td(fmtInt(r.toolCalls)));
+      tr.appendChild(td(r.agentTimeSeconds));
+      tr.appendChild(td(r.wallClockSeconds));
+      tr.appendChild(td(r.generatedAt));
+      var titleParts = [];
+      if (r.reportPath) titleParts.push(r.reportPath);
+      if (r.costsSource) titleParts.push('costsSource: ' + r.costsSource);
+      if (r.costModel) titleParts.push('costModel: ' + r.costModel);
+      if (titleParts.length) tr.title = titleParts.join(' · ');
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.querySelectorAll('#runs-table th[data-key]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.getAttribute('data-key');
+      if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = -1; }
+      render();
+    });
+  });
+
+  renderSummaryStrip();
+  render();
+})();
+</script>
+</body>
+</html>

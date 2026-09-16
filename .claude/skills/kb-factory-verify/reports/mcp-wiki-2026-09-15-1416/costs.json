@@ -1,0 +1,644 @@
+{
+  "schemaVersion": 2,
+  "run": "mcp-wiki-2026-09-15-1416",
+  "computedAt": "2026-09-15T15:54:22.740Z",
+  "computedBy": "aggregate-costs.mjs",
+  "pricingVersion": 1,
+  "wallClockSeconds": null,
+  "options": {
+    "mcp-wiki": {
+      "schemaVersion": 2,
+      "scope": "discover",
+      "definition": "Cost = usage of the option's discover agents only, one usage block per API message id (the record carrying the final output_tokens), split into non-cache tokens (input + output + cache writes) and cache-read tokens, computed by scripts/aggregate-costs.mjs from the transcripts. Cache hit rate = cacheRead ÷ (input + cacheCreation + cacheRead). USD is an estimate from reference/pricing.json, labelled so. totalTokens is retired.",
+      "batches": 11,
+      "batchesWithUsage": "11/11",
+      "agents": 11,
+      "retries": 0,
+      "requests": 385,
+      "tokens": {
+        "input": 770,
+        "output": 179268,
+        "cacheCreation": 796076,
+        "cacheCreation5m": 796076,
+        "cacheCreation1h": 0,
+        "cacheRead": 18211243,
+        "nonCache": 976114,
+        "promptTotal": 19008089
+      },
+      "cacheHitRate": 0.9581,
+      "promptTokensPerRequest": 49372,
+      "tokensPerCase": {
+        "nonCache": 9209,
+        "cacheRead": 171804
+      },
+      "casesCounted": 106,
+      "toolCalls": 452,
+      "retrievalCalls": 316,
+      "agentTimeSecondsSummed": 1998.98,
+      "model": {
+        "name": "claude-sonnet-5",
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 385,
+            "input": 770,
+            "output": 179268,
+            "cacheCreation": 796076,
+            "cacheRead": 18211243
+          }
+        }
+      },
+      "longContextRequests": 0,
+      "costUsdEstimate": {
+        "total": 7.43,
+        "byBucket": {
+          "input": 0.0015,
+          "output": 1.7927,
+          "cacheWrite5m": 1.9902,
+          "cacheWrite1h": 0,
+          "cacheRead": 3.6422
+        },
+        "pricingVersion": 1,
+        "pricingSource": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "estimate": true
+      },
+      "dedup": "message-id",
+      "source": "transcript",
+      "batchSources": [
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript",
+        "transcript"
+      ],
+      "syntheticRecords": 0,
+      "warnings": []
+    }
+  },
+  "batches": {
+    "mcp-wiki": [
+      {
+        "batch": 1,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a7e8086c616cce05b.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-01",
+          "dev-02",
+          "dev-03",
+          "dev-04",
+          "dev-05",
+          "dev-06",
+          "dev-07",
+          "dev-08",
+          "dev-09",
+          "dev-10"
+        ],
+        "requests": 34,
+        "tokens": {
+          "input": 68,
+          "output": 17120,
+          "cacheCreation": 81889,
+          "cacheCreation5m": 81889,
+          "cacheCreation1h": 0,
+          "cacheRead": 1547601,
+          "nonCache": 99077,
+          "promptTotal": 1629558
+        },
+        "cacheHitRate": 0.9497,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 34,
+            "input": 68,
+            "output": 17120,
+            "cacheCreation": 81889,
+            "cacheRead": 1547601
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 36,
+        "retrievalCalls": 24,
+        "batchWallSeconds": 171.263,
+        "warnings": []
+      },
+      {
+        "batch": 2,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-adf66342a5cb7019b.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-11",
+          "dev-12",
+          "dev-13",
+          "dev-14",
+          "dev-15",
+          "dev-16",
+          "dev-17",
+          "dev-18",
+          "dev-19",
+          "dev-20"
+        ],
+        "requests": 40,
+        "tokens": {
+          "input": 80,
+          "output": 16983,
+          "cacheCreation": 80209,
+          "cacheCreation5m": 80209,
+          "cacheCreation1h": 0,
+          "cacheRead": 1796381,
+          "nonCache": 97272,
+          "promptTotal": 1876670
+        },
+        "cacheHitRate": 0.9572,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 40,
+            "input": 80,
+            "output": 16983,
+            "cacheCreation": 80209,
+            "cacheRead": 1796381
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 45,
+        "retrievalCalls": 32,
+        "batchWallSeconds": 208.437,
+        "warnings": []
+      },
+      {
+        "batch": 3,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-ac4745031d0f1afa0.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-21",
+          "dev-22",
+          "dev-23",
+          "dev-24",
+          "dev-25",
+          "dev-26",
+          "dev-27",
+          "dev-28",
+          "dev-29",
+          "dev-30"
+        ],
+        "requests": 33,
+        "tokens": {
+          "input": 66,
+          "output": 15899,
+          "cacheCreation": 63776,
+          "cacheCreation5m": 63776,
+          "cacheCreation1h": 0,
+          "cacheRead": 1349193,
+          "nonCache": 79741,
+          "promptTotal": 1413035
+        },
+        "cacheHitRate": 0.9548,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 33,
+            "input": 66,
+            "output": 15899,
+            "cacheCreation": 63776,
+            "cacheRead": 1349193
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 36,
+        "retrievalCalls": 24,
+        "batchWallSeconds": 190.102,
+        "warnings": []
+      },
+      {
+        "batch": 4,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a953f6a9b29c77228.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-31",
+          "dev-32",
+          "dev-33",
+          "dev-34",
+          "dev-35",
+          "dev-36",
+          "dev-37",
+          "dev-38",
+          "dev-39",
+          "dev-40"
+        ],
+        "requests": 36,
+        "tokens": {
+          "input": 72,
+          "output": 18276,
+          "cacheCreation": 73288,
+          "cacheCreation5m": 73288,
+          "cacheCreation1h": 0,
+          "cacheRead": 1630283,
+          "nonCache": 91636,
+          "promptTotal": 1703643
+        },
+        "cacheHitRate": 0.9569,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 36,
+            "input": 72,
+            "output": 18276,
+            "cacheCreation": 73288,
+            "cacheRead": 1630283
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 38,
+        "retrievalCalls": 25,
+        "batchWallSeconds": 203.099,
+        "warnings": []
+      },
+      {
+        "batch": 5,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-afe838fab8b314864.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-41",
+          "dev-42",
+          "dev-43",
+          "dev-44",
+          "dev-45",
+          "dev-46",
+          "dev-47",
+          "dev-48",
+          "dev-49",
+          "dev-50"
+        ],
+        "requests": 36,
+        "tokens": {
+          "input": 72,
+          "output": 16237,
+          "cacheCreation": 70696,
+          "cacheCreation5m": 70696,
+          "cacheCreation1h": 0,
+          "cacheRead": 1636380,
+          "nonCache": 87005,
+          "promptTotal": 1707148
+        },
+        "cacheHitRate": 0.9585,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 36,
+            "input": 72,
+            "output": 16237,
+            "cacheCreation": 70696,
+            "cacheRead": 1636380
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 41,
+        "retrievalCalls": 29,
+        "batchWallSeconds": 203.421,
+        "warnings": []
+      },
+      {
+        "batch": 6,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a4790f014ecc58cea.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-51",
+          "dev-52",
+          "dev-53",
+          "dev-54",
+          "dev-55",
+          "dev-56",
+          "dev-57",
+          "dev-58",
+          "dev-59",
+          "dev-60"
+        ],
+        "requests": 34,
+        "tokens": {
+          "input": 68,
+          "output": 15357,
+          "cacheCreation": 67848,
+          "cacheCreation5m": 67848,
+          "cacheCreation1h": 0,
+          "cacheRead": 1534921,
+          "nonCache": 83273,
+          "promptTotal": 1602837
+        },
+        "cacheHitRate": 0.9576,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 34,
+            "input": 68,
+            "output": 15357,
+            "cacheCreation": 67848,
+            "cacheRead": 1534921
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 38,
+        "retrievalCalls": 26,
+        "batchWallSeconds": 162.606,
+        "warnings": []
+      },
+      {
+        "batch": 7,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a4a5f103bf41313ed.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-61",
+          "dev-62",
+          "dev-63",
+          "dev-64",
+          "dev-65",
+          "dev-66",
+          "dev-67",
+          "dev-68",
+          "dev-69",
+          "dev-70"
+        ],
+        "requests": 26,
+        "tokens": {
+          "input": 52,
+          "output": 13482,
+          "cacheCreation": 71224,
+          "cacheCreation5m": 71224,
+          "cacheCreation1h": 0,
+          "cacheRead": 1128466,
+          "nonCache": 84758,
+          "promptTotal": 1199742
+        },
+        "cacheHitRate": 0.9406,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 26,
+            "input": 52,
+            "output": 13482,
+            "cacheCreation": 71224,
+            "cacheRead": 1128466
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 35,
+        "retrievalCalls": 23,
+        "batchWallSeconds": 129.54,
+        "warnings": []
+      },
+      {
+        "batch": 8,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a861c89c2fe8bbebd.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "dev-71",
+          "func-01",
+          "func-02",
+          "func-03",
+          "func-04",
+          "func-05",
+          "func-06",
+          "func-07",
+          "func-08",
+          "func-09"
+        ],
+        "requests": 26,
+        "tokens": {
+          "input": 52,
+          "output": 12934,
+          "cacheCreation": 49383,
+          "cacheCreation5m": 49383,
+          "cacheCreation1h": 0,
+          "cacheRead": 914011,
+          "nonCache": 62369,
+          "promptTotal": 963446
+        },
+        "cacheHitRate": 0.9487,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 26,
+            "input": 52,
+            "output": 12934,
+            "cacheCreation": 49383,
+            "cacheRead": 914011
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 31,
+        "retrievalCalls": 18,
+        "batchWallSeconds": 124.637,
+        "warnings": []
+      },
+      {
+        "batch": 9,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-aefa3d181919103a6.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "func-10",
+          "func-11",
+          "func-12",
+          "edge-01",
+          "edge-02",
+          "edge-03",
+          "edge-04",
+          "edge-05",
+          "edge-06",
+          "edge-07"
+        ],
+        "requests": 39,
+        "tokens": {
+          "input": 78,
+          "output": 16713,
+          "cacheCreation": 69932,
+          "cacheCreation5m": 69932,
+          "cacheCreation1h": 0,
+          "cacheRead": 1804640,
+          "nonCache": 86723,
+          "promptTotal": 1874650
+        },
+        "cacheHitRate": 0.9627,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 39,
+            "input": 78,
+            "output": 16713,
+            "cacheCreation": 69932,
+            "cacheRead": 1804640
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 48,
+        "retrievalCalls": 36,
+        "batchWallSeconds": 206.172,
+        "warnings": []
+      },
+      {
+        "batch": 10,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a0194dcdd303df9c8.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "edge-08",
+          "edge-09",
+          "gap-01",
+          "gap-02",
+          "gap-03",
+          "gap-04",
+          "gap-05",
+          "gap-06",
+          "gap-07",
+          "gap-08"
+        ],
+        "requests": 60,
+        "tokens": {
+          "input": 120,
+          "output": 26023,
+          "cacheCreation": 120038,
+          "cacheCreation5m": 120038,
+          "cacheCreation1h": 0,
+          "cacheRead": 4142838,
+          "nonCache": 146181,
+          "promptTotal": 4262996
+        },
+        "cacheHitRate": 0.9718,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 60,
+            "input": 120,
+            "output": 26023,
+            "cacheCreation": 120038,
+            "cacheRead": 4142838
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 78,
+        "retrievalCalls": 64,
+        "batchWallSeconds": 289.534,
+        "warnings": []
+      },
+      {
+        "batch": 11,
+        "source": "transcript",
+        "dedup": "message-id",
+        "transcripts": [
+          "<home>/.claude/projects/-home-user-projects-host-project/902104ca-143f-49fd-ac08-5b1a03bef691/subagents/agent-a631fada3271c3752.jsonl"
+        ],
+        "agentType": "kb-factory-verify-discover-mcp-wiki",
+        "cases": [
+          "rule-01",
+          "rule-02",
+          "rule-03",
+          "rule-04",
+          "rule-05",
+          "rule-06"
+        ],
+        "requests": 21,
+        "tokens": {
+          "input": 42,
+          "output": 10244,
+          "cacheCreation": 47793,
+          "cacheCreation5m": 47793,
+          "cacheCreation1h": 0,
+          "cacheRead": 726529,
+          "nonCache": 58079,
+          "promptTotal": 774364
+        },
+        "cacheHitRate": 0.9382,
+        "models": [
+          "claude-sonnet-5"
+        ],
+        "byModel": {
+          "claude-sonnet-5": {
+            "requests": 21,
+            "input": 42,
+            "output": 10244,
+            "cacheCreation": 47793,
+            "cacheRead": 726529
+          }
+        },
+        "syntheticRecords": 0,
+        "longContextRequests": 0,
+        "toolCalls": 26,
+        "retrievalCalls": 15,
+        "batchWallSeconds": 110.171,
+        "warnings": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+.cache/
+.transcript-index.jsonl
+
+# Only a run's final results are committed; everything else a run writes
+# (raw/, derived/, scored/, batch meta, aggregate leftovers) stays on disk
+# locally but out of git. Allow-list, so a new kind of intermediate is
+# ignored by default.
+/*/*
+!/*/kb-quality-report.md
+!/*/report.html
+!/*/scores.json
+!/*/run.json
+!/*/costs.json

@@ -1,0 +1,43 @@
+# Changelog
+
+All notable changes to this project are documented in this file. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+## [0.1.1] - 2026-09-16
+
+### Fixed
+
+- The server did not start when launched through its `bin`. npm installs `bin` as a symlink
+  (`node_modules/.bin/sw-dev-knowledge-base-mcp` -> `dist/server.js`), and the entry-point check
+  tested `process.argv[1]` for a `server.js` suffix, which the symlink name does not have. The
+  process exited 0 without printing anything, so `npx @execuro-sw-ecosystem/sw-dev-knowledge-base-mcp`
+  and every MCP client launch produced a server that never answered. The check now compares real
+  paths. **0.1.0 is unusable through its `bin`; use 0.1.1 or later.**
+
+### Added
+
+- A regression test that launches the built bundle through a symlink and asserts the `initialize`
+  handshake, and a test that keeps the server's reported version in step with `package.json`.
+
+## [0.1.0] - 2026-09-16
+
+First published release.
+
+### Added
+
+- `dist/server.js` — a read-only, offline stdio MCP server (`@modelcontextprotocol/sdk`, `zod`;
+  esbuild bundle, self-contained, every import a `node:` builtin) exposing four tools: `list_docs`,
+  `grep_docs`, `read_doc`, `kb_status`.
+- `wiki/platform/` — the committed documentation corpus: developer docs for Shopware 6.6 and 6.7,
+  merchant/functional docs, topic hub pages and a synonyms index.
+- The ingest pipeline (`ingest/`, driven by the `kb-factory-ingest-platform-docs` skill and its
+  pinned writer sub-agents): sync, pages, hubs, guidelines, build, synonyms and lint phases, plus a
+  code check that grounds developer pages in the pinned Shopware source under `.sources/shopware/`.
+- The verification suite (`test/`, `node --test`) covering the server, the bundle's purity and
+  self-containment, the wiki's structural conformance, and the ingest pipeline; and the
+  `kb-factory-verify` skill's scored benchmark over the built wiki.
+- `npm run setup` (`scripts/setup-sources.mjs`, `scripts/setup-docs.mjs`) — reproducible,
+  idempotent `.sources/` environment from a fresh clone: pinned Shopware source checkouts and
+  official documentation clones.

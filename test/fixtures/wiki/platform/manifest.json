@@ -1,0 +1,75 @@
+{
+  "contract": 1,
+  "versions": [
+    "6.6",
+    "6.7"
+  ],
+  "lastBuilt": "2026-08-30",
+  "counts": {
+    "pages": 14,
+    "hubs": 2
+  },
+  "hubs": [
+    "platform/hubs/plugins.md",
+    "platform/hubs/store-api.md"
+  ],
+  "pages": {
+    "platform/dev/6.6/guides/plugins/plugins/checkout/cart/add-cart-discounts.md": {
+      "sourceHash": "src-add-cart-discounts",
+      "fileHash": "07678c37e485b25b2ce0c619a10e10392074b826671eaa993b1be86ce41f40fe"
+    },
+    "platform/dev/6.6/index.md": {
+      "sourceHash": "src-index",
+      "fileHash": "7e4cbe49b69456f0882ae52c8e9d06459a5c4b2414f6f8412ca9ed21e1a5d54a"
+    },
+    "platform/dev/6.7/guides/_index.md": {
+      "sourceHash": "src--index",
+      "fileHash": "b584091810f24d6b0985f30fb116017ba263e0b7be9e1f687e88aa943fd2fbe7"
+    },
+    "platform/dev/6.7/guides/plugins/plugins/checkout/cart/add-cart-discounts.md": {
+      "sourceHash": "src-add-cart-discounts",
+      "fileHash": "89c18d9f992ffdf7dcc3f1aa7c06c8428aab3f673d748a828235653dcb69ca15"
+    },
+    "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md": {
+      "sourceHash": "src-plugin-base-guide",
+      "fileHash": "afe52b672b8e96f4bea7883ccc04fd2511033cb3a5e2b329e34479562bd51f6d"
+    },
+    "platform/dev/6.7/index.md": {
+      "sourceHash": "src-index",
+      "fileHash": "e248d097694b4ab9b2a978a72d981550c2c97f95fb709bf82033cec2fa3159e4"
+    },
+    "platform/func/index.md": {
+      "sourceHash": "src-index",
+      "fileHash": "38b483cbe1054ec619630e1b716c119c92ed675d7792935ce1bc781125736243"
+    },
+    "platform/func/settings/rules.md": {
+      "sourceHash": "src-rules",
+      "fileHash": "74386bc00f073e3eb5cb40fa41107942c18b5959ccf7a64a9ae7a1cb14035488"
+    },
+    "platform/func/settings/rules@6.6.10.0.md": {
+      "sourceHash": "src-rules-6-6-10-0",
+      "fileHash": "45958e79af6543f347af2184fbdbaf39d0b45364711bda182d494d8345b1ee24"
+    },
+    "platform/hubs/index.md": {
+      "sourceHash": "src-index",
+      "fileHash": "96b9a7dc7f9ee4cff620dee54236273cd39c984af63c5e99679bbcc0062d4e85"
+    },
+    "platform/hubs/plugins.md": {
+      "sourceHash": "src-plugins",
+      "fileHash": "eb6b223bd668ef1e746ffbc309a9decad30b048b799db0c55e1acdb0d91f8746"
+    },
+    "platform/hubs/store-api.md": {
+      "sourceHash": "src-store-api",
+      "fileHash": "afeb1089120e5f3d84c15a28a28eaeb7106e34c359419f83dda86c7d34c3a5d7"
+    },
+    "platform/index.md": {
+      "sourceHash": "src-index",
+      "fileHash": "a074ef3096d027d8437c1311891e7e1181083fa38fb5f8c92a2bf9228be79b65"
+    },
+    "platform/synonyms.md": {
+      "sourceHash": "src-synonyms",
+      "fileHash": "7760cd300a78ee5c3bc64f7d14c2782a1dc45b68007e58030db095c9b7f44eee"
+    }
+  },
+  "treeHash": "03e55e0ea503cbe08774b77527c17b366f3e41bf182f861b334dddf13ae305be"
+}

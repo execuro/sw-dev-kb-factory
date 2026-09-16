@@ -1,0 +1,6 @@
+{
+    "name": "execuro/shopware-llm-wiki",
+    "description": "LLM wiki over Shopware developer and merchant docs (6.5–6.7)",
+    "type": "library",
+    "license": "MIT"
+}

@@ -1,0 +1,2 @@
+# Rules — verbatim merchant snapshot
+Raw merchant documentation text about the rule builder.

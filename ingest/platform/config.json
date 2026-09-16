@@ -1,0 +1,350 @@
+{
+  "layer": "platform",
+  "sources": [
+    {
+      "id": "developer",
+      "docType": ["developer"],
+      "active": true,
+      "wikiDir": "platform/dev",
+      "versions": [
+        { "version": "6.7", "main": "https://github.com/shopware/docs/tree/main", "urlPrefix": "/docs/", "active": true },
+        { "version": "6.6", "main": "https://github.com/shopware/docs/tree/v6.6", "urlPrefix": "/docs/v6.6/", "active": true },
+        {
+          "version": "6.5",
+          "main": "https://github.com/shopware/docs/tree/v6.5",
+          "urlPrefix": "/docs/v6.5/",
+          "active": false,
+          "deactivatedNote": "Registered but not processed until reactivated — flip active:true on this version entry, no other change needed. v6.5 has been frozen since 2026-04-24; excluded from the first build (the default is to exclude a version until someone decides otherwise)."
+        }
+      ],
+      "exclude": ["**/README.md", "**/.github/**", "**/AGENTS.md", "**/CONTRIBUTING.md", "**/CODE_OF_CONDUCT.md", "**/SECURITY.md", "**/PULL_REQUEST_TEMPLATE.md", "**/ISSUE_TEMPLATE/**"]
+    },
+    {
+      "id": "merchant",
+      "docType": ["functional"],
+      "active": true,
+      "wikiDir": "platform/func",
+      "versions": [
+        { "version": "6.5", "active": true },
+        { "version": "6.6", "active": true },
+        { "version": "6.7", "active": true }
+      ],
+      "site": {
+        "baseUrl": "https://docs.shopware.com",
+        "navRoot": "/en/shopware-6-en",
+        "localization": "en",
+        "product": "Shopware 6 - User"
+      },
+      "algolia": {
+        "appId": "NW0OL237LC",
+        "index": "WikiEntry",
+        "searchKey": "39f8cc2c26ab96068b16eaa39f95f121",
+        "searchKeyNote": "Public, search-only key extracted 2026-08-31 from docs.shopware.com's /build/app.*.js bundle (algoliasearch(appId, key) call site). If it rotates, wiki:sync aborts with a 403 naming this field — re-extract manually the same way; there is no automated bundle re-extraction in the CLI. ALGOLIA_SEARCH_KEY in the environment always overrides this value and is never written back to this file or logged."
+      },
+      "enumerate": "algolia",
+      "exclude": []
+    },
+    {
+      "id": "developer-portal",
+      "docType": [],
+      "active": false,
+      "deactivatedNote": "Not used for content ingestion — the `developer` source reads GitHub directly (each version-entry's `main` GitHub tree URL, parsed at runtime by ingest/shared/githubUrl.ts). This source exists solely to carry the portal's llms.txt/sitemap.xml so sync.ts's unpublished-page gate can be re-enabled: when reactivated (active:true), sync.ts fetches endpoints.llmsTxt/.sitemap and suppresses `developer` pages not yet published on the portal (draft/staged GitHub content), matched via each dev version-entry's urlPrefix. While inactive (the default), the gate is skipped entirely and zero requests reach developer.shopware.com during sync.",
+      "endpoints": {
+        "main": "https://developer.shopware.com",
+        "llmsTxt": "https://developer.shopware.com/llms.txt",
+        "sitemap": "https://developer.shopware.com/sitemap.xml"
+      },
+      "exclude": []
+    }
+  ],
+  "rateLimits": {
+    "githubApiPerHour": 60,
+    "developerDocsPerSecond": 4,
+    "merchantDocsPerSecond": 2,
+    "requestTimeoutMs": 30000,
+    "maxRedirects": 3,
+    "maxBodyBytesDefault": 2097152,
+    "maxBodyBytesBulk": 20971520
+  },
+  "allowlistHosts": [
+    "developer.shopware.com",
+    "api.github.com",
+    "raw.githubusercontent.com",
+    "docs.shopware.com",
+    "NW0OL237LC-dsn.algolia.net"
+  ],
+  "hubs": [],
+  "synonyms": {
+    "enabled": true
+  },
+  "ingest": {
+    "waveSize": 10,
+    "batchSize": 15
+  },
+  "articleTokens": {
+    "min": 300,
+    "max": 800,
+    "longMax": 1200,
+    "longSourceWordThreshold": 1500,
+    "bandTolerance": 0.2
+  },
+  "sizeLimits": {
+    "pageMaxBytes": 32768,
+    "hubMaxBytes": 65536,
+    "synonymsMaxBytes": 262144,
+    "generatedFileMaxBytes": 524288,
+    "committedFileMaxBytes": 1048576,
+    "wikiPackageMaxBytes": 12582912,
+    "guidelineFileMaxBytes": 12288,
+    "guidelinePairMaxBytes": 20480
+  },
+  "eval": {
+    "hitAt2CallsGate": 0.8
+  },
+  "codeCheck": {
+    "enabled": true,
+    "batchSize": 5
+  },
+  "guidelines": {
+    "enabled": true,
+    "versions": ["6.7", "6.6"],
+    "codeCheckoutsNote": "Pinned by exact tag + commit, so a run's inputs never depend on when it happened to run. `npm run setup` fetches these; `wiki:sync` only verifies them. `expect` is per version on purpose: technical-docs/ and the administration AGENTS.md are 6.7-era additions and genuinely do not exist at v6.6.x, so asking for them there would be a false alarm - the sparse patterns are deliberate no-ops for 6.6.",
+    "codeCheckouts": {
+      "6.7": {
+        "repo": "shopware/shopware",
+        "tag": "v6.7.13.0",
+        "commit": "61765d982b0d999f0f443c32466ff70ba7e52e54",
+        "expect": [
+          "src/Core/Framework/Resources/config/packages/feature.yaml",
+          "src/Storefront/Controller",
+          "src/Administration/Resources/app/administration/src/app",
+          "src/Administration/Resources/app/administration/AGENTS.md",
+          "src/Administration/Resources/app/administration/technical-docs"
+        ],
+        "expectMinFiles": 12000
+      },
+      "6.6": {
+        "repo": "shopware/shopware",
+        "tag": "v6.6.10.24",
+        "commit": "c59216f4581ffd42c165b0ead6d5b85672d7bd3a",
+        "expect": [
+          "src/Core/Framework/Resources/config/packages/feature.yaml",
+          "src/Storefront/Controller",
+          "src/Administration/Resources/app/administration/src/app"
+        ],
+        "expectMinFiles": 11000
+      }
+    },
+    "curatedFiles": [
+      {
+        "file": "architecture-guidelines.md",
+        "base": null,
+        "scope": "extension-point ladder (subscriber -> tagged service -> decoration); plugin/app/theme choice; headless-first Store/Admin/Sync API, thin controllers; SalesChannelContext correctness; HTTP cache/invalidation; BC and @deprecated/@internal/@final/@experimental, feature flags",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/extendability.md",
+          "docs:resources/guidelines/code/core/decorator-pattern.md",
+          "docs:resources/guidelines/code/core/final-and-internal.md",
+          "docs:resources/guidelines/code/core/internal.md",
+          "docs:resources/guidelines/code/core/feature-flags.md",
+          "docs:resources/guidelines/code/backward-compatibility.md",
+          "docs:resources/guidelines/code/public-apis.md",
+          "docs:resources/guidelines/code/platform-domains.md",
+          "docs:resources/guidelines/code/routing.md",
+          "docs:resources/guidelines/code/store-api.md",
+          "docs:resources/guidelines/code/storefront-controller.md",
+          "docs:resources/guidelines/code/session-and-state.md",
+          "docs:resources/references/adr/2020-11-25-decoration-pattern.md",
+          "docs:resources/references/adr/2020-11-06-creating-events.md",
+          "docs:resources/references/adr/2020-08-12-implement-app-system-inside-platform.md",
+          "docs:resources/references/adr/2021-10-21-app-scripting.md",
+          "docs:resources/references/adr/2021-11-09-increment-pattern.md",
+          "docs:resources/references/adr/2022-03-25-cache-stampede-protection.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:resources/guidelines/code/core/extendability.md",
+            "docs:resources/guidelines/code/core/decorator-pattern.md",
+            "docs:resources/guidelines/code/core/final-and-internal.md",
+            "docs:resources/guidelines/code/core/internal.md",
+            "docs:resources/guidelines/code/backward-compatibility.md",
+            "docs:resources/guidelines/code/public-apis.md",
+            "docs:resources/guidelines/code/platform-domains.md",
+            "docs:resources/guidelines/code/routing.md",
+            "docs:resources/guidelines/code/store-api.md",
+            "docs:resources/guidelines/code/storefront-controller.md",
+            "docs:resources/guidelines/code/session-and-state.md",
+            "docs:resources/references/adr/2020-11-25-decoration-pattern.md",
+            "docs:resources/references/adr/2020-11-06-creating-events.md",
+            "docs:resources/references/adr/2020-08-12-implement-app-system-inside-platform.md",
+            "docs:resources/references/adr/2021-10-21-app-scripting.md",
+            "docs:resources/references/adr/2021-11-09-increment-pattern.md",
+            "docs:resources/references/adr/2022-03-25-cache-stampede-protection.md"
+          ]
+        }
+      },
+      {
+        "file": "be-architecture-guidelines.md",
+        "base": "architecture-guidelines.md",
+        "scope": "DAL modelling (custom field vs entity/extension, versioning, inheritance, translation); migrations and indexers; Messenger vs sync, scheduled tasks; Rule/Flow Builder before hardcoding",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/database-migations.md",
+          "code:administration/Resources/app/administration/technical-docs/04-data-layer/**",
+          "docs:resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:concepts/framework/data-abstraction-layer.md",
+            "docs:concepts/framework/migrations.md",
+            "docs:guides/plugins/plugins/framework/data-handling/add-data-indexer.md",
+            "docs:guides/plugins/plugins/framework/message-queue/_index.md",
+            "docs:guides/hosting/infrastructure/scheduled-task.md",
+            "docs:guides/plugins/plugins/framework/rule/_index.md",
+            "docs:guides/plugins/apps/flow-builder/_index.md",
+            "docs:resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.md"
+          ]
+        }
+      },
+      {
+        "file": "fe-architecture-guidelines.md",
+        "base": "architecture-guidelines.md",
+        "scope": "admin extension model (modules, blocks, ACL); storefront theme/template inheritance model",
+        "sourceInputs": [
+          "code:administration/Resources/app/administration/technical-docs/03-extensibility/**",
+          "wiki:platform/dev/{v}/guides/plugins/plugins/administration/**",
+          "wiki:platform/dev/{v}/guides/plugins/themes/**"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "wiki:platform/dev/{v}/guides/plugins/plugins/administration/**",
+            "wiki:platform/dev/{v}/guides/plugins/themes/**"
+          ]
+        }
+      },
+      {
+        "file": "code-guidelines.md",
+        "base": null,
+        "scope": "domain exceptions; static-analysis-friendly PHP/TS; Context propagation, no hardcoded IDs; deprecation annotations in code",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/domain-exceptions.md",
+          "docs:resources/guidelines/code/core/writing-code-for-static-analysis.md",
+          "docs:resources/references/adr/2022-02-24-domain-exceptions.md"
+        ]
+      },
+      {
+        "file": "be-code-guidelines.md",
+        "base": "code-guidelines.md",
+        "scope": "decoration/DI (AbstractX, getDecorated()); entity definitions and flags; migrations; routes, route scope, ACL, bounded Criteria",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/decorator-pattern.md",
+          "docs:resources/guidelines/code/routing.md",
+          "code:administration/Resources/app/administration/technical-docs/02-architecture/**"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:resources/guidelines/code/core/decorator-pattern.md",
+            "docs:resources/guidelines/code/routing.md",
+            "docs:concepts/framework/data-abstraction-layer.md",
+            "docs:concepts/framework/migrations.md",
+            "docs:guides/integrations-api/general-concepts/search-criteria.md"
+          ]
+        }
+      },
+      {
+        "file": "admin-code-guidelines.md",
+        "base": "code-guidelines.md",
+        "scope": "registries and $super; module structure and ACL; repository/Criteria; Twig blocks; Meteor components and Pinia",
+        "sourceInputs": [
+          "code:administration/Resources/app/administration/AGENTS.md",
+          "code:administration/Resources/app/administration/technical-docs/06-ui/**",
+          "docs:resources/references/adr/2024-06-17-replace-vuex-with-pinia.md",
+          "docs:resources/references/adr/2024-03-21-implementation-of-meteor-component-library.md",
+          "docs:resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "wiki:platform/dev/{v}/guides/plugins/plugins/administration/module-component-management/**",
+            "wiki:platform/dev/{v}/guides/plugins/plugins/administration/permissions-error-handling/**",
+            "docs:resources/references/adr/2024-06-17-replace-vuex-with-pinia.md",
+            "docs:resources/references/adr/2024-03-21-implementation-of-meteor-component-library.md",
+            "docs:resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.md"
+          ]
+        }
+      },
+      {
+        "file": "storefront-code-guidelines.md",
+        "base": "code-guidelines.md",
+        "scope": "sw_extends inheritance; Controller -> PageLoader -> Page; JS plugin system; cache-safe, accessible, SEO-correct rendering",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/storefront-controller.md",
+          "wiki:platform/dev/{v}/guides/plugins/plugins/storefront/**",
+          "docs:resources/references/adr/2021-08-10-storefront-coding-standards.md"
+        ]
+      },
+      {
+        "file": "qa-guidelines.md",
+        "base": null,
+        "scope": "test pyramid and level selection; determinism; CI test order",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/unit-tests.md",
+          "docs:resources/references/adr/2023-02-13-follow-test-pyramid.md",
+          "docs:resources/references/adr/2022-10-20-test-structure.md",
+          "docs:guides/development/testing/index.md",
+          "docs:guides/development/testing/ci.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:resources/guidelines/code/core/unit-tests.md",
+            "docs:resources/references/adr/2023-02-13-follow-test-pyramid.md",
+            "docs:resources/references/adr/2022-10-20-test-structure.md",
+            "docs:guides/plugins/plugins/testing/_index.md"
+          ]
+        }
+      },
+      {
+        "file": "be-qa-guidelines.md",
+        "base": "qa-guidelines.md",
+        "scope": "PHPUnit unit/integration conventions; Store/Admin API contexts; async and cache assertions; migration lifecycle; DAL versioned-entity cases; store code-quality checks",
+        "sourceInputs": [
+          "docs:resources/guidelines/code/core/unit-tests.md",
+          "code:administration/Resources/app/administration/technical-docs/07-testing/**",
+          "docs:guides/development/testing/unit/php-unit.md",
+          "docs:guides/development/testing/store/quality-guidelines.md",
+          "docs:guides/development/testing/store/code-quality.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:resources/guidelines/code/core/unit-tests.md",
+            "docs:guides/plugins/plugins/testing/php-unit.md",
+            "docs:resources/guidelines/testing/store/quality-guidelines-plugins/_index.md",
+            "docs:resources/guidelines/testing/store/quality-guidelines-apps/_index.md"
+          ]
+        }
+      },
+      {
+        "file": "fe-qa-guidelines.md",
+        "base": "qa-guidelines.md",
+        "scope": "admin Jest; storefront Twig lint and render assertions; Playwright e2e (acceptance suite), fixtures, best practices",
+        "sourceInputs": [
+          "code:administration/Resources/app/administration/technical-docs/07-testing/**",
+          "docs:resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.md",
+          "docs:guides/development/testing/unit/jest-admin.md",
+          "docs:guides/development/testing/unit/jest-storefront.md",
+          "docs:guides/development/testing/e2e-playwright/index.md",
+          "docs:guides/development/testing/e2e-playwright/install-configure.md",
+          "docs:guides/development/testing/e2e-playwright/test.md",
+          "docs:guides/development/testing/e2e-playwright/fixtures.md",
+          "docs:guides/development/testing/e2e-playwright/best-practices.md"
+        ],
+        "sourceInputsByVersion": {
+          "6.6": [
+            "docs:resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.md",
+            "docs:guides/plugins/plugins/testing/jest-admin.md",
+            "docs:guides/plugins/plugins/testing/jest-storefront.md",
+            "docs:guides/plugins/plugins/testing/end-to-end-testing.md",
+            "docs:resources/guidelines/testing/e2e-best-practises.md"
+          ]
+        }
+      }
+    ]
+  }
+}

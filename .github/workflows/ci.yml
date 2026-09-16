@@ -1,0 +1,172 @@
+name: CI
+
+# The pre-publish gates for the npm package, run on every push and PR against this repository.
+# Release-only steps (publish, MCP Registry) live in release.yml.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run setup` is deliberately NOT run here. It fetches ~250 MB of pinned Shopware
+      # sparse checkouts into .sources/shopware/<v>/ plus ~1.1 GB of official docs clones into
+      # .sources/docs/, and the merchant docs clone is a private repository this
+      # CI has no credentials for — a setup step here would either hang on that private clone
+      # or need to special-case it, and either way would turn every push into a multi-minute,
+      # network-heavy job for gates that do not need it. None of the commands below touch
+      # .sources/: typecheck/typecheck:ingest are tsc against the committed src/ingest trees;
+      # `npm test` builds the bundle and exercises the server, ingest and lint modules entirely
+      # against committed fixtures and mocked paths/env (test/paths.test.ts, test/codeIndex.test.ts
+      # inject a fake root precisely so the real machine .sources/ is never consulted, and the
+      # code-check lane it drives is designed to no-op when vendor/ is absent — see
+      # ingest/platform/lint.ts's lintCodeCheck: "must still work in a checkout without vendor/");
+      # `wiki:lint --layer platform` lints the wiki/ corpus that is already committed to the repo,
+      # and its own code-check step is the same vendor-absent no-op; `pack --dry-run` packs the
+      # already-built dist/ and the already-committed wiki/, never the sources used to produce
+      # them. Anything that genuinely needs .sources/ (wiki:sync, wiki:pages, wiki:guidelines,
+      # re-ingest) is a maintainer-run corpus-build step, not a CI gate, and stays out of this
+      # workflow on purpose.
+      - name: Typecheck server
+        run: npm run typecheck
+
+      - name: Typecheck ingest
+        run: npm run typecheck:ingest
+
+      # test/coldstart.test.ts measures kb_status answering after spawn against a generated
+      # ~2,600-page corpus (the <300 ms cold-start budget). Shared GitHub-hosted runners are not
+      # just noisier than a developer machine, they are systematically slower (330-640 ms observed
+      # on this workflow), so gating `npm test` on that budget here would fail on every run
+      # regardless of the change under review. test/coldstart.test.ts itself now runs in
+      # non-strict mode on CI (CI=true, set by GitHub Actions by default): the measurement still
+      # runs and is still printed on every run, and an over-budget measurement is emitted as a
+      # `::warning::` annotation (visible in the Checks UI) instead of a test failure or a silent
+      # skip — see the comment at the top of that file for what this does and does not catch. A
+      # single `npm test` run below is therefore expected to be a true signal: a retry loop would
+      # only mask a real regression (a slower build, a logic bug in a non-timing assertion) and
+      # would triple CI time for no remaining benefit now that the timing budget cannot fail it.
+      - name: Test
+        run: npm test
+
+      - name: Lint the platform wiki corpus
+        run: npm run wiki:lint -- --layer platform
+
+      - name: Pack dry run (tarball allow-list + corpus filter gate)
+        run: npm run pack -- --dry-run
+
+  # ------------------------------------------------------------------------------------------
+  # `verify` above runs in a checkout that, by accident of how this package grew up, still
+  # satisfies assumptions a genuine fresh clone of github.com/execuro/sw-dev-kb-factory
+  # will not: a populated node_modules/, a pre-built dist/, .sources/ checkouts, warm ingest caches.
+  # Every one of those is a way for a test to pass here and fail (or, worse, silently skip) for a
+  # first-time contributor. This job reproduces the fresh clone on purpose, in a directory whose
+  # name nothing can resolve against by habit, and treats a skipped test as a failure.
+  # ------------------------------------------------------------------------------------------
+  standalone:
+    name: standalone fresh clone (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Kept in lockstep with `verify` above on purpose: a fresh-clone regression that only
+        # shows on one Node line is exactly the kind of thing this job exists to surface.
+        node: [20, 22]
+    steps:
+      # Deliberately NOT the default checkout path, and deliberately not named after this package
+      # or any directory that has ever enclosed it: anything that resolves by walking up to a
+      # familiar directory name, or that hard-codes a repository name, breaks here instead of in a
+      # contributor's first clone.
+      - uses: actions/checkout@v4
+        with:
+          path: ci-workdir/probe-7f3a
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: ci-workdir/probe-7f3a/package-lock.json
+
+      # Everything a fresh `git clone` does not give you. node_modules/, ingest/platform/.cache/,
+      # dist-ingest/ and dist-pack/ are gitignored (see .gitignore) and .sources/ holds the ~1.3 GB
+      # of pinned Shopware/docs checkouts that `npm run setup` fetches; none of them may be a
+      # precondition for a green suite. dist/ *is* committed (.gitattributes marks dist/server.js
+      # linguist-generated) but is deleted anyway: `npm test` rebuilds it, so leaving it would let a
+      # stale bundle answer for a broken build.
+      - name: Strip everything a fresh clone would not have
+        working-directory: ci-workdir/probe-7f3a
+        run: |
+          set -euo pipefail
+          for p in node_modules .sources .cache ingest/platform/.cache dist dist-ingest dist-pack; do
+            if [ -e "$p" ]; then echo "removing $p"; rm -rf "$p"; else echo "absent (as expected): $p"; fi
+          done
+
+      - name: Install dependencies
+        working-directory: ci-workdir/probe-7f3a
+        run: npm ci
+
+      # The full suite, in TAP, with three independent verdicts:
+      #
+      #  1. the runner's own exit code — kept meaningful by `set -o pipefail`, since piping into
+      #     `tee` otherwise hands the step `tee`'s exit code and a red suite reads as green;
+      #  2. the TAP summary's `# fail` / `# cancelled` counts, read out of the output itself, so a
+      #     reporter or wrapper that loses the exit code cannot hide a failure;
+      #  3. any skip at all. A skipped test on CI is treated as a failure here: the two guideline
+      #     contract tests skipped themselves on every run of this package's entire life
+      #     because their inputs live under .sources/, and nobody saw it, because a skip is green.
+      #     A test that cannot run on a fresh clone is a broken test, not an excused one.
+      - name: Full suite — a skip is a failure
+        working-directory: ci-workdir/probe-7f3a
+        shell: bash
+        env:
+          # Consumed by package.json's `test` script, so this runs the *same* command as `verify`,
+          # only reported as TAP — no second copy of the test invocation to drift out of sync.
+          KB_TEST_REPORTER: --test-reporter=tap
+        run: |
+          set -o pipefail
+          tap="$RUNNER_TEMP/standalone-tap.txt"
+          rc=0
+          npm test 2>&1 | tee "$tap" || rc=$?
+
+          # Per-test SKIP/TODO directives (`ok 3 - name # SKIP reason`), at any nesting depth.
+          skip_lines=$(grep -cE '^[[:space:]]*(not )?ok\b.*#[[:space:]]*(SKIP|skip|TODO|todo)\b' "$tap" || true)
+          # ...and the summary counters, as an independent second opinion.
+          count() { grep -E "^[[:space:]]*# $1[[:space:]]+[0-9]+" "$tap" | awk '{ s += $NF } END { print s + 0 }'; }
+          skipped=$(count skipped); todo=$(count todo)
+          failed=$(count fail); cancelled=$(count cancelled)
+          echo "TAP summary: fail=$failed cancelled=$cancelled skipped=$skipped todo=$todo skip/todo directives=$skip_lines runner exit=$rc"
+
+          bad=0
+          if [ "$failed" -ne 0 ] || [ "$cancelled" -ne 0 ]; then
+            echo "::error::TAP reports $failed failed and $cancelled cancelled test(s). Failing on the reported counts, not only on the exit code, because a reporter pipeline can mask a non-zero status."
+            bad=1
+          fi
+          if [ "$skip_lines" -ne 0 ] || [ "$skipped" -ne 0 ] || [ "$todo" -ne 0 ]; then
+            echo "::error::$skip_lines skipped/todo test(s) (summary: skipped=$skipped todo=$todo). A SKIPPED TEST ON CI IS A FAILURE. A skip is green, so it hides forever: two guideline contract tests skipped themselves on every run of this package because their inputs live under the gitignored .sources/, and no one noticed. Either make the test run from a fresh clone (committed fixtures, no .sources/, no vendor/, no warm cache), or delete it — do not leave it conditional."
+            grep -nE '^[[:space:]]*(not )?ok\b.*#[[:space:]]*(SKIP|skip|TODO|todo)\b' "$tap" || true
+            bad=1
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::npm test exited $rc."
+            bad=1
+          fi
+          exit "$bad"

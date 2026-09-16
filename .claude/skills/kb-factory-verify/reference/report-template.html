@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kb-factory-verify — report</title>
+<!--
+  Payload: <script id="report-data"> holds one object:
+  { kind: "run" | "compare",
+    scores: <scores.json — run/mode/generatedAt/label/model/corpus/runs/cases/
+             casesSelector/yardstick/execution/options{...}/matrix/costs/warnings>,
+    raw:    { "<option>": { "<caseId>": { query, category, option, answer, citations[],
+             toolCallLog[{tool,args}], notFoundClaim, memoryClaims[], sourceVerdict } } },
+    scored: { "<option>": { "<caseId>": { caseId, option, scores{6}, total, verdict,
+             findability, pageReached, selfReportDelta, fenceDenials, retrieval{},
+             citationsVerified, findings[],
+             officialReferences[{url,quote}], notes, provisionalAccuracy,
+             accuracyNeedsCheck } } } }
+  scored[] is the merged verdict: the shard scorer's object with the targeted accuracy pass's
+  band applied over it (the shard's band kept as provisionalAccuracy). An empty raw
+  toolCallLog[] is legitimate — the case was answered from a page an earlier case in the same
+  discover batch had already read; render it as "0 (warm)", not as an error.
+  scores.options.<option>.cases[] carries the per-case scorecard used by Summary/Dimensions/
+  Cases tabs (scorerTotal/scorerVerdict/discrepancy compare against raw scored data).
+  The skill writes this file per run; only the JSON block content changes between runs.
+  Missing/null fields must render as "—"; unknown option/verdict strings still render.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --border: #ddd;
+    --pass: #1a7f37; --partly: #9a6700; --fail: #c00; --unavailable: #999; --unscored: #999;
+    --row-alt: #f7f7f7; --card-bg: #f7f7f7; --chip-bg: #eee;
+    --active-bg: #1a1a1a; --active-fg: #fff; --highlight: #fff3b0; --highlight-fg: #1a1a1a;
+    --code-bg: #f2f2f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111; --fg: #eee; --muted: #999; --border: #333; --row-alt: #1a1a1a;
+      --card-bg: #1a1a1a; --chip-bg: #222; --active-bg: #eee; --active-fg: #111;
+      --highlight: #6b5b00; --highlight-fg: #fff; --code-bg: #1a1a1a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 20px 0 8px; }
+  h3 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  p.sub { color: var(--muted); margin: 0 0 16px; }
+  code { background: var(--code-bg); padding: 1px 4px; border-radius: 3px; }
+  pre { background: var(--code-bg); padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  a { color: inherit; }
+  .header-bar { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+  .header-bar .field { font-size: 12px; }
+  .header-bar .field b { display: block; font-size: 13px; font-weight: 600; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tab-btn { border: 1px solid var(--border); border-bottom: none; background: var(--chip-bg); color: var(--fg); padding: 6px 14px; border-radius: 6px 6px 0 0; cursor: pointer; font: inherit; }
+  .tab-btn[aria-selected="true"] { background: var(--bg); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 6px; margin: 0 0 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--bg); cursor: pointer; user-select: none; }
+  th:hover { color: var(--partly); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  .verdict-pass, .status-pass { color: var(--pass); font-weight: 600; }
+  .verdict-partly, .status-partly { color: var(--partly); font-weight: 600; }
+  .verdict-fail, .status-fail { color: var(--fail); font-weight: 600; }
+  .verdict-unavailable, .status-unavailable { color: var(--unavailable); font-weight: 600; }
+  .verdict-unscored, .status-unscored { color: var(--unscored); font-weight: 600; }
+  .find-pass::before { content: "✓ "; color: var(--pass); }
+  .find-fail::before { content: "✗ "; color: var(--fail); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; align-items: center; }
+  .chip-group-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
+  .chip { border: 1px solid var(--border); background: var(--chip-bg); color: var(--fg); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--active-bg); color: var(--active-fg); border-color: var(--active-bg); }
+  .cards { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; }
+  .card { border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); padding: 8px 12px; min-width: 140px; }
+  .card .label { color: var(--muted); font-size: 12px; }
+  .card .value { font-size: 16px; font-weight: 600; }
+  .warnings { border: 1px solid var(--fail); background: var(--card-bg); border-radius: 6px; padding: 10px 14px; margin: 0 0 16px; }
+  .warnings h3 { color: var(--fail); margin-top: 0; }
+  .warnings ul { margin: 0; padding-left: 18px; }
+  .heat-cell { text-align: center; font-weight: 600; }
+  .cell-btn { border: 1px solid var(--border); background: var(--chip-bg); color: var(--fg); border-radius: 4px; padding: 4px 8px; font: inherit; cursor: pointer; min-width: 64px; }
+  .cell-btn.verdict-pass { border-color: var(--pass); }
+  .cell-btn.verdict-partly { border-color: var(--partly); }
+  .cell-btn.verdict-fail { border-color: var(--fail); }
+  .drilldown { border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; margin: 0 0 16px; background: var(--card-bg); }
+  .drilldown h3 { margin-top: 0; }
+  .mem-highlight { background: var(--highlight); color: var(--highlight-fg); border-radius: 3px; padding: 0 2px; }
+  .scope-violation { background: var(--highlight); }
+  .empty { padding: 20px; color: var(--muted); }
+  details { margin: 0 0 10px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+  details > summary { cursor: pointer; font-weight: 600; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 10px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+</style>
+</head>
+<body>
+<h1 id="page-title">kb-factory-verify — report</h1>
+<p class="sub" id="page-sub"></p>
+
+<div class="header-bar" id="header-bar"></div>
+
+<div class="tabs" role="tablist" id="tabs">
+  <button class="tab-btn" role="tab" data-tab="summary" aria-selected="true">Summary</button>
+  <button class="tab-btn" role="tab" data-tab="dimensions" aria-selected="false">Dimensions</button>
+  <button class="tab-btn" role="tab" data-tab="cases" aria-selected="false">Cases</button>
+  <button class="tab-btn" role="tab" data-tab="raw" aria-selected="false">Raw data</button>
+  <button class="tab-btn" role="tab" data-tab="run" aria-selected="false">Run</button>
+</div>
+
+<section class="tab-panel active" id="tab-summary" role="tabpanel"></section>
+<section class="tab-panel" id="tab-dimensions" role="tabpanel"></section>
+<section class="tab-panel" id="tab-cases" role="tabpanel"></section>
+<section class="tab-panel" id="tab-raw" role="tabpanel"></section>
+<section class="tab-panel" id="tab-run" role="tabpanel"></section>
+
+<script type="application/json" id="report-data">{}</script>
+<script>
+(function () {
+  'use strict';
+
+  // ---- load + defend ----
+  var dataEl = document.getElementById('report-data');
+  var payload = {};
+  try { payload = JSON.parse(dataEl.textContent || '{}') || {}; } catch (e) { payload = {}; }
+  var scores = payload.scores || {};
+  var raw = payload.raw || {};
+  var scoredRaw = payload.scored || {};
+  var options = scores.options || {};
+  var optionKeys = Object.keys(options);
+  var matrix = scores.matrix || {};
+  var warnings = scores.warnings || [];
+
+  function dash(v) { return (v === undefined || v === null || v === '') ? '—' : v; }
+  function uniqueValues(values) {
+    var seen = {}, out = [];
+    values.forEach(function (v) {
+      if (v === null || v === undefined || v === '') return;
+      if (!seen[v]) { seen[v] = true; out.push(v); }
+    });
+    return out;
+  }
+  function pct(v) { return (v === undefined || v === null || v === '') ? '—' : (v + '%'); }
+  function num(v) { return (v === undefined || v === null) ? '—' : v; }
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'html') { /* not used — kept out for safety */ }
+      else e.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+  function text(t) { return document.createTextNode(dash(t)); }
+  function td(content, cls) {
+    var cell = document.createElement('td');
+    if (cls) cell.className = cls;
+    if (content instanceof Node) cell.appendChild(content);
+    else cell.textContent = dash(content);
+    return cell;
+  }
+  function th(content) {
+    var cell = document.createElement('th');
+    cell.textContent = content;
+    return cell;
+  }
+  function verdictClass(v) {
+    var s = String(v || '').toLowerCase();
+    if (['pass', 'partly', 'fail', 'unavailable', 'unscored'].indexOf(s) >= 0) return 'verdict-' + s;
+    return '';
+  }
+  function statusClass(v) {
+    var s = String(v || '').toLowerCase();
+    if (s.indexOf('ready') === 0) return 'status-pass';
+    if (s.indexOf('usable') === 0) return 'status-partly';
+    if (s.indexOf('not ready') === 0) return 'status-fail';
+    return '';
+  }
+  function findClass(v) {
+    var s = String(v || '').toLowerCase();
+    if (s === 'pass') return 'find-pass';
+    if (s === 'fail') return 'find-fail';
+    return '';
+  }
+  function heatColor(v) {
+    if (v === undefined || v === null || isNaN(v)) return { bg: 'transparent', fg: 'inherit' };
+    var clamped = Math.max(0, Math.min(100, Number(v)));
+    var hue = (clamped / 100) * 120; // 0=red .. 120=green
+    var bg = 'hsl(' + hue.toFixed(0) + ', 55%, 45%)';
+    return { bg: bg, fg: '#fff' };
+  }
+  function prettyJson(obj) {
+    var pre = document.createElement('pre');
+    try { pre.textContent = JSON.stringify(obj, null, 2); } catch (e) { pre.textContent = String(obj); }
+    return pre;
+  }
+  function sortableTable(container, columns, rows, defaultKey, defaultDir) {
+    var wrap = el('div', { class: 'table-wrap' });
+    var table = document.createElement('table');
+    var thead = document.createElement('thead');
+    var trh = document.createElement('tr');
+    var sortKey = defaultKey;
+    var sortDir = defaultDir || -1;
+    columns.forEach(function (c) {
+      var cell = th(c.label);
+      cell.dataset.key = c.key;
+      cell.addEventListener('click', function () {
+        if (sortKey === c.key) sortDir *= -1; else { sortKey = c.key; sortDir = -1; }
+        draw();
+      });
+      trh.appendChild(cell);
+    });
+    thead.appendChild(trh);
+    var tbody = document.createElement('tbody');
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    container.appendChild(wrap);
+    function draw() {
+      var sorted = rows.slice().sort(function (a, b) {
+        var av = a[sortKey], bv = b[sortKey];
+        if (av === undefined || av === null) av = '';
+        if (bv === undefined || bv === null) bv = '';
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * sortDir;
+        return String(av).localeCompare(String(bv)) * sortDir;
+      });
+      tbody.innerHTML = '';
+      if (sorted.length === 0) {
+        var tr = document.createElement('tr');
+        var cell = document.createElement('td');
+        cell.colSpan = columns.length;
+        cell.className = 'empty';
+        cell.textContent = 'No data.';
+        tr.appendChild(cell);
+        tbody.appendChild(tr);
+        return;
+      }
+      sorted.forEach(function (r) {
+        var tr = document.createElement('tr');
+        columns.forEach(function (c) {
+          tr.appendChild(c.render ? c.render(r) : td(r[c.key]));
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    draw();
+    return { redraw: draw };
+  }
+
+  // ---- header ----
+  document.getElementById('page-title').textContent =
+    'kb-factory-verify — ' + (payload.kind === 'compare' ? 'compare report' : 'run report');
+  document.getElementById('page-sub').textContent =
+    payload.kind === 'compare'
+      ? 'Comparison across ' + (optionKeys.length || '?') + ' option(s). Data is embedded below and this file is self-contained.'
+      : 'Single run report. Data is embedded below and this file is self-contained.';
+
+  (function renderHeaderBar() {
+    var bar = document.getElementById('header-bar');
+    var corpus = scores.corpus || {};
+    var fp = corpus.fingerprint || {};
+    var probe = corpus.probe || {};
+    var fields = [
+      ['Run', scores.run],
+      ['Mode', scores.mode],
+      ['Generated', scores.generatedAt],
+      ['Label', scores.label],
+      ['Model', scores.model],
+      ['Corpus', corpus.name],
+      ['Fingerprint', fp && Object.keys(fp).length ? Object.keys(fp).map(function (k) { return k + '=' + fp[k]; }).join(', ') : null],
+      ['Probe', probe && (probe.ok !== undefined) ? (probe.ok ? 'ok' : 'failed') + (probe.detail ? ' — ' + probe.detail : '') : null],
+      ['Wall clock (s)', scores.costs && scores.costs.wallClockSeconds]
+    ];
+    fields.forEach(function (f) {
+      var field = el('div', { class: 'field' });
+      var b = document.createElement('b');
+      b.textContent = dash(f[1]);
+      var lbl = document.createElement('span');
+      lbl.textContent = f[0];
+      field.appendChild(b);
+      field.appendChild(lbl);
+      bar.appendChild(field);
+    });
+  })();
+
+  // ---- tabs ----
+  document.querySelectorAll('.tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.tab-btn').forEach(function (b) { b.setAttribute('aria-selected', 'false'); });
+      document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
+      btn.setAttribute('aria-selected', 'true');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ================= SUMMARY =================
+  (function renderSummary() {
+    var panel = document.getElementById('tab-summary');
+
+    if (warnings.length) {
+      var w = el('div', { class: 'warnings' });
+      w.appendChild(el('h3', { text: 'Warnings' }));
+      var ul = document.createElement('ul');
+      warnings.forEach(function (msg) { ul.appendChild(el('li', { text: msg })); });
+      w.appendChild(ul);
+      panel.appendChild(w);
+    }
+
+    var ranking = matrix.ranking || [];
+    if (ranking.length) {
+      panel.appendChild(el('h2', { text: 'Ranking' }));
+      var list = document.createElement('ol');
+      ranking.forEach(function (r) {
+        var li = document.createElement('li');
+        li.textContent = dash(r.option) + ' — ' + pct(r.overall) + ' ';
+        var span = document.createElement('span');
+        span.className = statusClass(r.status);
+        span.textContent = dash(r.status);
+        li.appendChild(span);
+        list.appendChild(li);
+      });
+      panel.appendChild(list);
+    }
+
+    panel.appendChild(el('h2', { text: 'Comparison' }));
+    var compareRows = optionKeys.map(function (key) {
+      var o = options[key] || {};
+      var counts = o.counts || {};
+      var findability = o.findability || {};
+      var edge = o.edge || {};
+      var gap = o.gap || {};
+      var rule = o.rule || {};
+      var averages = o.averages || {};
+      var costs = o.costs || {};
+      var costTokens = costs.tokens || {};
+      return {
+        option: o.option || key,
+        access: o.access, corpus: o.corpus,
+        overall: averages.overall, status: o.status,
+        developer: averages.developer, functional: averages.functional,
+        findable: (findability.pass != null && findability.total != null) ? (findability.pass + '/' + findability.total) : null,
+        edge: (edge.pass != null && edge.total != null) ? (edge.pass + '/' + edge.total) : null,
+        gap: (gap.pass != null && gap.total != null) ? (gap.pass + '/' + gap.total) : null,
+        rule: (rule.pass != null && rule.total != null) ? (rule.pass + '/' + rule.total) : null,
+        pass: counts.pass, partly: counts.partly, fail: counts.fail,
+        unavailable: counts.unavailable, unscored: counts.unscored,
+        weakest: o.weakestDimension,
+        nonCacheTokens: costTokens.nonCache, cacheReadTokens: costTokens.cacheRead,
+        cacheHitPct: costs.cacheHitRate != null ? costs.cacheHitRate * 100 : null,
+        costUsd: costs.costUsdEstimate ? costs.costUsdEstimate.total : null,
+        requests: costs.requests, toolCalls: costs.toolCalls, agentSeconds: costs.agentTimeSecondsSummed,
+        costsSchemaVersion: costs.schemaVersion, costsScope: costs.scope, costsSource: costs.source
+      };
+    });
+    sortableTable(panel, [
+      { key: 'option', label: 'Option' },
+      { key: 'access', label: 'Access' },
+      { key: 'corpus', label: 'Corpus' },
+      { key: 'overall', label: 'Overall %', render: function (r) { return td(pct(r.overall)); } },
+      { key: 'status', label: 'Status', render: function (r) { return td(r.status, statusClass(r.status)); } },
+      { key: 'developer', label: 'Dev %', render: function (r) { return td(pct(r.developer)); } },
+      { key: 'functional', label: 'Func %', render: function (r) { return td(pct(r.functional)); } },
+      { key: 'findable', label: 'Findable' },
+      { key: 'edge', label: 'Edge' },
+      { key: 'gap', label: 'Gap' },
+      { key: 'rule', label: 'Rule' },
+      { key: 'pass', label: 'Pass' },
+      { key: 'partly', label: 'Partly' },
+      { key: 'fail', label: 'Fail' },
+      { key: 'unavailable', label: 'Unavail.' },
+      { key: 'unscored', label: 'Unscored' },
+      { key: 'weakest', label: 'Weakest dim.' },
+      { key: 'nonCacheTokens', label: 'Non-cache tokens' },
+      { key: 'cacheReadTokens', label: 'Cache-read tokens' },
+      { key: 'cacheHitPct', label: 'Cache hit %', render: function (r) { return td(r.cacheHitPct != null ? r.cacheHitPct.toFixed(1) + '%' : null); } },
+      { key: 'costUsd', label: 'Est. USD', render: function (r) { return td(r.costUsd != null ? '$' + r.costUsd.toFixed(2) : null); } },
+      { key: 'requests', label: 'Requests' },
+      { key: 'toolCalls', label: 'Tool calls' },
+      { key: 'agentSeconds', label: 'Agent (s)' }
+    ], compareRows, 'overall', -1);
+
+    var costCaption = document.createElement('p');
+    costCaption.className = 'sub';
+    costCaption.style.cssText = 'margin:-8px 0 16px; font-size:12px;';
+    var costRowsWithSchema = compareRows.filter(function (r) { return r.costsSchemaVersion; });
+    if (costRowsWithSchema.length) {
+      var scopes = uniqueValues(costRowsWithSchema.map(function (r) { return r.costsScope; }));
+      var sources = uniqueValues(costRowsWithSchema.map(function (r) { return r.costsSource; }));
+      costCaption.textContent = 'Cost scope: ' + (scopes.join(', ') || '—') + ' agents only · source: ' +
+        (sources.join(', ') || '—') + ' · schema v' + costRowsWithSchema[0].costsSchemaVersion + '. "—" = not measured under this accounting.';
+    } else {
+      costCaption.textContent = 'Cost columns: legacy accounting — not comparable across runs (no costs.schemaVersion recorded).';
+    }
+    panel.appendChild(costCaption);
+
+    var deltas = matrix.deltas || {};
+    if (deltas.mcpMinusFs || deltas.wikiMinusDocs) {
+      panel.appendChild(el('h2', { text: 'Deltas' }));
+      var cards = el('div', { class: 'cards' });
+      function deltaCard(label, obj) {
+        if (!obj) return;
+        Object.keys(obj).forEach(function (k) {
+          var c = el('div', { class: 'card' });
+          c.appendChild(el('div', { class: 'label', text: label + ' (' + k + ')' }));
+          var v = obj[k];
+          c.appendChild(el('div', { class: 'value', text: (v === undefined || v === null) ? '—' : (v > 0 ? '+' + v : String(v)) }));
+          cards.appendChild(c);
+        });
+      }
+      deltaCard('mcp − fs', deltas.mcpMinusFs);
+      deltaCard('wiki − docs', deltas.wikiMinusDocs);
+      panel.appendChild(cards);
+    }
+  })();
+
+  // ================= DIMENSIONS =================
+  (function renderDimensions() {
+    var panel = document.getElementById('tab-dimensions');
+    var byDimension = matrix.byDimension || {};
+    var dims = Object.keys(byDimension);
+    if (!dims.length) {
+      // derive from any option's averages.byDimension if matrix lacks it
+      optionKeys.forEach(function (key) {
+        var bd = (options[key] && options[key].averages && options[key].averages.byDimension) || {};
+        Object.keys(bd).forEach(function (d) { if (dims.indexOf(d) < 0) dims.push(d); });
+      });
+    }
+
+    panel.appendChild(el('h2', { text: 'Dimension heatmap' }));
+    if (!dims.length || !optionKeys.length) {
+      panel.appendChild(el('p', { class: 'empty', text: 'No dimension data.' }));
+    } else {
+      var wrap = el('div', { class: 'table-wrap' });
+      var table = document.createElement('table');
+      var thead = document.createElement('tr');
+      thead.appendChild(th('Dimension'));
+      optionKeys.forEach(function (k) { thead.appendChild(th(k)); });
+      var theadWrap = document.createElement('thead');
+      theadWrap.appendChild(thead);
+      table.appendChild(theadWrap);
+      var tbody = document.createElement('tbody');
+      dims.forEach(function (d) {
+        var tr = document.createElement('tr');
+        tr.appendChild(td(d));
+        optionKeys.forEach(function (k) {
+          var v = (byDimension[d] && byDimension[d][k] !== undefined)
+            ? byDimension[d][k]
+            : ((options[k] && options[k].averages && options[k].averages.byDimension) ? options[k].averages.byDimension[d] : null);
+          var cell = document.createElement('td');
+          cell.className = 'heat-cell';
+          if (v === undefined || v === null) {
+            cell.textContent = '—';
+          } else {
+            var col = heatColor(v);
+            cell.style.background = col.bg;
+            cell.style.color = col.fg;
+            cell.textContent = v;
+          }
+          tr.appendChild(cell);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      panel.appendChild(wrap);
+    }
+
+    var anyByArea = optionKeys.some(function (k) { return options[k] && options[k].byArea; });
+    if (anyByArea) {
+      panel.appendChild(el('h2', { text: 'By area' }));
+      var areas = [];
+      optionKeys.forEach(function (k) {
+        var ba = (options[k] && options[k].byArea) || {};
+        Object.keys(ba).forEach(function (a) { if (areas.indexOf(a) < 0) areas.push(a); });
+      });
+      var wrap2 = el('div', { class: 'table-wrap' });
+      var table2 = document.createElement('table');
+      var thr = document.createElement('tr');
+      thr.appendChild(th('Area'));
+      optionKeys.forEach(function (k) { thr.appendChild(th(k)); });
+      var thead2 = document.createElement('thead');
+      thead2.appendChild(thr);
+      table2.appendChild(thead2);
+      var tbody2 = document.createElement('tbody');
+      areas.forEach(function (a) {
+        var tr = document.createElement('tr');
+        tr.appendChild(td(a));
+        optionKeys.forEach(function (k) {
+          var entry = (options[k] && options[k].byArea && options[k].byArea[a]) || null;
+          tr.appendChild(td(entry ? (dash(entry.average) + ' (' + dash(entry.pass) + '/' + dash(entry.cases) + ')') : null));
+        });
+        tbody2.appendChild(tr);
+      });
+      table2.appendChild(tbody2);
+      wrap2.appendChild(table2);
+      panel.appendChild(wrap2);
+    }
+  })();
+
+  // ================= CASES =================
+  (function renderCases() {
+    var panel = document.getElementById('tab-cases');
+
+    var allCases = scores.cases || [];
+    if (!allCases.length) {
+      var seen = {};
+      optionKeys.forEach(function (k) {
+        ((options[k] && options[k].cases) || []).forEach(function (c) {
+          if (c.caseId && !seen[c.caseId]) { seen[c.caseId] = true; allCases.push(c.caseId); }
+        });
+      });
+    }
+
+    // index scorecards by option -> caseId
+    var byOptCase = {};
+    optionKeys.forEach(function (k) {
+      byOptCase[k] = {};
+      ((options[k] && options[k].cases) || []).forEach(function (c) { byOptCase[k][c.caseId] = c; });
+    });
+
+    var categories = [];
+    var verdicts = [];
+    allCases.forEach(function (cid) {
+      optionKeys.forEach(function (k) {
+        var c = byOptCase[k][cid];
+        if (c) {
+          if (c.category && categories.indexOf(c.category) < 0) categories.push(c.category);
+          if (c.verdict && verdicts.indexOf(c.verdict) < 0) verdicts.push(c.verdict);
+        }
+      });
+    });
+
+    var activeCategory = null;
+    var activeVerdict = null;
+
+    var chips = el('div', { class: 'chips' });
+    var catGroup = el('span', { class: 'chip-group-label', text: 'Category' });
+    chips.appendChild(catGroup);
+    var catChipEls = [];
+    categories.forEach(function (cat) {
+      var chip = el('button', { class: 'chip', type: 'button', text: cat });
+      chip.setAttribute('aria-pressed', 'false');
+      chip.addEventListener('click', function () {
+        activeCategory = (activeCategory === cat) ? null : cat;
+        catChipEls.forEach(function (c) { c.setAttribute('aria-pressed', String(c.textContent === activeCategory)); });
+        drawGrid();
+      });
+      catChipEls.push(chip);
+      chips.appendChild(chip);
+    });
+    var verdictGroup = el('span', { class: 'chip-group-label', text: 'Verdict' });
+    chips.appendChild(verdictGroup);
+    var verdictChipEls = [];
+    verdicts.forEach(function (v) {
+      var chip = el('button', { class: 'chip', type: 'button', text: v });
+      chip.setAttribute('aria-pressed', 'false');
+      chip.addEventListener('click', function () {
+        activeVerdict = (activeVerdict === v) ? null : v;
+        verdictChipEls.forEach(function (c) { c.setAttribute('aria-pressed', String(c.textContent === activeVerdict)); });
+        drawGrid();
+      });
+      verdictChipEls.push(chip);
+      chips.appendChild(chip);
+    });
+    panel.appendChild(chips);
+
+    var gridWrap = el('div', { class: 'table-wrap' });
+    panel.appendChild(gridWrap);
+    var drilldown = el('div', { class: 'drilldown', id: 'case-drilldown' });
+    drilldown.appendChild(el('p', { class: 'empty', text: 'Click a cell to see the case detail.' }));
+    panel.appendChild(drilldown);
+
+    function drawGrid() {
+      gridWrap.innerHTML = '';
+      var visibleCases = allCases.filter(function (cid) {
+        if (!activeCategory && !activeVerdict) return true;
+        return optionKeys.some(function (k) {
+          var c = byOptCase[k][cid];
+          if (!c) return false;
+          if (activeCategory && c.category !== activeCategory) return false;
+          if (activeVerdict && c.verdict !== activeVerdict) return false;
+          return true;
+        });
+      });
+      if (!visibleCases.length || !optionKeys.length) {
+        gridWrap.appendChild(el('p', { class: 'empty', text: 'No cases match the filters.' }));
+        return;
+      }
+      var table = document.createElement('table');
+      var thead = document.createElement('thead');
+      var trh = document.createElement('tr');
+      trh.appendChild(th('Case'));
+      optionKeys.forEach(function (k) { trh.appendChild(th(k)); });
+      thead.appendChild(trh);
+      table.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      visibleCases.forEach(function (cid) {
+        var tr = document.createElement('tr');
+        tr.appendChild(td(cid));
+        optionKeys.forEach(function (k) {
+          var c = byOptCase[k][cid];
+          var cell = document.createElement('td');
+          if (!c) { cell.textContent = '—'; tr.appendChild(cell); return; }
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'cell-btn ' + verdictClass(c.verdict);
+          btn.textContent = pct(c.total) + (c.findability ? (c.findability === 'pass' ? ' ✓' : c.findability === 'fail' ? ' ✗' : '') : '');
+          btn.addEventListener('click', function () { renderDrilldown(k, cid, c); });
+          cell.appendChild(btn);
+          tr.appendChild(cell);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      gridWrap.appendChild(table);
+    }
+
+    function highlightMemory(text) {
+      var frag = document.createDocumentFragment();
+      if (!text) { frag.appendChild(document.createTextNode('—')); return frag; }
+      var sentences = String(text).split(/(?<=[.!?])\s+/);
+      sentences.forEach(function (s, i) {
+        var span = document.createElement('span');
+        span.textContent = s + (i < sentences.length - 1 ? ' ' : '');
+        if (/\[from memory\]/i.test(s)) span.className = 'mem-highlight';
+        frag.appendChild(span);
+      });
+      return frag;
+    }
+
+    function renderDrilldown(optKey, caseId, scoreCard) {
+      drilldown.innerHTML = '';
+      drilldown.appendChild(el('h3', { text: optKey + ' — ' + caseId }));
+
+      var rawCase = (raw[optKey] && raw[optKey][caseId]) || {};
+      var scoredCase = (scoredRaw[optKey] && scoredRaw[optKey][caseId]) || {};
+
+      var kv = el('dl', { class: 'kv' });
+      function kvRow(k, v) {
+        kv.appendChild(el('dt', { text: k }));
+        kv.appendChild(el('dd', { text: dash(v) }));
+      }
+      kvRow('Query', rawCase.query);
+      kvRow('Category', scoreCard.category);
+      kvRow('Target', scoreCard.target);
+      kvRow('Page reached', scoreCard.pageReached);
+      kvRow('Verdict', scoreCard.verdict);
+      kvRow('Total', pct(scoreCard.total));
+      kvRow('Findability', scoreCard.findability);
+      kvRow('Not-found claim', rawCase.notFoundClaim);
+      drilldown.appendChild(kv);
+
+      if (scoreCard.discrepancy) {
+        var disc = el('p', { class: 'warnings' });
+        disc.textContent = 'Discrepancy: recomputed total ' + pct(scoreCard.total) + ' vs scorer total ' + pct(scoreCard.scorerTotal) + ' (' + dash(scoreCard.scorerVerdict) + ')';
+        drilldown.appendChild(disc);
+      }
+
+      drilldown.appendChild(el('h3', { text: 'Answer' }));
+      var answerP = document.createElement('p');
+      answerP.appendChild(highlightMemory(rawCase.answer));
+      drilldown.appendChild(answerP);
+
+      drilldown.appendChild(el('h3', { text: 'Citations' }));
+      var citationsList = document.createElement('ul');
+      var citations = rawCase.citations || [];
+      if (!citations.length) citationsList.appendChild(el('li', { text: '—' }));
+      citations.forEach(function (c) {
+        citationsList.appendChild(el('li', { text: (typeof c === 'string') ? c : JSON.stringify(c) }));
+      });
+      drilldown.appendChild(citationsList);
+      var verified = document.createElement('p');
+      verified.textContent = 'Verified: ' + dash(scoreCard.citationsVerified);
+      drilldown.appendChild(verified);
+
+      drilldown.appendChild(el('h3', { text: 'Tool call log' }));
+      var toolCalls = rawCase.toolCallLog || [];
+      // Ground-truth calls (from the transcript extract) when present, keyed by case id.
+      var gtCalls = ((payload.calls || {})[optKey] || {})[caseId] || [];
+      if (!toolCalls.length) {
+        drilldown.appendChild(el('p', { class: 'empty', text: 'No tool calls recorded.' }));
+      } else {
+        var tcWrap = el('div', { class: 'table-wrap' });
+        var tcTable = document.createElement('table');
+        var tcHead = document.createElement('tr');
+        tcHead.appendChild(th('Tool'));
+        tcHead.appendChild(th('Args'));
+        tcHead.appendChild(th('Round trip'));
+        tcHead.appendChild(th('Returned'));
+        var tcTheadWrap = document.createElement('thead');
+        tcTheadWrap.appendChild(tcHead);
+        tcTable.appendChild(tcTheadWrap);
+        var tcBody = document.createElement('tbody');
+        toolCalls.forEach(function (call, i) {
+          var argsStr = JSON.stringify(call.args || {});
+          var gt = gtCalls[i] || null;
+          var tr = document.createElement('tr');
+          tr.appendChild(td(call.tool));
+          tr.appendChild(td(argsStr));
+          tr.appendChild(td(gt && gt.latencyMs != null ? gt.latencyMs + ' ms' : '—'));
+          tr.appendChild(td(gt && gt.resultBytes != null
+            ? gt.resultBytes.toLocaleString() + ' B / ' + (gt.resultLines || 0) + ' ln' + (gt.empty ? ' (no hits)' : '')
+            : '—'));
+          tcBody.appendChild(tr);
+        });
+        tcTable.appendChild(tcBody);
+        tcWrap.appendChild(tcTable);
+        drilldown.appendChild(tcWrap);
+      }
+
+      drilldown.appendChild(el('h3', { text: 'Findings' }));
+      var findingsList = document.createElement('ul');
+      var findings = scoreCard.findings || [];
+      if (!findings.length) findingsList.appendChild(el('li', { text: '—' }));
+      findings.forEach(function (f) { findingsList.appendChild(el('li', { text: typeof f === 'string' ? f : JSON.stringify(f) })); });
+      drilldown.appendChild(findingsList);
+
+      drilldown.appendChild(el('h3', { text: 'Official references' }));
+      var refs = scoreCard.officialReferences || [];
+      if (!refs.length) {
+        drilldown.appendChild(el('p', { class: 'empty', text: '—' }));
+      } else {
+        var refList = document.createElement('ul');
+        refs.forEach(function (r) {
+          refList.appendChild(el('li', { text: dash(r.url) + ' — ' + dash(r.quote) }));
+        });
+        drilldown.appendChild(refList);
+      }
+
+      drilldown.appendChild(el('h3', { text: 'Notes' }));
+      drilldown.appendChild(el('p', { text: scoreCard.notes }));
+
+      if (Object.keys(scoredCase).length) {
+        var scoredDetails = document.createElement('details');
+        scoredDetails.appendChild(el('summary', { text: 'Scored JSON (verbatim)' }));
+        scoredDetails.appendChild(prettyJson(scoredCase));
+        drilldown.appendChild(scoredDetails);
+      }
+    }
+
+    drawGrid();
+  })();
+
+  // ================= RAW DATA =================
+  (function renderRaw() {
+    var panel = document.getElementById('tab-raw');
+    if (!optionKeys.length) {
+      panel.appendChild(el('p', { class: 'empty', text: 'No raw data.' }));
+      return;
+    }
+    optionKeys.forEach(function (k) {
+      panel.appendChild(el('h2', { text: k }));
+      var caseIds = Object.keys(raw[k] || {});
+      var scoredIds = Object.keys(scoredRaw[k] || {});
+      var allIds = caseIds.concat(scoredIds.filter(function (id) { return caseIds.indexOf(id) < 0; }));
+      if (!allIds.length) {
+        panel.appendChild(el('p', { class: 'empty', text: 'No cases.' }));
+        return;
+      }
+      allIds.forEach(function (cid) {
+        var details = document.createElement('details');
+        details.appendChild(el('summary', { text: cid }));
+        var rawDetails = document.createElement('details');
+        rawDetails.appendChild(el('summary', { text: 'Raw' }));
+        rawDetails.appendChild(prettyJson((raw[k] && raw[k][cid]) || {}));
+        details.appendChild(rawDetails);
+        var scoredDetails = document.createElement('details');
+        scoredDetails.appendChild(el('summary', { text: 'Scored' }));
+        scoredDetails.appendChild(prettyJson((scoredRaw[k] && scoredRaw[k][cid]) || {}));
+        details.appendChild(scoredDetails);
+        panel.appendChild(details);
+      });
+    });
+  })();
+
+  // ================= RUN =================
+  (function renderRun() {
+    var panel = document.getElementById('tab-run');
+    var corpus = scores.corpus || {};
+    var fp = corpus.fingerprint || {};
+    var probe = corpus.probe || {};
+
+    panel.appendChild(el('h2', { text: 'Corpus' }));
+    var corpusKv = el('dl', { class: 'kv' });
+    corpusKv.appendChild(el('dt', { text: 'Name' }));
+    corpusKv.appendChild(el('dd', { text: corpus.name }));
+    corpusKv.appendChild(el('dt', { text: 'Probe' }));
+    corpusKv.appendChild(el('dd', { text: probe && probe.ok !== undefined ? ((probe.ok ? 'ok' : 'failed') + (probe.detail ? ' — ' + probe.detail : '')) : null }));
+    Object.keys(fp).forEach(function (k) {
+      corpusKv.appendChild(el('dt', { text: k }));
+      corpusKv.appendChild(el('dd', { text: fp[k] }));
+    });
+    panel.appendChild(corpusKv);
+
+    panel.appendChild(el('h2', { text: 'Yardstick' }));
+    var yardstick = scores.yardstick || {};
+    var ykv = el('dl', { class: 'kv' });
+    ['casesMdSha', 'rubricSha', 'briefSha'].forEach(function (k) {
+      ykv.appendChild(el('dt', { text: k }));
+      ykv.appendChild(el('dd', { text: yardstick[k] }));
+    });
+    panel.appendChild(ykv);
+
+    if (scores.runs && Object.keys(scores.runs).length) {
+      panel.appendChild(el('h2', { text: 'Runs (compare)' }));
+      var rkv = el('dl', { class: 'kv' });
+      Object.keys(scores.runs).forEach(function (k) {
+        rkv.appendChild(el('dt', { text: k }));
+        rkv.appendChild(el('dd', { text: scores.runs[k] }));
+      });
+      panel.appendChild(rkv);
+    }
+
+    panel.appendChild(el('h2', { text: 'Selector' }));
+    panel.appendChild(el('p', { text: dash(scores.casesSelector) }));
+
+    if (warnings.length) {
+      panel.appendChild(el('h2', { text: 'Warnings' }));
+      var ul = document.createElement('ul');
+      warnings.forEach(function (msg) { ul.appendChild(el('li', { text: msg })); });
+      panel.appendChild(ul);
+    }
+
+    panel.appendChild(el('h2', { text: 'scores.json' }));
+    var details = document.createElement('details');
+    details.appendChild(el('summary', { text: 'Show raw scores.json' }));
+    details.appendChild(prettyJson(scores));
+    panel.appendChild(details);
+  })();
+
+})();
+</script>
+</body>
+</html>

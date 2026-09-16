@@ -1,0 +1,129 @@
+name: Release
+
+# Publishes @execuro-sw-ecosystem/sw-dev-knowledge-base-mcp to npm under its scoped name, with
+# provenance via OIDC trusted publishing, and keeps the MCP Registry entry in step. Triggered by
+# a version tag; every gate below runs and must pass BEFORE the publish step, because npm unpublish is time-limited to 72 hours and the
+# package name stays burned afterwards — there is no "publish first, fix later" here.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: verify, publish, register
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for OIDC trusted publishing (npm CLI >= 11.5.1 exchanges this token for a
+      # short-lived publish credential; no NPM_TOKEN secret is configured or needed).
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14.0 (npm docs, "Trusted
+      # publishers"). Node 22 here is the release toolchain only — it is independent of the
+      # package's own engines.node >= 20, which is the range consumers are supported on.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every published artifact must trace to a commit. A tag that disagrees with
+      # package.json's version would publish a version nobody tagged (or tag a version nobody
+      # published), so this fails loudly before any gate runs rather than after.
+      - name: Verify the tag matches package.json's version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$pkg" >> "$GITHUB_ENV"
+
+      - name: Typecheck server
+        run: npm run typecheck
+
+      - name: Typecheck ingest
+        run: npm run typecheck:ingest
+
+      # Same rationale as ci.yml: test/coldstart.test.ts runs in non-strict mode on CI
+      # (CI=true) so the <300 ms cold-start measurement is still taken and printed on every run,
+      # with an over-budget result surfaced as a `::warning::` annotation rather than gating
+      # `npm test` — see that file's header comment. A single run is a true signal here.
+      - name: Test
+        run: npm test
+
+      - name: Lint the platform wiki corpus
+        run: npm run wiki:lint -- --layer platform
+
+      # Builds the real tarball this release ships: staged tree, the file allow-list, the
+      # docs-corpus config filter and the KB_CORPUS=docs refusal probe (scripts/pack.mjs).
+      # `npm publish` below publishes exactly this tarball, so what was verified is what ships.
+      - name: Pack (real pack, not --dry-run)
+        run: npm run pack -- --json | tee pack-result.json
+
+      - name: Locate the packed tarball
+        run: |
+          tarball="$(node -p "require('./pack-result.json').tarball")"
+          if [ -z "$tarball" ] || [ "$tarball" = "undefined" ]; then
+            echo "::error::pack did not report a tarball path (see pack-result.json)"
+            exit 1
+          fi
+          echo "TARBALL=$tarball" >> "$GITHUB_ENV"
+
+      - name: Publish to npm (OIDC trusted publishing)
+        run: npm publish "$TARBALL" --provenance --access public
+
+      # The MCP Registry entry (mcpName in package.json) must be submitted with this package's
+      # first release and kept in step on every later one, version-matched to what was
+      # just published. This repository has no server.json manifest and no registry CLI/config
+      # committed anywhere under it, so submission is a MANUAL follow-up, not an automated step,
+      # by design — see below for what is and is not confirmed.
+      #
+      # Confirmed from the official registry repo (github.com/modelcontextprotocol/registry):
+      #   - The submission tool is the `mcp-publisher` CLI, built from that repo (`make
+      #     publisher`); it is not an npm package and is not in this repo's devDependencies.
+      #   - It needs a server.json manifest (schema at
+      #     https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json) whose
+      #     "name" must equal package.json's mcpName (io.github.execuro/sw-dev-knowledge-base-mcp)
+      #     and whose "version" must match the npm package version just published
+      #     ($RELEASE_VERSION above) — this repo has no such file yet.
+      #   - `io.github.execuro/...` names authenticate as the GitHub user/org `execuro` via
+      #     `mcp-publisher login github` (interactive device-code flow) or GitHub OIDC from
+      #     Actions.
+      # NOT confirmed (do not automate until a human verifies these against the current
+      # registry docs and this repo's execuro org settings, then delete this step):
+      #   - The exact non-interactive flags/token exchange for GitHub OIDC login from *this*
+      #     workflow (only the interactive `mcp-publisher login github` device flow is
+      #     documented as certain; the CI/OIDC login flags were not found).
+      #   - Whether any repo/org secret needs adding for that OIDC exchange.
+      # Guessing either of these and wiring it into a release pipeline would fail silently or
+      # loudly mid-release, after `npm publish` has already burned the version — worse than a
+      # manual step. This step is intentionally non-blocking (continue-on-error) so a missing
+      # registry submission never blocks or rolls back a successful npm publish; it prints the
+      # exact manual actions instead of attempting a publish.
+      - name: MCP Registry entry — MANUAL follow-up, not automated
+        continue-on-error: true
+        run: |
+          echo "::warning::MCP Registry submission is a manual follow-up for this release (io.github.execuro/sw-dev-knowledge-base-mcp v$RELEASE_VERSION)."
+          echo "A human must, after this workflow finishes:"
+          echo "  1. Build/install mcp-publisher from github.com/modelcontextprotocol/registry (make publisher)."
+          echo "  2. Write or update server.json at the repo root: name=io.github.execuro/sw-dev-knowledge-base-mcp, version=$RELEASE_VERSION, packages[0].identifier=$(node -p "require('./package.json').name"), packages[0].version=$RELEASE_VERSION."
+          echo "  3. Run: mcp-publisher login github   (device-code flow, as a maintainer with access to the execuro namespace)."
+          echo "  4. Run: mcp-publisher publish   from the repo root, and confirm the registry entry shows v$RELEASE_VERSION."
+          echo "This step performs no submission; it never fails the job (continue-on-error)."

@@ -1,0 +1,15 @@
+{
+  "note": "Upstream repository furniture that is a Markdown file but not documentation. The developer source is downloaded whole (upstream .docsignore deliberately not applied), so without this list files like the docs repo's own AGENTS.md and .github/PULL_REQUEST_TEMPLATE.md are ingested as ordinary pages: they carry valid frontmatter and index lines, and they ship to consumers. One list, three gates - sync (stops re-admission), wiki:lint (catches a tree that already has one) and pack (the release gate: repository furniture must never be published as a documentation page).",
+  "basenames": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE.md",
+    "PULL_REQUEST_TEMPLATE.md",
+    "ISSUE_TEMPLATE.md",
+    "CODEOWNERS.md"
+  ]
+}

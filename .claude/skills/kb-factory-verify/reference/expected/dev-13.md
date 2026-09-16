@@ -1,0 +1,135 @@
+# `dev-13` — expected answer
+
+<!-- expected:start -->
+| | |
+| --- | --- |
+| Case | `dev-13` · `dev` · `Services & DI` |
+| Version | `6.7` |
+| Status | **confirmed** — verified against shopware/core 6.7.13.0 |
+| Reviewed | `2026-09-11` · run `cases-review-2026-09-11-2118-12-21` |
+| Core version | `6.7.13.0` |
+
+**Query:** There is no event for what I need to change in a core Shopware service — how do I decorate or replace that service from my plugin?
+
+**Expected answer — every fact an answer must contain:**
+
+1. Before decorating, check whether the scope has an extension point: 6.7 ships `Shopware\Core\Framework\Extensions\Extension` plus the `ExtensionDispatcher` service, and a core service that wraps an operation in `$this->extensions->publish(name: …)` can be hooked with a plain `kernel.event_subscriber` keyed on `<NAME>.pre` / `<NAME>.post` / `<NAME>.error` (or the static `onPre()`/`onPost()`/`onError()` helpers) — a `.pre` listener that assigns `$extension->result` and calls `stopPropagation()` replaces the core operation entirely. Extension points are not universal: only 22 core classes extend `Extension` in 6.7, so decoration remains the mechanism for every other core service. `[code: Framework/Extensions/ExtensionDispatcher.php:52-77]`
+2. Decoration is plain Symfony DI declared in the plugin's `Resources/config/services.*`: a definition that declares the target service id as decorated and takes the replaced service back as the `<own id>.inner` argument, with `decoration-priority` controlling nesting order. In 6.7 both file formats work and neither is deprecated — `Bundle::registerContainerFile()` registers the XML, YAML **and** PHP loaders and emits no deprecation for `services.xml` (the XML deprecation exists only on trunk/6.8); core 6.7 itself uses the XML `decorates="…"` form 34 times and the scaffolding command still generates `services.xml`. In PHP config the equivalent is `->decorate(Target::class)` with `service('.inner')` (the bare `.inner` reference is rewritten to the renamed inner id by `DecoratorServicePass`). `[code: Framework/Bundle.php:212-231]`
+3. The decorator must extend the scope's **abstract** class — not the concrete implementation — take the inner instance as a constructor argument and return it from `getDecorated()`; the core base implementation throws `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException` from `getDecorated()`, and a decorator must not carry `#[Route]` attributes. Decoration does not silently no-op: if the decorated id does not exist, `DecoratorServicePass` throws `ServiceNotFoundException` at compile time unless the decorator opted into `ignore`/`null` on invalid reference. `[code: Checkout/Cart/RuleLoader.php:30-33]`
+
+**Official reference URL:** https://developer.shopware.com/docs/guides/plugins/plugins/services/adjusting-service.html
+<!-- expected:end -->
+
+## Evidence — code (decisive)
+
+| fact | citation | excerpt |
+| --- | --- | --- |
+| Decoration is plain Symfony DI: `decorates="<target id>"` plus the `<own id>.inner` argument. Canonical core example: `CachedRuleLoader` decorates `RuleLoader`. | `Checkout/DependencyInjection/cart.xml:412-416` | `<service id="…\CachedRuleLoader" decorates="…\RuleLoader" decoration-priority="-1000"><argument type="service" id="…\CachedRuleLoader.inner"/>` |
+| The decorator extends the abstract base of the scope, takes the inner instance in the constructor and returns it from `getDecorated()`. | `Checkout/Cart/CachedRuleLoader.php:14-34` | `class CachedRuleLoader extends AbstractRuleLoader { public function __construct(private readonly AbstractRuleLoader $decorated, …) {} public function getDecorated(): AbstractRuleLoader { return $this->decorated; }` |
+| Every decoratable scope is published as an abstract class whose `getDecorated()` is abstract — that class, not the concrete one, is the type to extend and type-hint. | `Checkout/Cart/AbstractRuleLoader.php:10-15` | `abstract class AbstractRuleLoader { abstract public function getDecorated(): AbstractRuleLoader;` |
+| The core base implementation throws `DecorationPatternException` from `getDecorated()`. | `Checkout/Cart/RuleLoader.php:30-33` | `public function getDecorated(): AbstractRuleLoader { throw new DecorationPatternException(self::class); }` |
+| Concrete core implementations are `@final Depend on the Abstract… which is the definition of public API for this scope`. | `Checkout/Cart/CachedRuleLoader.php:10-12` | `/** @final Depend on the AbstractRuleLoader which is the definition of public API for this scope */` |
+| A decorator must not carry `#[Route]` attributes; a PHPStan rule fails the build otherwise. | `DevOps/StaticAnalyze/PHPStan/Rules/NoRouteOverrideInDecoratorsRule.php:49-58` | `'Service "%s" is a decorator but overrides @Route attributes (class or method-level)…'` |
+| `decoration-priority` orders competing decorators; core uses negative values to sit close to the original. | `Framework/DependencyInjection/seo.xml:70` | `<service id="…\EmptyPathInfoResolver" public="true" decorates="…\SeoResolver" decoration-priority="-2000">` |
+| A target that may not exist is decorated with `decoration-on-invalid="ignore"`. | `Framework/DependencyInjection/services.xml:670-673` | `<service id="…\ExcludeExceptionHandler" decorates="monolog.handler.main" decoration-on-invalid="ignore">` |
+| Third-party Symfony services are decorated the same way by id (`event_dispatcher`, `http_kernel`, `translator`, …). | `Framework/DependencyInjection/services.xml:270; event.xml:13` | `<service id="…\NestedEventDispatcher" decorates="event_dispatcher">` |
+| A plugin's decoration reaches the runtime container after the container rebuild `Plugin::rebuildContainer()` requests by default. | `Framework/Plugin.php:76-85` | `public function rebuildContainer(): bool { return true; }` |
+| Decoration syntax is unchanged between 6.6 and 6.7 — the `CachedRuleLoader` definition is identical at v6.6.10.24. | `https://github.com/shopware/shopware/blob/v6.6.10.24/src/Core/Checkout/DependencyInjection/cart.xml#L397-L401` | `<service id="…\CachedRuleLoader" decorates="…\RuleLoader" decoration-priority="-1000">` |
+| **(deep, Q1)** 6.7 ships the extension-point base class: `Extension` implements `StoppableEventInterface`, carries public `$result` / `$exception` and static `onPre()/onPost()/onError()` resolved from `static::NAME`. | `Framework/Extensions/Extension.php:13-57,107` | `abstract class Extension implements StoppableEventInterface { public mixed $result = null; public static function onPre(): string { return ExtensionDispatcher::pre(self::getName()); }` |
+| **(deep, Q1)** Event names are the NAME with a plain suffix: `<NAME>.pre`, `.post`, `.error`. | `Framework/Extensions/ExtensionDispatcher.php:24,33,42` | `public static function pre(string $name): string { return $name . '.pre'; }` |
+| **(deep, Q1)** `publish()` dispatches `.pre`, runs the wrapped closure unless propagation was stopped, dispatches `.error` on throw (rethrowing only if no listener set `$result`), then `.post`. A `.pre` listener that sets `$result` and stops propagation fully replaces the core operation without decoration. | `Framework/Extensions/ExtensionDispatcher.php:52-77` | `$this->dispatcher->dispatch($extension, self::pre($name)); if (!$extension->isPropagationStopped()) { $extension->result = $function(...$extension->getParams()); }` |
+| **(deep, Q1)** `ExtensionDispatcher` is an ordinary service wired to `event_dispatcher` and injected into publishing services, e.g. `ProductListingRoute`. | `Framework/DependencyInjection/event.xml:29-31; Content/Product/SalesChannel/Listing/ProductListingRoute.php:43,84-92` | `$criteria = $this->extensions->publish(name: ProductListingCriteriaExtension::NAME, …)` |
+| **(deep, Q1)** A plugin subscribes with a plain `kernel.event_subscriber`; core's own `PromotionRedemptionLocker` does exactly this. | `Checkout/Promotion/Cart/PromotionRedemptionLocker.php:24-31; Checkout/DependencyInjection/promotion.xml:67-70` | `CheckoutPlaceOrderExtension::onPre() => 'acquireLocks', … <tag name="kernel.event_subscriber"/>` |
+| **(deep, Q1)** Extension points are not universal: exactly 22 core classes extend `Extension` in 6.7; every other core service has none, so decoration remains the mechanism there. | `vendor/shopware/core (grep -rl 'extends Extension' → 22 files); Content/Product/Extension/ProductListingCriteriaExtension.php:17-19` | `final class ProductListingCriteriaExtension extends Extension { public const NAME = 'product.listing.criteria';` |
+| **(deep, Q2)** Both declaration forms work: `Bundle::registerContainerFile()` registers XmlFileLoader, YamlFileLoader and PhpFileLoader behind a DelegatingLoader over `Resources/config/services.*`, and `Plugin extends Bundle`. | `Framework/Bundle.php:212-231; Framework/Plugin.php:17` | `new XmlFileLoader(…), new YamlFileLoader(…), new PhpFileLoader(…) … foreach ($this->getServicesFilePathArray($this->getPath() . '/Resources/config/services.*') as $path)` |
+| **(deep, Q2)** The XML attributes map onto the same `Definition::setDecoratedService()` API that `->decorate()` calls. | `vendor/symfony/dependency-injection/Loader/XmlFileLoader.php:394-409; Loader/Configurator/Traits/DecorateTrait.php:28-33` | `$definition->setDecoratedService($decorates, $renameId, $priority, $invalidBehavior);` |
+| **(deep, Q2)** A bare `.inner` reference resolves: `DecoratorServicePass` defaults `$renamedId = $id.'.inner'` and rewrites any Reference equal to `.inner` to it, so `service('.inner')` and the explicit `MyDecorator::class . '.inner'` are equivalent. Core's own `services.php` files use the explicit form. | `vendor/symfony/dependency-injection/Compiler/DecoratorServicePass.php:55-62,123-128; Framework/DependencyInjection/webhook.php:57-62` | `if ($value instanceof Reference && '.inner' === (string) $value) { return new Reference($this->currentId, …); }` |
+| **(deep, Q2)** The pass aliases the original id to the decorator, so every existing consumer — including routing, which resolves routes by service id — receives it. | `vendor/symfony/dependency-injection/Compiler/DecoratorServicePass.php:114` | `$container->setAlias($inner, $id)->setPublic($public);` |
+| **(deep, Q3)** 6.7.13.0 emits **no** deprecation when a plugin's `services.xml` is loaded; `registerContainerFile()` simply loads the file. Verified on disk and against the upstream tag. | `Framework/Bundle.php:212-231` | `$delegatingLoader->load($path);` (no `trigger_deprecation` / `Feature::triggerDeprecationOrThrow`) |
+| **(deep, Q3)** The XML deprecation exists only on trunk (6.8-dev): `triggerXmlConfigDeprecation()` raises `Feature::triggerDeprecationOrThrow('v6.8.0.0', …)`. | `shopware/shopware ref refs/heads/trunk src/Core/Framework/Bundle.php` | `// @deprecated tag:v6.8.0 … $this->triggerXmlConfigDeprecation($path, 'Migrate the service definitions to PHP format (services.php).');` |
+| **(deep, Q3)** XML is still the normal 6.7 idiom: 81 XML DI files in core, and the 6.7 scaffolding command still generates `src/Resources/config/services.xml`. | `Framework/Plugin/Command/Scaffolding/ScaffoldingCollector.php:57-60` | `$stubCollection->add(Stub::raw('src/Resources/config/services.xml', $this->servicesXmlIntro));` |
+| **(deep, Q4)** Store-api route classes a plugin decorates are real container services: `ProductListingRoute` is `public="true"` and is itself decorated within core via `decorates` + `decoration-priority` + `.inner`. | `Content/DependencyInjection/product.xml:411-415,424-431` | `<service id="…\ResolveCriteriaProductListingRoute" decorates="…\ProductListingRoute" decoration-priority="-2000" public="true">` |
+| **(deep, Q4)** A decoration whose target id does not exist fails loudly at compile time (`ServiceNotFoundException`) unless it opted into `NULL_ON_INVALID_REFERENCE` / `IGNORE_ON_INVALID_REFERENCE`; decorating a synthetic service also throws. | `vendor/symfony/dependency-injection/Compiler/DecoratorServicePass.php:81-93` | `throw new ServiceNotFoundException($inner, $id); … 'A synthetic service cannot be decorated…'` |
+| **(deep, Q4)** The residual reachable variant of the #2845 failure is decoration **priority**, not direct instantiation: no `new ProductListingRoute(` / `new CartOrderRoute(` / `new ProductPriceCalculator(` exists in core or storefront. | `Content/DependencyInjection/product.xml:411; grep over vendor/shopware/core + storefront → no matches` | `<service id="…\ResolveCriteriaProductListingRoute" decorates="…\ProductListingRoute" decoration-priority="-2000" public="true">` |
+
+Absences — things the code shows do **not** exist:
+
+| claim checked | verdict | evidence |
+| --- | --- | --- |
+| Shopware has its own decoration mechanism / compiler pass beyond Symfony's `decorates` | absent | case-insensitive grep for `decorat` over `Framework/DependencyInjection/CompilerPass/` returns no hits; none of the 30+ passes in `Framework::build()` concerns decoration. Symfony's `DecoratorServicePass` resolves it. (`Framework/Framework.php:122-156`) |
+| Core uses the `#[AsDecorator]` attribute, so a plugin can decorate without a service file | absent | `grep -rn 'AsDecorator' vendor/shopware/core` → 0 hits; every core decoration is declared in a service file with `decorates=`. |
+| Replacing a core service means overwriting/removing its definition | not-supported-by-code | No core mechanism removes or replaces a definition for extension purposes; every core override uses `decorates=` with `.inner` injected back. (`Checkout/Cart/RuleLoader.php:30-33`) |
+| Loading a plugin's `Resources/config/services.xml` triggers a deprecation in 6.7 | absent | `Bundle::registerContainerFile()` in 6.7.13.0 has no `trigger_deprecation` / `Feature::triggerDeprecationOrThrow`; the deprecation exists only on trunk. (`Framework/Bundle.php:212-231`) |
+| Plugins register extension-point listeners through a dedicated service tag | absent | No extension-specific tag exists; the only path is `kernel.event_subscriber` / `kernel.event_listener` keyed on `<NAME>.pre|.post|.error`. (`Checkout/DependencyInjection/promotion.xml:67-70`) |
+| 6.7 store-api route services carry `controller.service_arguments` | absent | `ProductListingRoute` and siblings are declared only `public="true"` with explicit arguments; the tag appears on API/admin/storefront controllers. Decoration is unaffected — the alias created by `DecoratorServicePass` covers the routed id. (`Content/DependencyInjection/product.xml:425-431`) |
+
+Test anchors, where found:
+
+| what it shows | citation |
+| --- | --- |
+| Decoration used verbatim in the shipped test container — core DAL services swapped by decorating the interface id and injecting `.inner` | `Framework/DependencyInjection/services_test.xml:121-127` |
+| Decorating a concrete class id while keeping the same class | `Framework/DependencyInjection/services_test.xml:189` |
+| The exact `publish()` contract: `.pre`/`.post` on success, named-arg spread of `getParams()`, `.error` on throw with rethrow suppressed when a listener sets `$result` | `shopware/shopware v6.7.13.0 tests/unit/Core/Framework/Extensions/ExtensionDispatcherTest.php:18-40,73-99` |
+| The sanctioned plugin-side extension-point listener shape — a plain `EventSubscriberInterface` keyed on `'product.listing.criteria.post'`, mutating `$event->result` | `shopware/shopware v6.7.13.0 tests/examples/ProductListingCriteriaExtensionExample.php:8-30` |
+| Core's own in-production decoration of a store-api route | `Content/DependencyInjection/product.xml:411-415` |
+
+## Evidence — community (escalation only, never decisive)
+
+| signal | version | state | source |
+| --- | --- | --- | --- |
+| RFC arguing decoration is a poor extension mechanism, proposing an event-focused extension system with an `ExtensionDispatcher`; closed with "This is already implemented in general, we need to use it in more places" | 6.7-era (closed 2025-03-14) | closed | https://github.com/shopware/shopware/discussions/3489 |
+| Shopware's own team: decorating internal core services blocks core refactoring and breaks the decorating plugin; core should gain extension points instead | 6.7 / trunk (2026-03-23) | closed | https://github.com/shopware/shopware/issues/15735 |
+| Decoration reported to silently have no effect when the target is not resolved as a container service (`ContextRoute` instantiated directly) | 6.4 as reported; unclear for 6.7 | closed | https://github.com/shopware/shopware/issues/2845 |
+| Decorators must type-hint the abstract base and implement `getDecorated()`; the base throws `DecorationPatternException` | 6.x, documented pattern | open | https://developer.shopware.com/docs/resources/references/adr/2020-11-25-decoration-pattern.html |
+| Forum threads on decorator ordering between plugins — users cannot control which decorator wraps which | 6.x, unclear | open | https://forum.shopware.com/t/reihenfolge-service-decorator-bestimmen/56181 |
+| Maintainer plan to deprecate XML service definitions and rewrite the docs to PHP config | trunk / 6.8 | open | https://github.com/shopware/shopware/issues/13072 |
+
+Escalations raised, and how each was settled:
+
+| question | settled by | outcome |
+| --- | --- | --- |
+| Does 6.7 ship an extension-point system, and must the answer mention it before decoration? | deep code pass Q1 | Yes — `Extension` + `ExtensionDispatcher` ship in 6.7, hooked via `kernel.event_subscriber` on `<NAME>.pre/.post/.error`; but only 22 core classes have one, so decoration stays the mechanism elsewhere. Fact 1 now says "check for an extension point first, otherwise decorate". |
+| Does the `Abstract*Route` pattern still require `getDecorated()`, and does the base throw `DecorationPatternException`? | round-1 code lane | Yes — `AbstractRuleLoader`/`AbstractCartLoadRoute` declare it abstract; `RuleLoader::getDecorated()` throws `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`. |
+| Is the #2845 silent-no-effect failure mode still reachable in 6.7 for routes a plugin decorates? | deep code pass Q4 | No — the routes are real public container services and a missing target throws `ServiceNotFoundException` at compile time. The residual risk is decoration priority, not silent bypass. No fact asserting silent failure. |
+| Does `#[AsDecorator]` work from a plugin in 6.7? | round-1 code lane (absence) | Core has 0 hits for `AsDecorator`; every core decoration is file-declared. Not asserted in the facts. |
+| Which marker says a service must not be decorated? | round-1 code lane | `@final Depend on the Abstract…` docblocks plus the PHPStan `DecorationPatternRule` / `NoRouteOverrideInDecoratorsRule`; build-time only, no runtime guard found. |
+| Does 6.7 still load XML service definitions without deprecation? | deep code pass Q3 | Yes — no deprecation in 6.7.13.0; the trigger exists only on trunk for 6.8. Both `services.xml` and `services.php` are correct for a 6.7 answer. |
+| Is decorator priority controllable in 6.7? | round-1 code lane | Yes — `decoration-priority` (core uses -1000 / -2000) and `decoration-on-invalid`, read by `XmlFileLoader` into `setDecoratedService()`. |
+
+## Evidence — documentation (claims)
+
+| claim | quote | citation | confirmed by code? |
+| --- | --- | --- | --- |
+| Decoration is registered in `services.php` using `decorate()` plus a `service('.inner')` argument | "Register both the original service and the decorator in `services.php`. Use the `decorate` method… The `.inner` reference keeps the original service available inside the decorator." | `adjusting-service.md:26` | Partly — the mechanism is confirmed (`DecorateTrait.php:28-33`, `DecoratorServicePass.php:123-128`), but `services.php` is not required in 6.7: XML works and is undeprecated (`Framework/Bundle.php:212-231`) |
+| Concrete PHP-config form of a decoration registration | `$services->set(ExampleServiceDecorator::class)->decorate(ExampleService::class)->args([service('.inner')]);` | `adjusting-service.md:45-47` | Yes, as one valid form — `Framework/DependencyInjection/webhook.php:57-62` uses the explicit `.inner` id |
+| Decoratable services expose an abstract class rather than an interface, providing the `getDecorated()` chain | "Shopware services that are designed for decoration often expose an abstract class as their contract instead of a PHP interface." | `adjusting-service.md:12` | Yes — `Checkout/Cart/AbstractRuleLoader.php:10-15` |
+| The abstract contract must declare `getDecorated()` returning its own type; the core implementation throws `DecorationPatternException` | "The abstract class must include a `getDecorated()` method returning its own type." | `adjusting-service.md:51` | Yes — `Checkout/Cart/RuleLoader.php:30-33` |
+| Decoration rules for core services (abstract not `@internal`/`@final`, no extra public functions, no event subscribers) | "The core service has to throw a `DecorationPatternException`…" | `decorator-pattern.md:25-29` | Partly — enforced at build time by PHPStan; no runtime guard found |
+| The rules are enforced by `DecorationPatternRule` | "These rules are enforced by the `…\DecorationPatternRule` class." | `decorator-pattern.md:31` | Yes — `DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:62-80` |
+| A decorator that does not call the inner service silently discards the rest of the chain, with no runtime warning | "A decorator that does not call the inner service silently discards everything the rest of the chain contributes…" | `adjusting-service.md:140` | No code finding either way — not admitted as a fact |
+| Type hint the abstract class, never the concrete implementation | "Type hinting the concrete class means your service is no longer part of the decoration chain…" | `adjusting-service.md:159` | Yes, in intent — core's `@final Depend on the Abstract…` docblocks direct extensions at the abstract class (`Checkout/Cart/CachedRuleLoader.php:10-12`) |
+| The chain can be inspected with `bin/console debug:container --show-arguments <service-id>` | "…or run `bin/console debug:container --show-arguments <service-id>`." | `adjusting-service.md:150` | Not checked by any lane — not admitted as a fact |
+| Adding even an optional parameter forces every decorator to be adjusted | "…a plugin cannot satisfy the old and the new signature at the same time." | `adjusting-service.md:154` | Not checked — maintenance context only |
+| Decoration is the only option where no extension point is available | "Decoration still works and is still the only option where no extension point is available…" | `extension-vs-events.md:208` | Yes — only 22 core classes extend `Extension`; decoration is the mechanism everywhere else |
+
+## Doc/code divergence
+
+What the documentation asserts and what the code shows. A recorded finding, not a defect report —
+this skill does not fix the docs or the wiki.
+
+| docs claim | code shows | citation |
+| --- | --- | --- |
+| `adjusting-service.md:26,45-47` presents `services.php` with `->decorate()` + `service('.inner')` as *the* registration form, with no version note. | Both forms are valid in 6.7 and XML is still the core and scaffolding idiom: `Bundle::registerContainerFile()` registers XML, YAML and PHP loaders and emits no deprecation for XML in 6.7.13.0; core uses `decorates=` in XML 34 times and the scaffolding command generates `src/Resources/config/services.xml`. The XML deprecation exists only on trunk for 6.8. | `Framework/Bundle.php:212-231`; `Framework/Plugin/Command/Scaffolding/ScaffoldingCollector.php:57-60`; trunk `src/Core/Framework/Bundle.php` |
+| The ADR and issue #13072 read as if plugin XML is already deprecated. | No `trigger_deprecation` / `Feature::triggerDeprecationOrThrow` anywhere in `registerContainerFile()` at 6.7.13.0. | `Framework/Bundle.php:212-231` |
+| `adjusting-service.md:10` says prefer decoration to change how a service behaves, while the same page (162-166) and `extension-vs-events.md:208,217` say prefer an extension point wherever one exists. | Code settles the ordering: where an extension point exists a `.pre` listener can replace the operation outright; only 22 core classes have one, so decoration is correct and necessary everywhere else. | `Framework/Extensions/ExtensionDispatcher.php:52-77`; grep `extends Extension` → 22 files |
+| The 2020 ADR states the abstract class must implement the interface for backward compatibility; the current guide says abstract class *instead of* an interface. | Core 6.7 publishes bare abstract classes with an abstract `getDecorated()` and no interface. | `Checkout/Cart/AbstractRuleLoader.php:10-15` |
+| Community #2845 reports decoration silently having no effect when the target is not a resolved container service. | In 6.7 a missing target throws `ServiceNotFoundException` at compile time and the routes in question are public container services; the silent variant is not reachable for them. | `vendor/symfony/dependency-injection/Compiler/DecoratorServicePass.php:81-93`; `Content/DependencyInjection/product.xml:411-431` |
+
+## Change log
+
+| old fact (verbatim) | action | why |
+| --- | --- | --- |
+| Register the decorator in `services.php` with `->decorate(ExampleService::class)` and inject the original as `service('.inner')`. | replaced | Stated only the PHP-config form as if it were required. Code shows `Bundle::registerContainerFile()` loads XML, YAML and PHP alike with no deprecation in 6.7.13.0, core itself uses XML 34 times and the 6.7 scaffolding generates `services.xml`; the XML deprecation is trunk/6.8 only. The new fact 2 names the mechanism (target id + `<own id>.inner`, `decoration-priority`) and records that both forms work. |
+| Constructors must type-hint the abstract class, never the concrete implementation, or the decoration chain is bypassed; a decorator that does not delegate to the inner service silently discards the rest of the chain. Inspect the chain with `bin/console debug:container --show-arguments <service-id>`. | replaced | The abstract-class type hint is kept (folded into fact 3, backed by `Checkout/Cart/AbstractRuleLoader.php:10-15` and the `@final Depend on the Abstract…` docblocks). The "silently discards the rest of the chain" clause and the `debug:container` tip are unconfirmed doc claims that no lane checked, and the only silence-related claim the code did settle points the other way — a missing decoration target throws at compile time. |
+| — | added | New fact 1: extension points. 6.7 ships `Extension` + `ExtensionDispatcher`; a `.pre` listener that sets `$result` and stops propagation replaces the core operation, and core's own `PromotionRedemptionLocker` registers with a plain `kernel.event_subscriber`. Load-bearing for a query whose premise is "there is no event", and bounded by the code finding that only 22 core classes have an extension point. |
+| — | added | New fact 3 gains the compile-time guarantee: `DecoratorServicePass` throws `ServiceNotFoundException` for a non-existent target unless `ignore`/`null` on invalid reference was chosen, plus the `NoRouteOverrideInDecoratorsRule` prohibition on `#[Route]` in a decorator. |

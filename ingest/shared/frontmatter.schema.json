@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://execuro.dev/schemas/shopware-llm-wiki/page-frontmatter.json",
+  "title": "Platform layer page frontmatter",
+  "description": "Reference schema for wiki/platform/**/*.md frontmatter (design spec, 'Page frontmatter'). ingest/platform/pages.ts and ingest/platform/lint.ts validate structurally against these rules without a JSON-Schema engine dependency; this file is the documented source of truth for that logic.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "docType", "version", "versions", "sourceUrl", "sourceHash", "keywords", "summary", "lastBuilt"],
+  "properties": {
+    "id": { "type": "string", "maxLength": 512, "pattern": "^platform/(dev/(6\\.5|6\\.6|6\\.7)|func|hubs)/.+\\.md$" },
+    "title": { "type": "string", "maxLength": 512 },
+    "docType": { "type": "string", "enum": ["developer", "functional"] },
+    "version": { "type": "string", "enum": ["6.5", "6.6", "6.7"] },
+    "versions": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["6.5", "6.6", "6.7"] } },
+    "sourceUrl": { "type": "string", "format": "uri", "maxLength": 512, "pattern": "^https://(developer|docs)\\.shopware\\.com/" },
+    "sourceUrls": { "type": "object", "additionalProperties": { "type": "string", "format": "uri", "maxLength": 512 } },
+    "sourceHash": { "type": "string", "maxLength": 128 },
+    "keywords": { "type": "array", "minItems": 8, "maxItems": 15, "items": { "type": "string", "maxLength": 128 } },
+    "summary": { "type": "string", "maxLength": 160 },
+    "lastBuilt": { "type": "string", "format": "date" },
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "range": { "type": "string", "maxLength": 128 },
+        "swMin": { "type": ["string", "null"] },
+        "swMax": { "type": ["string", "null"] },
+        "current": { "type": "boolean" }
+      },
+      "required": ["range", "swMin", "swMax", "current"]
+    },
+    "part": { "type": "string", "pattern": "^\\d+ of \\d+$" },
+    "relatedPages": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "type": "string", "maxLength": 512, "pattern": "^platform/(dev/(6\\.5|6\\.6|6\\.7)|func|hubs)/.+\\.md$" }
+    },
+    "supersedes": { "type": ["string", "null"], "maxLength": 512 },
+    "supersededBy": { "type": ["string", "null"], "maxLength": 512 }
+  },
+  "$comment": "Hub frontmatter differs: { id, title, summary, keywords, members: string[], lastBuilt }, no docType/version/versions/sourceUrl/sourceHash — validated separately by ingest/platform/hubs.ts. Guideline frontmatter (platform/guidelines/<version>/<file>.md) differs too: { id, title, docType: \"guideline\", version, summary, keywords, sources: [{url, hash}], codeVersion, lastBuilt }, no versions/sourceUrl/sourceHash — validated separately by ingest/shared/frontmatterValidate.ts's validateGuidelineFrontmatter."
+}

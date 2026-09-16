@@ -1,0 +1,14 @@
+node_modules/
+# Root-relative build/cache state only: without the leading slash these would also swallow
+# same-named paths deeper in the tree (test/fixtures/ingest/platform/.cache/** is a tracked
+# fixture corpus, not a cache).
+/ingest/platform/.cache/
+/dist-ingest/
+*.log
+/.sources/
+
+# staged output of scripts/pack.mjs
+/dist-pack/
+
+# Test fixtures are always tracked, whatever they are named.
+!test/fixtures/**

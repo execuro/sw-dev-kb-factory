@@ -1,0 +1,18 @@
+{
+  "corpus": "wiki",
+  "corpora": {
+    "wiki": {
+      "root": "../wiki",
+      "developer": "platform/dev/6.7",
+      "merchant": "platform/func",
+      "entryPoints": ["platform/index.md"]
+    },
+    "docs": {
+      "root": "../.sources/docs",
+      "developer": "developer",
+      "merchant": "merchant/content/en/shopware-6",
+      "entryPoints": ["developer/index.md", "merchant/index.md"],
+      "project": false
+    }
+  }
+}
