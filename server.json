@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.execuro/sw-dev-knowledge-base-mcp",
+  "description": "Read-only stdio MCP server over a curated offline Shopware developer knowledge base (list_docs, grep_docs, read_doc, kb_status).",
+  "repository": {
+    "url": "https://github.com/execuro/sw-dev-kb-factory",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@execuro-sw-ecosystem/sw-dev-knowledge-base-mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
