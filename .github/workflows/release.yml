@@ -28,11 +28,16 @@ jobs:
       # Trusted publishing needs npm >= 11.5.1 and Node >= 22.14.0 (npm docs, "Trusted
       # publishers"). Node 22 here is the release toolchain only — it is independent of the
       # package's own engines.node >= 20, which is the range consumers are supported on.
+      # No `registry-url:` here, deliberately. It makes setup-node write an .npmrc containing
+      # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` (plus the legacy `always-auth`
+      # key). With no NODE_AUTH_TOKEN secret — and there is none, that is the point of OIDC —
+      # npm reads an empty token, attempts token auth and fails before it ever tries the OIDC
+      # exchange. The default registry is registry.npmjs.org anyway, and the staged manifest
+      # carries `publishConfig.access: public`.
       - uses: actions/setup-node@v4
         with:
           node-version: "22.14.0"
           cache: npm
-          registry-url: "https://registry.npmjs.org"
 
       - name: Ensure npm supports trusted publishing
         run: |
@@ -98,7 +103,17 @@ jobs:
           echo "TARBALL=$tarball" >> "$GITHUB_ENV"
 
       - name: Publish to npm (OIDC trusted publishing)
-        run: npm publish "$TARBALL" --provenance --access public
+        run: |
+          # An .npmrc auth line silently disables the OIDC path, so surface one rather than
+          # letting `npm publish` fail with a bare auth error.
+          for f in .npmrc "$HOME/.npmrc"; do
+            if [ -f "$f" ] && grep -q '_authToken' "$f"; then
+              echo "::error::$f sets _authToken; npm will use token auth and never attempt OIDC trusted publishing"
+              exit 1
+            fi
+          done
+          echo "id-token permission present: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
+          npm publish "$TARBALL" --provenance --access public
 
       # The MCP Registry lists this server; it stores metadata only, never the artifact, so it
       # must run AFTER the npm publish above — the registry validates that the npm package it
