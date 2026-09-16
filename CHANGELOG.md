@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-16
+
+### Fixed
+
+- The tracked bundle `dist/server.js` was rebuilt after v0.1.4 was tagged, so the tag's tree and
+  the repository disagreed on the bundle. This release ships the rebuilt bundle. No runtime
+  change from 0.1.4.
+
 ## [0.1.4] - 2026-09-16
 
 ### Fixed
