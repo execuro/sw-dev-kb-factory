@@ -146,6 +146,24 @@ jobs:
           fi
           exit 1
 
+      # The npm publish above returns before the version is served by registry.npmjs.org, and
+      # the MCP Registry validates that the npm version exists before it will accept the entry.
+      # Without this wait the registry step loses that race and fails a release whose npm publish
+      # actually succeeded. Bounded, so a genuinely missing version still fails the job.
+      - name: Wait for npm to serve this version
+        run: |
+          pkg="$(node -p "require('./package.json').name")"
+          url="https://registry.npmjs.org/$pkg/$RELEASE_VERSION"
+          for i in $(seq 1 60); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$url")" = "200" ]; then
+              echo "$pkg@$RELEASE_VERSION is served by npm (after $((i*10))s)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$pkg@$RELEASE_VERSION did not appear on npm within 10 minutes"
+          exit 1
+
       # The MCP Registry lists this server; it stores metadata only, never the artifact, so it
       # must run AFTER the npm publish above — the registry validates that the npm package it
       # points at exists and that the package's own `mcpName` matches server.json's `name`.
