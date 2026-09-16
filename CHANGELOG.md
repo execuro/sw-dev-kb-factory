@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-16
+
+### Fixed
+
+- Release automation only: the workflow could not publish. `actions/setup-node`'s `registry-url`
+  wrote an `.npmrc` expecting an `NPM_TOKEN` that OIDC trusted publishing deliberately does not
+  use, so npm attempted token auth instead of the OIDC exchange. The pack step's JSON result was
+  also captured together with npm's own banner, making it unparseable.
+- `server.json`'s description exceeded the registry's 100-character limit, which rejected the
+  registry submission with a 422.
+
+No runtime change from 0.1.1; 0.1.1 was never published.
+
 ## [0.1.1] - 2026-09-16
 
 ### Fixed
