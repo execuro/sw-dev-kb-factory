@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-16
+
+### Fixed
+
+- Release automation only: `npm publish` returns before registry.npmjs.org serves the new
+  version, so the MCP Registry submission that follows it lost that race and failed a release
+  whose npm publish had actually succeeded. The workflow now waits, bounded to 10 minutes, for
+  npm to serve the version before submitting to the registry. No runtime change from 0.1.3.
+
 ## [0.1.3] - 2026-09-16
 
 ### Fixed
