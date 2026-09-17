@@ -7,7 +7,7 @@
  * with `validateGuidelineFrontmatter`, a guideline-shaped adaptation of `pages.ts`'s
  * `## Code check` gate, and the per-file size cap.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadPlatformConfig, wikiRootFrom } from "../shared/config.js";
 import { paths, type Paths } from "../../src/paths.js";
@@ -18,7 +18,8 @@ import { checkOutputHygiene, checkLeakedLocalState, checkPurity } from "../share
 import { wikiLinkTargets } from "../shared/links.js";
 import { matchesAny } from "../shared/glob.js";
 import { sha256 } from "../shared/hash.js";
-import { slugify } from "../../src/wiki/fs.js";
+import { slugify, isExpertTagLine, firstBodyLineIndex } from "../../src/wiki/fs.js";
+import { extractExpertSections, expertBytes, spliceExpertSections, EXPERT_TAG_LINE } from "../shared/expertSections.js";
 import { citationCandidates, containsWord } from "./pages.js";
 import {
   checkoutRootFor,
@@ -373,6 +374,13 @@ export interface GuidelineWorkItem extends WorkItem {
   codeRoot: { mode: "vendor" | "checkout"; packageRoots: PackageRoots; codeVersion: string };
   surfaceFiles?: { file: string; wikiPath: string; scope: string }[];
   codeCheck: { flags: FlagResult };
+  /** Expert-owned sections of the existing wiki file (`> [expert]` tag, ingest/shared/expertSections.ts):
+   *  the writer must not write these anchors; `--ingest` splices them back in verbatim. */
+  expert?: { anchors: string[]; bytes: number };
+  /** Bytes the writer's own output may take: the file cap and the base+surface pair cap (minus
+   *  the partner file already on disk), minus `expert.bytes`. Advisory for the writer; the hard
+   *  caps at ingest and lint count the spliced file. */
+  sizeBudget?: number;
   frontmatter?: { id: string; docType: "guideline"; version: string; sources: GuidelineSources; codeVersion: string };
 }
 
@@ -446,6 +454,7 @@ function runPrepare(config: PlatformConfig, state: IngestionState, flags: CliFla
         retry,
         flags.all === true,
         codeCacheDir,
+        config.sizeLimits,
       );
       if (item) items.push(item);
       if (skippedKey) skipped.push(skippedKey);
@@ -513,6 +522,7 @@ export function prepareOneItem(
   retry: boolean,
   all: boolean,
   codeCacheDir: string,
+  sizeLimits?: Pick<PlatformConfig["sizeLimits"], "guidelineFileMaxBytes" | "guidelinePairMaxBytes">,
 ): { item?: GuidelineWorkItem; skippedKey?: string; failedKey?: string } {
   const key = guidelineStateKey(version, cf.file);
   const stateEntry = state.guidelines.files[key];
@@ -570,6 +580,10 @@ export function prepareOneItem(
 
   const sources = computeCompactSources(curatedFileSourceInputs(cf, version), version, wikiRoot, ctx.packageRoots);
 
+  const expertSections = outputExists ? extractExpertSections(readFileSync(resolve(wikiRoot, wikiPath), "utf8")) : [];
+  const expert = { anchors: expertSections.map((s) => s.anchor), bytes: expertBytes(expertSections) };
+  const sizeBudget = sizeLimits ? guidelineSizeBudget(sizeLimits, guidelinesCfg, version, cf, wikiRoot, expert.bytes) : undefined;
+
   return {
     item: {
       path: wikiPath,
@@ -584,6 +598,8 @@ export function prepareOneItem(
       codeRoot: { mode: ctx.root.mode, packageRoots: ctx.root.packageRoots, codeVersion: ctx.root.codeVersion },
       surfaceFiles,
       codeCheck: { flags },
+      expert,
+      ...(sizeBudget !== undefined ? { sizeBudget } : {}),
       frontmatter: {
         id: wikiPath,
         docType: "guideline",
@@ -595,6 +611,54 @@ export function prepareOneItem(
   };
 }
 
+/**
+ * Advisory byte budget for the writer's own output of `cf`: the smaller of the file cap and the
+ * pair cap minus the partner file(s) already on disk (a surface's base; a base's largest
+ * surface), minus the bytes its expert sections will take once spliced back in. Never negative.
+ */
+export function guidelineSizeBudget(
+  sizeLimits: Pick<PlatformConfig["sizeLimits"], "guidelineFileMaxBytes" | "guidelinePairMaxBytes">,
+  guidelinesCfg: NonNullable<PlatformConfig["guidelines"]>,
+  version: string,
+  cf: GuidelineCuratedFile,
+  wikiRoot: string,
+  expertBytesTotal: number,
+): number {
+  const sizeOf = (file: string): number => {
+    const abs = resolve(wikiRoot, "platform/guidelines", version, file);
+    return existsSync(abs) ? fileSize(abs) : 0;
+  };
+  const partners = cf.base === null ? guidelinesCfg.curatedFiles.filter((f) => f.base === cf.file).map((f) => f.file) : [cf.base];
+  const partner = partners.reduce((max, f) => Math.max(max, sizeOf(f)), 0);
+  const budget = Math.min(sizeLimits.guidelineFileMaxBytes, sizeLimits.guidelinePairMaxBytes - partner) - expertBytesTotal;
+  return Math.max(0, budget);
+}
+
+/**
+ * The `--ingest` gate for one guideline output: the expert sections of the existing wiki file
+ * are spliced into the staged output first (workitems.ts moves the staged file only after this
+ * returns ok), then `validateGuidelineOutput` runs on the result, so every cap counts the
+ * expert bytes. A writer output that itself carries the tag, or a section whose anchor an
+ * expert section owns, fails here — those sections are never the writer's to write.
+ */
+export function ingestGuidelineOutput(item: GuidelineWorkItem, outAbsPath: string, config: PlatformConfig, wikiRoot: string): { ok: true } | { ok: false; reason: string } {
+  const staged = readFileSync(outAbsPath, "utf8");
+  if (extractExpertSections(staged).length > 0) {
+    return { ok: false, reason: `output carries a "${EXPERT_TAG_LINE}" tag line — only hand-written sections of the wiki file carry it, never a writer output` };
+  }
+  const existingAbs = resolve(wikiRoot, item.wikiPath);
+  const sections = existsSync(existingAbs) ? extractExpertSections(readFileSync(existingAbs, "utf8")) : [];
+  if (sections.length > 0) {
+    const owned = new Set(sections.map((s) => s.anchor));
+    const clash = h2Headings(parsePage(staged).body).find((title) => owned.has(slugify(title)));
+    if (clash !== undefined) {
+      return { ok: false, reason: `## ${clash}: this section is expert-owned in the existing wiki file (${EXPERT_TAG_LINE}) — the writer must not write it` };
+    }
+    writeFileSync(outAbsPath, spliceExpertSections(staged, sections), "utf8");
+  }
+  return validateGuidelineOutput(item, outAbsPath, config, wikiRoot);
+}
+
 // --------------------------------------------------------------------------------
 // ingest
 // --------------------------------------------------------------------------------
@@ -604,7 +668,7 @@ function runIngest(config: PlatformConfig, state: IngestionState, flags: CliFlag
   const currentPromptHash = promptHash(PROMPT_PATH);
   const outPhaseDir = resolve(cacheDirs(LAYER_DIR).outDir, "guidelines");
 
-  const outcome = ingestBatches(LAYER_DIR, wikiRoot, "guidelines", (item, outAbsPath) => validateGuidelineOutput(item as GuidelineWorkItem, outAbsPath, config, wikiRoot), {
+  const outcome = ingestBatches(LAYER_DIR, wikiRoot, "guidelines", (item, outAbsPath) => ingestGuidelineOutput(item as GuidelineWorkItem, outAbsPath, config, wikiRoot), {
     batches: flags.batches,
   });
   const skipped = listAllFiles(outPhaseDir).length;
@@ -696,6 +760,9 @@ function guidelineSectionMissingReadMore(bodyLines: string[], headings: RealHead
     const { title, index } = headings[i];
     if (title === "Index" || GUIDELINE_CODE_CHECK_TITLE_RE.test(title)) continue;
     const end = i + 1 < headings.length ? headings[i + 1].index : bodyLines.length;
+    // An expert section (`> [expert]` first line) is self-contained by design: no Read more: required.
+    const first = firstBodyLineIndex(bodyLines, index, end);
+    if (first >= 0 && isExpertTagLine(bodyLines[first])) continue;
     const section = bodyLines.slice(index + 1, end).join("\n");
     if (!GUIDELINE_READ_MORE_RE.test(section)) {
       return `## ${title}: section has no "Read more: <path>" line (required in every rule section)`;

@@ -8,18 +8,21 @@
  */
 import type { DocSource, Entry, GrepArgs, GrepResult, LayerStatus, ListArgs, ListResult, Match, ReadArgs, ReadResult } from "../../types.js";
 import { MAX_RESPONSE_BYTES } from "../../types.js";
-import { buildMatcher, grepLines, headings, joinRange, sectionRange, splitLines } from "../../wiki/fs.js";
+import { buildMatcher, grepLines, headings, isExpertTagLine, joinRange, sectionRange, splitLines } from "../../wiki/fs.js";
 import { parseFrontmatter } from "../../wiki/frontmatter.js";
 import type { FileStamp } from "../platform/wiki-source.js";
 
 type MergeMode = "override" | "extend" | "waive";
-type Tag = "platform" | "project";
+/** `expert` = a platform section hand-written by a domain expert (`> [expert]` first line in the
+ *  wiki file, preserved across regenerations); served as `[platform expert]`. */
+type Tag = "platform" | "expert" | "project";
 
 interface Section {
   anchor: string;
   headingLine: string;
-  /** Lines directly after the heading, up to (and not including) the next H2. */
+  /** Lines directly after the heading, up to (and not including) the next H2; an expert tag line is stripped. */
   bodyLines: string[];
+  expert: boolean;
 }
 
 interface SplitFile {
@@ -70,13 +73,25 @@ function h2Blocks(file: SplitFile): Section[] {
     const from = hs[i].line;
     let to = i + 1 < hs.length ? hs[i + 1].line - 1 : file.lines.length;
     while (to > from && file.lines[to - 1].trim() === "") to--;
-    out.push({ anchor: hs[i].slug, headingLine: file.lines[from - 1], bodyLines: file.lines.slice(from, to) });
+    const bodyLines = file.lines.slice(from, to);
+    // `> [expert]` as the first non-blank body line marks an expert section; the tag itself is
+    // replaced by the `[platform expert]` tag line the view renders.
+    const first = bodyLines.findIndex((l) => l.trim() !== "");
+    const expert = first >= 0 && isExpertTagLine(bodyLines[first]);
+    if (expert) bodyLines.splice(first, 1);
+    out.push({ anchor: hs[i].slug, headingLine: file.lines[from - 1], bodyLines, expert });
   }
   return out;
 }
 
 function tagLine(kind: Tag, mode: MergeMode | "addition" | null, path: string, anchor: string): string {
-  return kind === "platform" ? `> [platform] ${path}#${anchor}` : `> [project ${mode}] ${path}#${anchor}`;
+  if (kind === "platform") return `> [platform] ${path}#${anchor}`;
+  if (kind === "expert") return `> [platform expert] ${path}#${anchor}`;
+  return `> [project ${mode}] ${path}#${anchor}`;
+}
+
+function platformTag(section: Section, path: string): string {
+  return tagLine(section.expert ? "expert" : "platform", null, path, section.anchor);
 }
 
 function pushBlank(out: string[]): void {
@@ -105,7 +120,7 @@ function buildEffective(platformPath: string, projectPath: string, pf: string | 
 
   if (pj === null) {
     const side = splitFile(pf!);
-    const blocks = h2Blocks(side).map((section) => ({ section, tag: tagLine("platform", null, platformPath, section.anchor) }));
+    const blocks = h2Blocks(side).map((section) => ({ section, tag: platformTag(section, platformPath) }));
     return {
       frontmatter: side.data,
       raw: renderFile(side.fmLines, side.preambleLines, null, blocks),
@@ -160,11 +175,11 @@ function buildEffective(platformPath: string, projectPath: string, pf: string | 
     const proj = byAnchor.get(section.anchor);
     if (proj?.mode === "extend") {
       blocks.push({ section: proj.section, tag: tagLine("project", "extend", projectPath, proj.section.anchor) });
-      blocks.push({ section, tag: tagLine("platform", null, platformPath, section.anchor) });
+      blocks.push({ section, tag: platformTag(section, platformPath) });
     } else if (proj?.mode === "override" || proj?.mode === "waive") {
       blocks.push({ section: proj.section, tag: tagLine("project", proj.mode, projectPath, proj.section.anchor) });
     } else {
-      blocks.push({ section, tag: tagLine("platform", null, platformPath, section.anchor) });
+      blocks.push({ section, tag: platformTag(section, platformPath) });
     }
   }
   for (const section of additions) blocks.push({ section, tag: tagLine("project", "addition", projectPath, section.anchor) });

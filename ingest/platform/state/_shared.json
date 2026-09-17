@@ -1,6 +1,6 @@
 {
   "build": {
-    "lastBuilt": "2026-09-15"
+    "lastBuilt": "2026-09-17"
   },
   "guidelines": {
     "files": {
@@ -95,13 +95,13 @@
         "version": "6.6"
       },
       "6.6/storefront-code-guidelines.md": {
-        "builtHash": "96de5b3c1faee61192896d96e1ca3cfe0fd0f41866a85d468a0914697552d025",
+        "builtHash": "d1f0de19a107af11390b9ea9be0f73c52548962384fa2e749235ba100d56a0e3",
         "codeVersion": "6.6.10.24+87965325",
         "file": "storefront-code-guidelines.md",
         "guidelinePromptHash": "949cf8d9884daffb1f34ec20efb793b734b6b692332d56858d496b51b69e5807",
         "guidelineState": "ok",
-        "inputsHash": "fefdff776a0585cc65981ff2484d20e4be73e6caadec3690617a5d8d88de046d",
-        "lastBuilt": "2026-09-15",
+        "inputsHash": "3ae0d1031cafa40616e6eb1082f709eeab009a0d100d5a4b82b656fb7035aeed",
+        "lastBuilt": "2026-09-17",
         "version": "6.6"
       },
       "6.7/admin-code-guidelines.md": {
@@ -195,13 +195,13 @@
         "version": "6.7"
       },
       "6.7/storefront-code-guidelines.md": {
-        "builtHash": "7ba0c6152ec87aa20c796daddd026b6efeed99376bfb82790ab14e166f9ddf1d",
+        "builtHash": "a04f76434e09d79a40a7ee6fda75b9f013252b6e5d31ea60731728ce5cd899d5",
         "codeVersion": "6.7.13.0+3e5b9bc0",
         "file": "storefront-code-guidelines.md",
         "guidelinePromptHash": "949cf8d9884daffb1f34ec20efb793b734b6b692332d56858d496b51b69e5807",
         "guidelineState": "ok",
-        "inputsHash": "1f9841e81a4a27990edf9987550b8cfef9dbe0a5354cdbc5c74174b845aae0f2",
-        "lastBuilt": "2026-09-15",
+        "inputsHash": "0c93f0e81cab189cc33604a749e9e9aa70557f41f39b41b92a15c738fc6559f5",
+        "lastBuilt": "2026-09-17",
         "version": "6.7"
       }
     }

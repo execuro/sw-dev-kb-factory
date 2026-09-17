@@ -196,7 +196,7 @@ export function createServer(registry: Registry, corpusStatus: CorpusStatus): Mc
         "`section` cannot be combined with it, and a missing snapshot or unmapped path → empty result + notice. `citation` is always " +
         "empty for `source: true`: a snapshot has no wiki-root-relative path, so cite `source.sourceId`/`sourceHash` instead. " +
         "`guidelines/<version>/<file>` reads the effective guideline file — Shopware's rules with this project's own rules " +
-        "merged in by section; cite the `[platform …]`/`[project …]` tag path under each `##` heading, never the `guidelines/…` " +
+        "merged in by section; cite the `[platform …]`/`[platform expert …]`/`[project …]` tag path under each `##` heading, never the `guidelines/…` " +
         "path itself; `source: true` is not offered on it. " +
         UNTRUSTED,
       inputSchema: {

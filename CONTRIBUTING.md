@@ -64,9 +64,22 @@ annotation instead of failing.
 ## `wiki/` is generated
 
 Everything under `wiki/platform/` is written by the ingest pipeline (`kb-factory-ingest-platform-docs`
-skill, documented in `docs/producer-manual.md`) and must never be hand-edited, **with one exception**:
-`wiki/platform/index.md`, which `wiki:build` does not touch or regenerate. If a page is wrong, fix its
-source input or the writer prompt and re-run ingest — don't patch the generated file.
+skill, documented in `docs/producer-manual.md`) and must never be hand-edited, **with two exceptions**:
+
+- `wiki/platform/index.md`, which `wiki:build` does not touch or regenerate.
+- **Expert sections** in `wiki/platform/guidelines/<version>/*.md`: a `##` section whose first line
+  under the heading is `> [expert]` is hand-written by a domain expert. The guidelines phase never
+  rewrites it — `--prepare` tells the writer which anchors are expert-owned (and the byte budget left
+  for its own output), `--ingest` splices the sections back into the new file verbatim, and the
+  server serves them tagged `[platform expert]`. Rules for writing one: the tag is the first line
+  under a rule `##` (never `## Index` or `## Code check`), the section comes before `## Code check`,
+  it needs no `Read more:` line, links follow the usual `platform/…`/allowlisted-https rule, and its
+  bytes count toward the file and pair caps like any other section. Give it the same anchor as a
+  generated section to replace that section for good. After editing, run `wiki:build` (manifest
+  hashes) and `wiki:lint`; an expert edit never triggers a re-synthesis.
+
+If a page is wrong, fix its source input or the writer prompt and re-run ingest — don't patch the
+generated file.
 
 ## Where things live
 

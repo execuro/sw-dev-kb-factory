@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Added
+
+- **Expert sections in guideline files.** A `##` section of `wiki/platform/guidelines/<version>/*.md`
+  whose first line under the heading is `> [expert]` is hand-written by a domain expert and survives
+  regeneration: `wiki:guidelines --prepare` lists its anchors and bytes in the work item (`expert`,
+  `sizeBudget`), `--ingest` splices the sections back into the writer's output before the gates and
+  rejects a writer output that writes an expert-owned anchor or carries the tag, `wiki:lint` checks the
+  tag's placement, and the `guidelines/` view serves the section tagged `[platform expert]` with the
+  raw tag line stripped. Contract in `CONTRIBUTING.md` ("`wiki/` is generated").
+
 ## [0.1.5] - 2026-09-16
 
 ### Fixed

@@ -20,6 +20,8 @@ import {
   resolveGuidelineCodeContext,
   prepareOneItem,
   validateGuidelineOutput,
+  ingestGuidelineOutput,
+  guidelineSizeBudget,
   validateGuidelineCodeCheckSection,
   type GuidelineWorkItem,
   type GuidelineCodeContext,
@@ -398,9 +400,14 @@ lastBuilt: 2026-09-14
 `;
 }
 
-function runOneIngest(item: GuidelineWorkItem, body: string): { ok: boolean; reason?: string; wikiRoot: string; layerDir: string } {
+function runOneIngest(item: GuidelineWorkItem, body: string, existingWikiFile?: string): { ok: boolean; reason?: string; wikiRoot: string; layerDir: string } {
   const layerDir = tmpDir("kb-guidelines-layer-");
   const wikiRoot = tmpDir("kb-guidelines-wiki-out-");
+  if (existingWikiFile !== undefined) {
+    const abs = resolve(wikiRoot, item.wikiPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, existingWikiFile);
+  }
   const promptPath = resolve(layerDir, "prompts/guideline.md");
   mkdirSync(resolve(layerDir, "prompts"), { recursive: true });
   writeFileSync(promptPath, "prompt");
@@ -413,7 +420,7 @@ function runOneIngest(item: GuidelineWorkItem, body: string): { ok: boolean; rea
   const fullItem = { ...item, outputPath };
   writeBatches(layerDir, "guidelines", [fullItem], promptPath, 1);
 
-  const outcome = ingestBatches(layerDir, wikiRoot, "guidelines", (i, outAbsPath) => validateGuidelineOutput(i as GuidelineWorkItem, outAbsPath, CONFIG, wikiRoot));
+  const outcome = ingestBatches(layerDir, wikiRoot, "guidelines", (i, outAbsPath) => ingestGuidelineOutput(i as GuidelineWorkItem, outAbsPath, CONFIG, wikiRoot));
   if (outcome.ok.length === 1) return { ok: true, wikiRoot, layerDir };
   return { ok: false, reason: outcome.failed[0]?.reason, wikiRoot, layerDir };
 }
@@ -630,6 +637,116 @@ test("validateGuidelineOutput: accepts a well-formed base file and moves it into
   } finally {
     rmSync(result.wikiRoot, { recursive: true, force: true });
     rmSync(result.layerDir, { recursive: true, force: true });
+  }
+});
+
+// --------------------------------------------------------------------------------
+// expert sections (`> [expert]`) — preserved across ingest, never the writer's to write
+// --------------------------------------------------------------------------------
+
+const READ_MORE = "Read more: https://developer.shopware.com/docs/resources/guidelines/code/a.html";
+const EXPERT_SECTION = "## Twig chain\n> [expert]\n\n- Override the narrowest block.\n";
+
+test("ingestGuidelineOutput: expert sections of the existing wiki file are spliced into the writer output, after their former predecessor", () => {
+  const existing = goodFrontmatter() + "## Rule\n\nOld rule.\n\n" + READ_MORE + "\n\n" + EXPERT_SECTION + "\n## Other\n\nOld other.\n\n" + READ_MORE + "\n";
+  const writer = goodFrontmatter() + "## Rule\n\nNew rule.\n\n" + READ_MORE + "\n\n## Other\n\nNew other.\n\n" + READ_MORE + "\n";
+  const result = runOneIngest(baseItem(), writer, existing);
+  try {
+    assert.equal(result.ok, true, result.reason);
+    const landed = readFileSync(resolve(result.wikiRoot, "platform/guidelines/6.7/code-guidelines.md"), "utf8");
+    assert.match(landed, /## Rule\n\nNew rule\./, "writer text landed");
+    assert.match(landed, /## Twig chain\n> \[expert\]\n\n- Override the narrowest block\.\n\n## Other\n\nNew other\./, "expert section kept verbatim, after ## Rule, without a Read more: line");
+  } finally {
+    rmSync(result.wikiRoot, { recursive: true, force: true });
+    rmSync(result.layerDir, { recursive: true, force: true });
+  }
+});
+
+test("ingestGuidelineOutput: a writer output that writes an expert-owned anchor, or carries the tag itself, is rejected", () => {
+  const existing = goodFrontmatter() + "## Rule\n\nOld.\n\n" + READ_MORE + "\n\n" + EXPERT_SECTION;
+  const clashing = goodFrontmatter() + "## Rule\n\nNew.\n\n" + READ_MORE + "\n\n## Twig chain\n\nWriter's take.\n\n" + READ_MORE + "\n";
+  const r1 = runOneIngest(baseItem(), clashing, existing);
+  try {
+    assert.equal(r1.ok, false);
+    assert.match(r1.reason ?? "", /## Twig chain: this section is expert-owned/);
+  } finally {
+    rmSync(r1.wikiRoot, { recursive: true, force: true });
+    rmSync(r1.layerDir, { recursive: true, force: true });
+  }
+  const tagged = goodFrontmatter() + "## Rule\n> [expert]\n\nNew.\n";
+  const r2 = runOneIngest(baseItem(), tagged);
+  try {
+    assert.equal(r2.ok, false);
+    assert.match(r2.reason ?? "", /carries a "> \[expert\]" tag line/);
+  } finally {
+    rmSync(r2.wikiRoot, { recursive: true, force: true });
+    rmSync(r2.layerDir, { recursive: true, force: true });
+  }
+});
+
+test("ingestGuidelineOutput: the spliced file is what the caps see — expert bytes can push an otherwise fine output over the file cap", () => {
+  const existing = goodFrontmatter() + "## Rule\n\nOld.\n\n" + READ_MORE + "\n\n## Big\n> [expert]\n\n" + "- x\n".repeat(120);
+  const writer = goodFrontmatter() + "## Rule\n\nNew.\n\n" + READ_MORE + "\n";
+  const result = runOneIngest(baseItem(), writer, existing);
+  try {
+    assert.equal(result.ok, false);
+    assert.match(result.reason ?? "", /guideline exceeds 800 bytes/);
+  } finally {
+    rmSync(result.wikiRoot, { recursive: true, force: true });
+    rmSync(result.layerDir, { recursive: true, force: true });
+  }
+});
+
+test("guidelineSizeBudget: min(file cap, pair cap − partner on disk) − expert bytes, floored at 0; a base's partner is its largest surface", () => {
+  const wikiRoot = tmpDir("kb-guidelines-budget-");
+  try {
+    const limits = { guidelineFileMaxBytes: 800, guidelinePairMaxBytes: 1500 };
+    const base: GuidelineCuratedFile = { file: "code-guidelines.md", base: null, scope: "s", sourceInputs: [] };
+    const surfaceA: GuidelineCuratedFile = { file: "be-code-guidelines.md", base: "code-guidelines.md", scope: "s", sourceInputs: [] };
+    const surfaceB: GuidelineCuratedFile = { file: "fe-code-guidelines.md", base: "code-guidelines.md", scope: "s", sourceInputs: [] };
+    const cfg = fakeGuidelinesCfg([base, surfaceA, surfaceB]);
+    const dir = resolve(wikiRoot, "platform/guidelines/6.7");
+    mkdirSync(dir, { recursive: true });
+    // nothing on disk: budget is the file cap minus expert bytes
+    assert.equal(guidelineSizeBudget(limits, cfg, "6.7", surfaceA, wikiRoot, 100), 700);
+    writeFileSync(resolve(dir, "code-guidelines.md"), "x".repeat(900));
+    // surface: pair cap 1500 − base 900 = 600 < file cap 800; minus 50 expert bytes
+    assert.equal(guidelineSizeBudget(limits, cfg, "6.7", surfaceA, wikiRoot, 50), 550);
+    writeFileSync(resolve(dir, "be-code-guidelines.md"), "x".repeat(300));
+    writeFileSync(resolve(dir, "fe-code-guidelines.md"), "x".repeat(1000));
+    // base: largest surface (1000) → 500, then − expert
+    assert.equal(guidelineSizeBudget(limits, cfg, "6.7", base, wikiRoot, 0), 500);
+    assert.equal(guidelineSizeBudget(limits, cfg, "6.7", base, wikiRoot, 900), 0, "never negative");
+  } finally {
+    rmSync(wikiRoot, { recursive: true, force: true });
+  }
+});
+
+test("prepareOneItem: the work item carries the existing file's expert anchors/bytes and a sizeBudget when size limits are passed", () => {
+  const version = "9.9-prepare-expert-test";
+  const cleanup = writeDeveloperStateFixture(version, {
+    "resources/guidelines/code/a.md": { hash: "h1", sourceUrl: "https://developer.shopware.com/docs/resources/guidelines/code/a.html" },
+  });
+  const codeCacheDir = tmpDir("kb-guidelines-prepare-expert-cache-");
+  const wikiRoot = tmpDir("kb-guidelines-prepare-expert-wiki-");
+  try {
+    const cf: GuidelineCuratedFile = { file: "code-guidelines.md", base: null, scope: "s", sourceInputs: ["docs:resources/guidelines/code/a.md"] };
+    const { resolved, missing } = resolveSourceInputs(cf.sourceInputs, version, wikiRoot, fakeCtx().packageRoots);
+    const abs = resolve(wikiRoot, "platform/guidelines", version, "code-guidelines.md");
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, goodFrontmatter() + "## Rule\n\nOld.\n\n" + EXPERT_SECTION);
+    const limits = { guidelineFileMaxBytes: 800, guidelinePairMaxBytes: 1500 };
+    const { item } = prepareOneItem(fakeGuidelinesCfg([cf]), version, cf, fakeCtx("vendor"), resolved, missing, wikiRoot, fakeState(), "prompt-hash-1", false, true, codeCacheDir, limits);
+    assert.ok(item, "item expected (--all)");
+    assert.deepEqual(item.expert?.anchors, ["twig-chain"]);
+    assert.equal(item.expert?.bytes, Buffer.byteLength(EXPERT_SECTION));
+    assert.equal(item.sizeBudget, 800 - Buffer.byteLength(EXPERT_SECTION));
+    const { item: plain } = prepareOneItem(fakeGuidelinesCfg([cf]), version, cf, fakeCtx("vendor"), resolved, missing, wikiRoot, fakeState(), "prompt-hash-1", false, true, codeCacheDir);
+    assert.equal(plain?.sizeBudget, undefined, "no size limits passed: no budget");
+  } finally {
+    cleanup();
+    rmSync(codeCacheDir, { recursive: true, force: true });
+    rmSync(wikiRoot, { recursive: true, force: true });
   }
 });
 

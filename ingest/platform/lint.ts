@@ -14,6 +14,7 @@ import { extractSections, unverifiedIdentifiers } from "./pages.js";
 import { isSynonymDataLine } from "./synonyms.js";
 import { checkOutputHygiene, checkLeakedLocalState, checkPurity, isDocPagePath } from "../shared/hygiene.js";
 import { checkLinks, wikiLinkTargets } from "../shared/links.js";
+import { lintExpertSections } from "../shared/expertSections.js";
 import { cacheDirs, promptHash } from "../shared/workitems.js";
 import { sha256 } from "../shared/hash.js";
 import { resolveVendorRoot, resolveCodeIndexContext, flagIdentifiers, type CodeIndex } from "./codeIndex.js";
@@ -414,6 +415,9 @@ export function lintGuidelines(config: PlatformConfig, wikiRoot: string, report:
         continue;
       }
       for (const issue of validateGuidelineFrontmatter(frontmatter)) report.errors.push(`${path}: ${issue.field} ${issue.message}`);
+      // `> [expert]` sections (ingest/shared/expertSections.ts): tag placement only — their bytes
+      // count toward the file and pair caps below like any other section.
+      for (const issue of lintExpertSections(body)) report.errors.push(`${path}: ${issue}`);
       if (size > config.sizeLimits.guidelineFileMaxBytes) {
         report.errors.push(`${path}: ${size} bytes exceeds the ${config.sizeLimits.guidelineFileMaxBytes}-byte guideline file cap`);
       }

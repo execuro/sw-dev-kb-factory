@@ -1,7 +1,7 @@
 /** Project-wiki root resolution/validation and the `guidelines/` view. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { Registry, resolveProjectWikiRoot, validateProjectRoot, validateWikiRoot } from "../src/registry.js";
@@ -220,6 +220,31 @@ test("guidelines/ view: project guidelines are unversioned — the same project 
 });
 
 // ------------------------------------------- no project, explicit failures, cache --
+
+test("guidelines/ view: a > [expert] platform section is served as [platform expert] with the tag line stripped; a project override on it still wins", async () => {
+  const wiki = copyFixture();
+  try {
+    const code = join(wiki, "platform", "guidelines", "6.7", "code-guidelines.md");
+    appendFileSync(code, "\n## Twig chain\n> [expert] reviewed\n\n- Override the narrowest block.\n");
+    const be = join(wiki, "platform", "guidelines", "6.7", "be-code-guidelines.md");
+    // the platform fixture's "## Testing" becomes expert-owned; the project fixture declares testing: override
+    writeFileSync(be, readFileSync(be, "utf8").replace("## Testing\n", "## Testing\n> [expert]\n"));
+
+    const r = Registry.createDefault(wiki, { project: { root: projectWikiFixtureRoot } });
+    const platformOnly = await r.read({ path: "guidelines/6.7/code-guidelines.md" });
+    assert.match(platformOnly.raw, /## Twig chain\n> \[platform expert\] platform\/guidelines\/6\.7\/code-guidelines\.md#twig-chain\n\n- Override the narrowest block\./);
+    assert.ok(!platformOnly.raw.includes("> [expert]"), "the raw tag line is not served");
+    assert.match(platformOnly.raw, /## General principles\n> \[platform\] /, "untagged sections stay [platform]");
+    const hits = await r.grep({ path: "guidelines/6.7", pattern: "narrowest block" });
+    assert.equal(hits.matches?.length, 1);
+
+    const merged = await r.read({ path: BE });
+    assert.match(merged.raw, /## Testing\n> \[project override\]/);
+    assert.ok(!merged.raw.includes("[platform expert]"), "the overridden expert section is gone");
+  } finally {
+    rmSync(wiki, { recursive: true, force: true });
+  }
+});
 
 test("guidelines/ view without any project wiki: platform files are returned, tagged, with no notices", async () => {
   const r = Registry.createDefault(fixtureRoot);

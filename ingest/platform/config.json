@@ -273,10 +273,11 @@
       {
         "file": "storefront-code-guidelines.md",
         "base": "code-guidelines.md",
-        "scope": "sw_extends inheritance; Controller -> PageLoader -> Page; JS plugin system; cache-safe, accessible, SEO-correct rendering",
+        "scope": "Controller -> PageLoader -> Page; route defaults and HTTP cache; JS plugin system; styling, assets and snippets; cache-safe, accessible, SEO-correct rendering (Twig template inheritance, override placement and version traps are expert-owned sections, not yours to write)",
         "sourceInputs": [
           "docs:resources/guidelines/code/storefront-controller.md",
           "wiki:platform/dev/{v}/guides/plugins/plugins/storefront/**",
+          "wiki:platform/dev/{v}/guides/plugins/themes/**",
           "docs:resources/references/adr/2021-08-10-storefront-coding-standards.md"
         ]
       },

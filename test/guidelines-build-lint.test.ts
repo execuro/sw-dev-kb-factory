@@ -154,6 +154,24 @@ test("lintGuidelines: oversize base+surface pair errors", () => {
   }
 });
 
+test("lintGuidelines: a well-placed > [expert] section passes; a stray or misplaced tag errors with the file path", () => {
+  const wikiRoot = tmpDir("kb-guidelines-lint-");
+  try {
+    writeGuideline(wikiRoot, "6.7", "architecture-guidelines.md", "## Index\n\n[x](platform/guidelines/6.7/be-architecture-guidelines.md)");
+    writeGuideline(wikiRoot, "6.7", "be-architecture-guidelines.md", "## BE\n\nx\n\n## Twig\n> [expert]\n\n- rule");
+    writeGuideline(wikiRoot, "6.7", "code-guidelines.md", "## Index\n> [expert]\n\nC.");
+    writeGuideline(wikiRoot, "6.7", "qa-guidelines.md", "## Index\n\nQ.\n> [expert]");
+    const config = baseConfig(CURATED);
+    const report: LintReport = { errors: [], warnings: [] };
+    lintGuidelines(config, wikiRoot, report);
+    assert.ok(!report.errors.some((e) => e.includes("be-architecture-guidelines.md")), report.errors.join("\n"));
+    assert.ok(report.errors.some((e) => e.startsWith("platform/guidelines/6.7/code-guidelines.md: ## Index:") && e.includes("not allowed")));
+    assert.ok(report.errors.some((e) => e.startsWith("platform/guidelines/6.7/qa-guidelines.md: ## Index:") && e.includes("first line under the heading")));
+  } finally {
+    rmSync(wikiRoot, { recursive: true, force: true });
+  }
+});
+
 test("lintGuidelines: unknown file name errors", () => {
   const wikiRoot = tmpDir("kb-guidelines-lint-");
   try {

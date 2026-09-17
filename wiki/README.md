@@ -118,7 +118,9 @@ A `guideline` page (`platform/guidelines/<version>/*.md`) uses a different front
 `sources: [{ url, hash }]` (one entry per curated source pattern, not per resolved file),
 `codeVersion`, `lastBuilt` — no `sourceUrl`/`sourceHash`/`versions`. Its body may open with a
 title and a short intro before the `## ` sections; a base file's body starts that intro with
-`## Index` listing its surface files.
+`## Index` listing its surface files. A `## ` section whose first line is `> [expert]` was written
+by a domain expert, not synthesized: regeneration preserves it verbatim, and the server's
+`guidelines/` view serves it tagged `[platform expert]`.
 
 Section anchors are GitHub-style slugs of the heading text: lowercase, every run of
 non-alphanumeric characters becomes one `-`, leading/trailing `-` trimmed.

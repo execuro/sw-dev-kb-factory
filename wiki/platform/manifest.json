@@ -41,7 +41,7 @@
     "sw-extends",
     "theme-json"
   ],
-  "lastBuilt": "2026-09-15",
+  "lastBuilt": "2026-09-17",
   "pages": {
     "platform/dev/6.6/_index.md": {
       "fileHash": "1ed5b0140ba0da6d9158572d4e673d608137d97b246c3f4eac3534346f1fde75",
@@ -7824,8 +7824,8 @@
       "sourceHash": "95f773bb1cc252c3b9d5eba451a1758797599ef3a8a7be51caf264634a3fbd27"
     },
     "platform/guidelines/6.6/storefront-code-guidelines.md": {
-      "fileHash": "96de5b3c1faee61192896d96e1ca3cfe0fd0f41866a85d468a0914697552d025",
-      "sourceHash": "96de5b3c1faee61192896d96e1ca3cfe0fd0f41866a85d468a0914697552d025"
+      "fileHash": "d1f0de19a107af11390b9ea9be0f73c52548962384fa2e749235ba100d56a0e3",
+      "sourceHash": "d1f0de19a107af11390b9ea9be0f73c52548962384fa2e749235ba100d56a0e3"
     },
     "platform/guidelines/6.7/admin-code-guidelines.md": {
       "fileHash": "b821ec402302203986cfc634c1a760b31f8ecc1f172c0fd646d1fa71a0ea3c9a",
@@ -7864,8 +7864,8 @@
       "sourceHash": "b9ff9f018ce4f20561497dbfe015202d5334c0c3c105fd35ddbd4fcd45cad356"
     },
     "platform/guidelines/6.7/storefront-code-guidelines.md": {
-      "fileHash": "7ba0c6152ec87aa20c796daddd026b6efeed99376bfb82790ab14e166f9ddf1d",
-      "sourceHash": "7ba0c6152ec87aa20c796daddd026b6efeed99376bfb82790ab14e166f9ddf1d"
+      "fileHash": "a04f76434e09d79a40a7ee6fda75b9f013252b6e5d31ea60731728ce5cd899d5",
+      "sourceHash": "a04f76434e09d79a40a7ee6fda75b9f013252b6e5d31ea60731728ce5cd899d5"
     },
     "platform/hubs/acl.md": {
       "fileHash": "d8f18c6333110ac7786467efe8db59666e208355d61498d794fd418bfb605f09",
@@ -7984,8 +7984,8 @@
       "sourceHash": "8bc112d73004f2f4f1f189ac738ed8550324cb73c3a07c9ae4355321db865d56"
     }
   },
-  "treeHash": "ca5d8c25de28e5bdcb12884f236b13ee758ff9a4704c255255f2fca97bd3e51e",
-  "vendorHash": "8da531fef76ae6e369fb50016b3463608ce0a9d81400fdc382575cb08986da21",
+  "treeHash": "77f0d64bf2ceb0149a9d20eba2cabbc036db94012eb97794934541e6770cf773",
+  "vendorHash": "3e5b9bc0b130290150ffef7e9f1afe2e0595d4594cd9916bd7e14989e1209235",
   "versions": [
     "6.7",
     "6.6"

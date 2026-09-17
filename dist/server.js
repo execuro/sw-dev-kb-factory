@@ -22052,6 +22052,10 @@ function globToRegexSource(pat) {
 function slugify2(heading) {
   return heading.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
+var EXPERT_TAG_RE = /^>\s*\[expert\](?:\s.*)?$/;
+function isExpertTagLine(line) {
+  return EXPERT_TAG_RE.test(line.trim());
+}
 function headings(lines, startLine = 1) {
   let out = [], fence = null;
   for (let i = startLine - 1; i < lines.length; i++) {
@@ -22594,12 +22598,16 @@ function h2Blocks(file2) {
   for (let i = 0; i < hs.length; i++) {
     let from = hs[i].line, to = i + 1 < hs.length ? hs[i + 1].line - 1 : file2.lines.length;
     for (; to > from && file2.lines[to - 1].trim() === ""; ) to--;
-    out.push({ anchor: hs[i].slug, headingLine: file2.lines[from - 1], bodyLines: file2.lines.slice(from, to) });
+    let bodyLines = file2.lines.slice(from, to), first = bodyLines.findIndex((l) => l.trim() !== ""), expert = first >= 0 && isExpertTagLine(bodyLines[first]);
+    expert && bodyLines.splice(first, 1), out.push({ anchor: hs[i].slug, headingLine: file2.lines[from - 1], bodyLines, expert });
   }
   return out;
 }
 function tagLine(kind, mode, path, anchor2) {
-  return kind === "platform" ? `> [platform] ${path}#${anchor2}` : `> [project ${mode}] ${path}#${anchor2}`;
+  return kind === "platform" ? `> [platform] ${path}#${anchor2}` : kind === "expert" ? `> [platform expert] ${path}#${anchor2}` : `> [project ${mode}] ${path}#${anchor2}`;
+}
+function platformTag(section, path) {
+  return tagLine(section.expert ? "expert" : "platform", null, path, section.anchor);
 }
 function pushBlank(out) {
   out.length > 0 && out[out.length - 1].trim() !== "" && out.push("");
@@ -22617,7 +22625,7 @@ function buildEffective(platformPath, projectPath, pf, pj) {
   let notices = [];
   if (pf === null && pj === null) return { frontmatter: {}, raw: "", notices: [`no such path: ${platformPath}`], present: "none" };
   if (pj === null) {
-    let side = splitFile(pf), blocks2 = h2Blocks(side).map((section) => ({ section, tag: tagLine("platform", null, platformPath, section.anchor) }));
+    let side = splitFile(pf), blocks2 = h2Blocks(side).map((section) => ({ section, tag: platformTag(section, platformPath) }));
     return {
       frontmatter: side.data,
       raw: renderFile(side.fmLines, side.preambleLines, null, blocks2),
@@ -22646,7 +22654,7 @@ function buildEffective(platformPath, projectPath, pf, pj) {
   let blocks = [];
   for (let section of platformBlocks) {
     let proj = byAnchor.get(section.anchor);
-    proj?.mode === "extend" ? (blocks.push({ section: proj.section, tag: tagLine("project", "extend", projectPath, proj.section.anchor) }), blocks.push({ section, tag: tagLine("platform", null, platformPath, section.anchor) })) : proj?.mode === "override" || proj?.mode === "waive" ? blocks.push({ section: proj.section, tag: tagLine("project", proj.mode, projectPath, proj.section.anchor) }) : blocks.push({ section, tag: tagLine("platform", null, platformPath, section.anchor) });
+    proj?.mode === "extend" ? (blocks.push({ section: proj.section, tag: tagLine("project", "extend", projectPath, proj.section.anchor) }), blocks.push({ section, tag: platformTag(section, platformPath) })) : proj?.mode === "override" || proj?.mode === "waive" ? blocks.push({ section: proj.section, tag: tagLine("project", proj.mode, projectPath, proj.section.anchor) }) : blocks.push({ section, tag: platformTag(section, platformPath) });
   }
   for (let section of additions) blocks.push({ section, tag: tagLine("project", "addition", projectPath, section.anchor) });
   let fmLines = pfSide.fmLines.length > 0 ? [...pfSide.fmLines.slice(0, -1), `project: ${projectPath}`, pfSide.fmLines[pfSide.fmLines.length - 1]] : pfSide.fmLines, infoLine = `> Effective guidelines: ${platformPath} + ${projectPath} (project sections take precedence).`;
@@ -23317,7 +23325,7 @@ function createServer(registry2, corpusStatus) {
     "read_doc",
     {
       title: "Read a wiki page (\u2261 cat / sed -n)",
-      description: "\u2261 `cat` (or `sed -n 'a,bp'` with `offset`/`limit`) of one wiki file: returns the parsed `frontmatter` plus `raw` \u2014 this is the only citable retrieval path \u2014 a citation must name a path+range returned here, never a `grep_docs` match line \u2014 the file text of the returned line range exactly as on disk (frontmatter included when in range), with `lineFrom`/`lineTo`/`totalLines`. `citation` is the exact `path:lineFrom-lineTo` string for the range actually returned \u2014 copy it verbatim when citing this read, never retype it, never widen it, never estimate it. `offset` is a 1-based file line (same numbering as `grep_docs` `line`), `limit` defaults to 2000 lines. `section` is a GitHub-style heading anchor (`key-steps-config`) and returns that H2 block (an H3 anchor returns its enclosing H2); an unknown anchor returns the full page plus a notice. Serves `.md` files, `<layer>/manifest.json`, and the package-root `README.md`/`composer.json`; files > 2 MB are refused with a notice; responses are capped at 256 KB \u2014 page with `offset`. Unknown path \u2192 empty result + notice, never an error. Wiki articles are condensations of upstream docs; `source: true` returns instead the verbatim upstream source snapshot the page was built from (read from the local ingest cache, which exists only after a sync) \u2014 `offset`/`limit` still page it, `section` cannot be combined with it, and a missing snapshot or unmapped path \u2192 empty result + notice. `citation` is always empty for `source: true`: a snapshot has no wiki-root-relative path, so cite `source.sourceId`/`sourceHash` instead. `guidelines/<version>/<file>` reads the effective guideline file \u2014 Shopware's rules with this project's own rules merged in by section; cite the `[platform \u2026]`/`[project \u2026]` tag path under each `##` heading, never the `guidelines/\u2026` path itself; `source: true` is not offered on it. " + UNTRUSTED,
+      description: "\u2261 `cat` (or `sed -n 'a,bp'` with `offset`/`limit`) of one wiki file: returns the parsed `frontmatter` plus `raw` \u2014 this is the only citable retrieval path \u2014 a citation must name a path+range returned here, never a `grep_docs` match line \u2014 the file text of the returned line range exactly as on disk (frontmatter included when in range), with `lineFrom`/`lineTo`/`totalLines`. `citation` is the exact `path:lineFrom-lineTo` string for the range actually returned \u2014 copy it verbatim when citing this read, never retype it, never widen it, never estimate it. `offset` is a 1-based file line (same numbering as `grep_docs` `line`), `limit` defaults to 2000 lines. `section` is a GitHub-style heading anchor (`key-steps-config`) and returns that H2 block (an H3 anchor returns its enclosing H2); an unknown anchor returns the full page plus a notice. Serves `.md` files, `<layer>/manifest.json`, and the package-root `README.md`/`composer.json`; files > 2 MB are refused with a notice; responses are capped at 256 KB \u2014 page with `offset`. Unknown path \u2192 empty result + notice, never an error. Wiki articles are condensations of upstream docs; `source: true` returns instead the verbatim upstream source snapshot the page was built from (read from the local ingest cache, which exists only after a sync) \u2014 `offset`/`limit` still page it, `section` cannot be combined with it, and a missing snapshot or unmapped path \u2192 empty result + notice. `citation` is always empty for `source: true`: a snapshot has no wiki-root-relative path, so cite `source.sourceId`/`sourceHash` instead. `guidelines/<version>/<file>` reads the effective guideline file \u2014 Shopware's rules with this project's own rules merged in by section; cite the `[platform \u2026]`/`[platform expert \u2026]`/`[project \u2026]` tag path under each `##` heading, never the `guidelines/\u2026` path itself; `source: true` is not offered on it. " + UNTRUSTED,
       inputSchema: {
         path: external_exports.string().min(1).max(512).describe("Wiki-root-relative file path (required)"),
         section: external_exports.string().max(120).optional().describe("Heading anchor: ^[a-z0-9-]{1,120}$"),

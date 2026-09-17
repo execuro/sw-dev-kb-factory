@@ -292,6 +292,27 @@ export function slugify(heading: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+// ------------------------------------------------------------ expert tag ----
+
+/**
+ * The expert tag line of a `platform/guidelines/<version>/<file>` section: `> [expert]` as the
+ * first non-blank line under a `##` heading marks that section as hand-written by a domain expert.
+ * The ingest pipeline preserves such sections verbatim across regenerations and the guidelines
+ * view serves them tagged `[platform expert]`. Trailing free text after `[expert]` is allowed
+ * and ignored.
+ */
+export const EXPERT_TAG_RE = /^>\s*\[expert\](?:\s.*)?$/;
+
+export function isExpertTagLine(line: string): boolean {
+  return EXPERT_TAG_RE.test(line.trim());
+}
+
+/** Index (0-based, within `bodyLines`) of the first non-blank line after `headingIndex`, or -1. */
+export function firstBodyLineIndex(bodyLines: string[], headingIndex: number, end: number): number {
+  for (let i = headingIndex + 1; i < end; i++) if (bodyLines[i].trim() !== "") return i;
+  return -1;
+}
+
 export interface Heading {
   level: 2 | 3;
   slug: string;
