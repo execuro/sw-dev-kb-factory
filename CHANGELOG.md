@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-17
+
 ### Added
 
 - **Expert sections in guideline files.** A `##` section of `wiki/platform/guidelines/<version>/*.md`

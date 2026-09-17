@@ -6,12 +6,12 @@
     "url": "https://github.com/execuro/sw-dev-kb-factory",
     "source": "github"
   },
-  "version": "0.1.5",
+  "version": "0.1.6",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@execuro-sw-ecosystem/sw-dev-knowledge-base-mcp",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "transport": {
         "type": "stdio"
       }
