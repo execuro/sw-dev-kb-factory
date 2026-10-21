@@ -1,6 +1,6 @@
 ---
 name: kb-factory-setup
-description: Make a fresh clone of the KB Factory ready to run — install the two kb-verify hooks and the KB_* root variables into the factory's own .claude/settings.json, and create the external sources under .sources/ via npm run setup. Shows a diff and asks before writing, merges rather than replaces, never removes or loosens an existing rule, and is safe to re-run after an update. Claude-Code-only by design. Tooling skill of the kb-factory-* family — it configures the factory, it never ingests, verifies or edits wiki content.
+description: Make a fresh clone of the KB Factory ready to run — install the two kb-verify hooks and the KB_* root variables into the factory's own .claude/settings.local.json, and create the external sources under .sources/ via npm run setup. Shows a diff and asks before writing, merges rather than replaces, never removes or loosens an existing rule, and is safe to re-run after an update. Claude-Code-only by design. Tooling skill of the kb-factory-* family — it configures the factory, it never ingests, verifies or edits wiki content.
 when_to_use: Trigger phrases — "set up the KB factory", "kb-factory-setup", "a fresh KB clone won't run", "install the kb-verify hooks", "the scope fence isn't registered", "prepare the factory for ingestion".
 argument-hint: [--check]
 allowed-tools: Read Edit Write Glob AskUserQuestion Bash(npm run setup*) Bash(ls *) Bash(git -C * rev-parse *)
@@ -20,7 +20,7 @@ server any MCP client can run — not by running the factory itself.
 
 ## What it installs
 
-Two groups, both into the **factory's own** `.claude/settings.json` (never the consumer's):
+Two groups, both into the **factory's own** `.claude/settings.local.json` (never the consumer's). The `KB_*` roots are absolute and per machine, so they never go into a committed file:
 
 ### 1. The hooks — without these the benchmark measures nothing
 
@@ -65,7 +65,7 @@ This one probe is why nothing else in the factory needs editing when it moves.
 
 ### 2. Report the current state
 
-Read `<factory>/.claude/settings.json` (absent is normal on a fresh clone) and print one table:
+Read `<factory>/.claude/settings.json` and `<factory>/.claude/settings.local.json` merged (both absent is normal on a fresh clone; a hook already registered in either counts as ticked) and print one table:
 
 | Row | Ticked when |
 | --- | --- |
@@ -74,6 +74,7 @@ Read `<factory>/.claude/settings.json` (absent is normal on a fresh clone) and p
 | Hook scripts executable | both `.sh` files exist and are `+x` |
 | `KB_*` roots | all eight present in `env` and pointing at the detected layout |
 | External sources | `.sources/manifest.json` exists and every entry it lists is `status: "ok"` or a documented skip |
+| Machine paths in committed settings | **Warning** when `settings.json` holds any `KB_*` env entry. Report the fix (move it to `settings.local.json`); never edit `settings.json` yourself |
 
 With `--check`, stop here. Print the table and nothing else; write nothing.
 
@@ -81,7 +82,7 @@ With `--check`, stop here. Print the table and nothing else; write nothing.
 
 If every row is ticked, say so and stop — a satisfied setup asks nothing.
 
-Otherwise show the **exact diff** that would be written to `.claude/settings.json` and ask the user
+Otherwise show the **exact diff** that would be written to `.claude/settings.local.json` and ask the user
 to approve it, in one question. Ask the user and use a structured question tool if you have one
 (Claude Code: `AskUserQuestion`), then end the turn if no reply arrives inline; otherwise ask as a
 numbered list with the recommended option first.
@@ -90,8 +91,8 @@ numbered list with the recommended option first.
 
 On approval:
 
-- **Merge, never replace.** Read the existing settings, add only the missing entries, preserve every
-  other key byte-for-byte. Never remove or loosen a rule the user already has — if a hook is present
+- **Merge, never replace.** Read the existing `settings.local.json`, add only the missing entries, preserve every
+  other key (e.g. `enabledMcpjsonServers`) byte-for-byte. Never remove or loosen a rule the user already has — if a hook is present
   with a different matcher, report it and leave it alone rather than overwriting someone's
   deliberate narrowing.
 - `chmod +x` the two hook scripts if needed.
@@ -109,7 +110,7 @@ outstanding with the command that fixes it.
 
 ## Boundaries
 
-- Writes exactly one file (`<factory>/.claude/settings.json`) plus whatever `npm run setup` creates
+- Writes exactly one file (`<factory>/.claude/settings.local.json`) plus whatever `npm run setup` creates
   under the gitignored `.sources/`. Never touches wiki content, `kb.config.json`,
   `ingest/platform/config.json`, prompts, state or any report.
 - Never commits.

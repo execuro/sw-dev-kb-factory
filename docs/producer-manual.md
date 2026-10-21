@@ -202,7 +202,7 @@ can no longer be evaluated.
 Needs `git`, Node ≥ 20, and either `jq` or Node on `PATH` for the hook's input parsing. Then:
 
 1. `chmod +x .claude/hooks/*.sh`
-2. Add to `.claude/settings.json` (the factory's own settings, not the host
+2. Add to `.claude/settings.local.json` (the factory's own settings, not the host
    project's — this is what `kb-factory-setup` writes):
 
 ```json

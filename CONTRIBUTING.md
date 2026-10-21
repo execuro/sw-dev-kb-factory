@@ -22,7 +22,7 @@ fresh clone needs before the verify suite or an ingest writer run will work:
 | `kb-verify-scope-fence.sh` | `PreToolUse` (`Read\|Grep\|Glob\|Bash\|Write`) | Fences each verify discover agent and each ingest writer to its own read/write scope |
 | `kb-verify-record-transcript.sh` | `SubagentStop` | Records each discover agent's transcript path for the benchmark's mechanical auditor |
 
-`kb-factory-setup` writes into this repository's own `.claude/settings.json`, shows a diff and asks
+`kb-factory-setup` writes into this repository's own `.claude/settings.local.json` (per machine, never committed), shows a diff and asks
 before writing, merges rather than replaces, and is safe to re-run after an update.
 
 ## Before you send a change

@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+### Changed
+
+- `kb-factory-setup` writes the hooks and `KB_*` roots to the git-ignored `.claude/settings.local.json`, so absolute machine paths are never committed; it warns when `settings.json` still holds `KB_*` entries.
+
 ## [0.1.6] - 2026-09-17
 
 ### Added

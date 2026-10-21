@@ -7,6 +7,9 @@ node_modules/
 *.log
 /.sources/
 
+# per-machine Claude Code setup written by kb-factory-setup (absolute KB_* paths)
+/.claude/settings.local.json
+
 # staged output of scripts/pack.mjs
 /dist-pack/
 
