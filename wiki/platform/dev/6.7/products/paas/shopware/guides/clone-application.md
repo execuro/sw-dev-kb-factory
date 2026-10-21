@@ -5,59 +5,72 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/guides/clone-application.html
-sourceHash: bbc7d784a51d37abecd94310639cdec077b8144c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw-paas application clone", "sw-paas app deploy list", "DEPLOYING_STORE_SUCCESS", "DEPLOYING_STORE_FAILED", "sw-paas open admin", "sw-paas exec --new", "user:change-password", "dal:refresh:index", "snapshot", "clone application", "copy shop", "reindex opensearch"]
-summary: "Clone a PaaS Native application via snapshot/restore with sw-paas application clone; prerequisites, monitoring, and post-clone password, reindex, domain tasks."
-lastBuilt: 2026-09-15
+sourceHash: 9cc540d2ea889825076d78e9904f2d5f0fc193c4
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-paas application clone", "sw-paas app deploy list", "sw-paas open admin", "sw-paas exec --new", "user:change-password", "dal:refresh:index", "DEPLOYING_STORE_SUCCESS", "clone application", "copy database", "snapshot restore", "paas native", "staging copy"]
+summary: Copy a PaaS Native app's database and storage to another app in the same org with sw-paas application clone; post-clone steps.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to copy an existing Shopware PaaS Native application (codebase, database and filesystem) to another application in the same organization. The CLI creates a snapshot of the source application and restores it to the target, overwriting existing data.
+Cloning in Shopware PaaS Native copies the database and object storage (filesystem) content of an existing application to another application in the same organization. It works by creating a snapshot of the source application and restoring that snapshot onto the target. The codebase is **not** copied: the target keeps its own commit.
 
 ## When to use
 
-Feature testing without touching the original, disaster-recovery copies into other projects, or filling development environments with production data.
+- Feature testing on a copy without touching the original.
+- Disaster recovery: back up by cloning into a different project.
+- Development environments: copy production data into a dev application for realistic testing.
 
 ## Key steps / config
 
-1. Prerequisites: source and target in the same organization; access to both projects; target application exists (or you may create it); the source's latest deployment is in state `DEPLOYING_STORE_SUCCESS`. Check with `sw-paas app deploy list`.
-2. Clone interactively with `sw-paas application clone` (select source organization, project, application, deployment; then target project and existing application), or pass IDs:
-   ```sh
-   sw-paas application clone \
-     --organization-id <organization-id> \
-     --project-id <source-project-id> \
-     --application-id <source-application-id> \
-     --target-application-id <target-application-id> \
-     --target-project-id <target-project-id>
-   ```
-3. Monitor with `sw-paas app deploy list` or `sw-paas app deploy get`; the clone is done when the status is `DEPLOYING_STORE_SUCCESS`.
-4. Post-clone tasks on the target (App B):
-   - Admin password: App B has App A's admin password. Run `sw-paas open admin` for App A to get it and log in to App B, then set the password shown by `sw-paas open admin` for App B under **Your profile** → **Password** (confirm with App A's password). Or open `sw-paas exec --new` and run `bin/console user:change-password admin`.
-   - OpenSearch (if enabled): in `sw-paas exec --new`, run `bin/console dal:refresh:index --use-queue`.
-   - Sales channel domain: in the Administration, open each sales channel, scroll to **Domains** and change the domain to the clone's domain (e.g. its `shopware.shop` domain or a custom domain).
+**Prerequisites**
+
+- Source and target are in the same organization (cross-organization cloning is not possible) and you have access to both projects.
+- The target application already exists and has been deployed, ideally on the same commit as the source.
+- The latest source deployment succeeded (state `DEPLOYING_STORE_SUCCESS`). Check with `sw-paas app deploy list`. If the state is `DEPLOYING_STORE_FAILED`, do not clone — fix the deployment or pick an earlier successful one.
+
+**Clone**
+
+- Interactive: `sw-paas application clone` with no parameters prompts for source organization, project, application and deployment, then target project (same organization only) and an existing target application.
+- Manual:
+
+```shell
+sw-paas application clone \
+  --organization-id <organization-id> \
+  --project-id <source-project-id> \
+  --application-id <source-application-id> \
+  --target-application-id <target-application-id> \
+  --target-project-id <target-project-id>
+```
+
+The process runs in two stages: snapshot creation (database + filesystem of the source at the selected deployment), then snapshot restoration onto the target, overwriting its existing data. Monitor with `sw-paas app deploy list` or `sw-paas app deploy get`; the clone is complete once the status shows `DEPLOYING_STORE_SUCCESS`.
+
+**Post-clone tasks** (source = App A, target = App B)
+
+1. Admin password: App B has App A's admin password. Fetch it by running `sw-paas open admin` and selecting App A. Either change it in the Administration (user profile > **Your profile** > **Password**, entering the password `sw-paas open admin` shows for App B as the new one and App A's password in the verification modal), or open `sw-paas exec --new` and run `bin/console user:change-password admin`.
+2. OpenSearch: if enabled, open `sw-paas exec --new` and run `bin/console dal:refresh:index --use-queue`.
+3. Sales channel domain: the clone keeps the source domain configuration. In the Administration of the clone, open each sales channel, scroll to **Domains** and set the clone's domain (its assigned `shopware.shop` domain or a custom domain).
 
 ## Essential identifiers
 
-- `sw-paas application clone` with `--organization-id`, `--project-id`, `--application-id`, `--target-application-id`, `--target-project-id`
+- `sw-paas application clone` (flags `--organization-id`, `--project-id`, `--application-id`, `--target-application-id`, `--target-project-id`)
 - `sw-paas app deploy list`, `sw-paas app deploy get`
-- `DEPLOYING_STORE_SUCCESS`, `DEPLOYING_STORE_FAILED`
 - `sw-paas open admin`, `sw-paas exec --new`
-- `bin/console user:change-password admin` (argument `username`; option `--password`/`-p`, otherwise prompted)
+- `bin/console user:change-password admin`
 - `bin/console dal:refresh:index --use-queue`
+- Deployment states `DEPLOYING_STORE_SUCCESS`, `DEPLOYING_STORE_FAILED`
 
 ## Gotchas
 
-- Cloning across organizations is not possible.
-- Do not clone when the source deployment state is `DEPLOYING_STORE_FAILED`; fix it or use an earlier successful deployment.
-- The target's existing data is overwritten.
-- Cloning does not anonymize the database; the copy includes all data, including scheduled task data stored in the database.
-- The clone keeps the source's domain configuration until you change it in the sales channel.
+- Only data is cloned, not code — keep the target on the same commit as the source.
+- Restoration overwrites all existing target data.
+- Database content is not anonymized; the restored snapshot includes everything, including scheduled task data stored in the database.
+- Duration depends on data size.
 
-## Code check (6.7.13.0)
-- confirmed `user:change-password` — console command exists — vendor/shopware/core/Maintenance/User/Command/UserChangePasswordCommand.php:26
-- confirmed `username` — required argument, so `admin` is passed positionally; `--password`/`-p` optional, prompted if omitted — vendor/shopware/core/Maintenance/User/Command/UserChangePasswordCommand.php:43
-- confirmed `dal:refresh:index` — console command exists — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:22
-- confirmed `use-queue` — option of `dal:refresh:index`, passed to the indexer registry to index via the message queue — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:45
-- unverified `sw-paas application clone` — external PaaS CLI, not part of vendor/shopware
-- unverified `DEPLOYING_STORE_SUCCESS` — PaaS deployment state, not present in the installed Shopware code
+## Code check (6.7.15.1)
+- confirmed `user:change-password` — console command name; takes a required `username` argument — vendor/shopware/core/Maintenance/User/Command/UserChangePasswordCommand.php:27
+- confirmed `UserChangePasswordCommand::configure()` — declares the `username` argument and a `--password`/`-p` option — vendor/shopware/core/Maintenance/User/Command/UserChangePasswordCommand.php:43
+- confirmed `dal:refresh:index` — console command name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:23
+- confirmed `use-queue` — option of `dal:refresh:index`, passed to the indexer registry so indexing is queued — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:45
+- unverified `sw-paas application clone` — PaaS CLI, outside the Shopware code roots
+- unverified `DEPLOYING_STORE_SUCCESS` — PaaS deployment state, outside the Shopware code roots

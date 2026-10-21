@@ -6,22 +6,28 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/concept/migration-table.html
 sourceHash: 207096516ead0607f11432301e8a76db0f3f30d1
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b_components_migration_state", "b2b_components_migration_map", "b2b_components_migration_errors", "b2b suite migration", "b2b commercial", "migration tables", "migration state", "record mapping", "migration errors", "database tables"]
-summary: The three database tables B2B Suite to B2B Commercial migration uses to track state, map records and log errors per entity.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b_components_migration_state", "b2b_components_migration_map", "b2b_components_migration_errors", "migration tables", "migration status", "record mapping", "migration errors", "b2b suite migration", "b2b components", "debugging migration"]
+summary: The three B2B Suite migration tables - b2b_components_migration_state, _map and _errors - for status tracking, record mapping and error logging.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The B2B Suite to B2B Commercial migration creates three database tables to manage and track the data migration:
-
-1. `b2b_components_migration_state` — tracks the status of the migration process for each entity.
-2. `b2b_components_migration_map` — maps records between B2B Suite and B2B Commercial, giving traceability of which source record became which target record.
-3. `b2b_components_migration_errors` — logs errors encountered during migration for troubleshooting.
+The three database tables the B2B Suite Migration extension introduces to manage and track migrating data from B2B Suite to B2B Commercial (B2B Components).
 
 ## When to use
 
-When monitoring, verifying or debugging a migration from B2B Suite to B2B Commercial: check the state table for per-entity progress, the map table to trace a migrated record back to its source, and the errors table when records failed to migrate.
+When monitoring a running migration, verifying which B2B Suite records became which B2B Components records, or debugging failed records.
+
+## Key steps / config
+
+| Table | Purpose |
+|---|---|
+| `b2b_components_migration_state` | Status of the migration process per entity |
+| `b2b_components_migration_map` | Maps B2B Suite records to B2B Commercial records (traceability) |
+| `b2b_components_migration_errors` | Errors encountered during migration, for troubleshooting |
+
+Use the state table for monitoring, the map table for verification, and the errors table for debugging.
 
 ## Essential identifiers
 
@@ -29,8 +35,7 @@ When monitoring, verifying or debugging a migration from B2B Suite to B2B Commer
 - `b2b_components_migration_map`
 - `b2b_components_migration_errors`
 
-## Code check (6.7.13.0)
-- unverified `b2b_components_migration_state` — created by the SwagCommercial B2B Suite migration, not part of vendor/shopware core/storefront/administration
-- unverified `b2b_components_migration_map` — SwagCommercial table, outside the checked vendor roots
-- unverified `b2b_components_migration_errors` — SwagCommercial table, outside the checked vendor roots
-- confirmed `SwagCommercial` — core only lists the commercial plugin as a known translation plugin; its code is not installed in vendor/shopware — vendor/shopware/core/System/Resources/translation.yaml:8
+## Code check (6.7.15.1)
+- unverified `b2b_components_migration_state` — created by the B2B Suite Migration Commercial extension, not present in the core/storefront/administration roots
+- unverified `b2b_components_migration_map` — created by the B2B Suite Migration extension, out of scope
+- unverified `b2b_components_migration_errors` — created by the B2B Suite Migration extension, out of scope

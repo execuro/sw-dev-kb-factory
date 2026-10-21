@@ -1,45 +1,46 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/_index.md
-title: Administration Reference
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/administration-reference/
+id: platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/_index.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/directives.md
+  - platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md
+  - platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md
 sourceHash: 9dcbe8d91c0bdba93e3afeb91712dc5e60bd2fe6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["administration reference", "directives", "mixins", "utils", "vue directives", "vue mixins", "utility functions", "Shopware.Directive", "Shopware.Mixin", "Shopware.Utils", "admin extension conventions", "global Shopware object"]
-summary: "Index of Administration reference pages for plugins: globally registered Vue directives, shared mixins, and utility functions on the Shopware object"
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/directives.md", "platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md", "platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/administration-reference/
+title: Administration Reference
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["administration reference", "admin", "vue", "directives", "mixins", "utils", "Shopware.Utils", "Shopware.Directive", "Shopware.Mixin", "global helpers", "plugin admin extension", "reuse core functionality"]
+summary: Index of Administration reference pages for plugins - globally registered Vue directives, shared mixins and Shopware.Utils helper functions.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Index of the reference pages for core Administration building blocks that plugins reuse when they integrate into the Vue-based Administration: directives, mixins and utility functions.
+Entry page for the Administration reference section. Plugins extend the Vue-based Administration directly; this section lists the core building blocks a plugin can reuse instead of reimplementing them.
 
 ## When to use
 
-When building custom Administration modules or components, or extending existing ones, and you want to reuse core functionality instead of reimplementing it, follow Administration extension conventions, and integrate cleanly into the Admin UI.
+When building a custom admin module or component, or extending an existing one, and you need to know which globally available directives, mixins or utility functions already exist.
 
 ## Key steps / config
 
-The reference is split into three pages:
+The section has three reference pages:
 
-- [Directives](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/directives.md) — globally registered Vue directives. In the installed code they are registered through `Shopware.Directive.register(...)`, e.g. `tooltip`, `autofocus`, `draggable`, `droppable`, `responsive`.
-- [Mixins](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md) — shared Vue mixins used across the Administration. Core mixins are registered with `Shopware.Mixin.register(...)` and retrieved in a component via `Shopware.Mixin.getByName('<name>')`.
-- [Utils](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md) — global utility functions exposed as `Shopware.Utils`.
+- [Directives](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/directives.md) — Vue directives registered globally via `Shopware.Directive.register()`.
+- [Mixins](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md) — shared mixins, registered via `Shopware.Mixin.register()` and pulled into a component with `Shopware.Mixin.getByName('<name>')`.
+- [Utils](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md) — utility functions exposed on the global object as `Shopware.Utils`.
+
+The source states the purpose of these guides: reuse core functionality, follow Administration extension conventions, and build extensions that integrate cleanly into the Admin UI.
 
 ## Essential identifiers
 
-- `Shopware.Directive.register`, `Shopware.Directive.getByName`
-- `Shopware.Mixin.register`, `Shopware.Mixin.getByName`
+- `Shopware.Directive`
+- `Shopware.Mixin`
 - `Shopware.Utils`
 
-## Code check (6.7.13.0)
-- confirmed `Shopware.Directive` — register/getByName/getDirectiveRegistry — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:184
-- confirmed `Shopware.Mixin` — register/getByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:173
-- confirmed `Shopware.Utils` — global utils object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:210
-- confirmed `tooltip` — core directive registration — vendor/shopware/administration/Resources/app/administration/src/app/directive/tooltip.directive.ts:580
-- confirmed `autofocus` — core directive registration — vendor/shopware/administration/Resources/app/administration/src/app/directive/autofocus.directive.ts:5
-- confirmed `draggable` — core directive registration (also `droppable`) — vendor/shopware/administration/Resources/app/administration/src/app/directive/dragdrop.directive.ts:440
-- confirmed `responsive` — core directive registration — vendor/shopware/administration/Resources/app/administration/src/app/directive/responsive.directive.ts:22
-- confirmed `Mixin.register` — core mixins registered via the factory — vendor/shopware/administration/Resources/app/administration/src/app/mixin/listing.mixin.ts:19
+## Code check (6.7.15.1)
+- confirmed `Shopware.Utils` — the global object exposes the util service as `Utils` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:223
+- confirmed `Shopware.Directive.register()` — core directives register globally, e.g. `autofocus` — vendor/shopware/administration/Resources/app/administration/src/app/directive/autofocus.directive.ts:5
+- confirmed `Mixin.getByName()` — mixin factory lookup by registered name; throws if not registered — vendor/shopware/administration/Resources/app/administration/src/core/factory/mixin.factory.ts:53

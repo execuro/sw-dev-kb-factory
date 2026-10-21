@@ -6,38 +6,39 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/session-and-state.html
 sourceHash: 7feb7d4fe2a5a76fc9bbfdd9fba9dd55288368ec
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["session", "php session", "state", "Core", "Storefront", "StorefrontSubscriber", "session handling", "coding guideline", "domain boundary", "storefront request"]
-summary: "Guideline: Core domain code must not access the PHP session; session data exists only for Storefront requests and is handled in the Storefront domain."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["session", "php session", "state", "stateless", "Core", "Storefront", "store api", "hasSession", "getSession", "StorefrontSubscriber", "NoUnsafeRequestHasSessionRule", "coding guidelines"]
+summary: Guideline - Core must not access the PHP session; only Storefront requests have one, so session handling belongs in the Storefront domain.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A Shopware core coding guideline on where PHP session access is allowed: never inside the `Core` domain, only in the `Storefront` domain.
+A coding guideline stating that code in the `Core` domain must not access the PHP session. A PHP session exists only for Storefront requests, so reading and writing session data is the Storefront domain's job.
 
 ## When to use
 
-When writing platform or plugin code that needs per-visitor state (e.g. remembering something between requests) and deciding which layer may read or write the session.
+When writing Core services, routes or subscribers that might be tempted to store or read per-visitor state, or when deciding where session-dependent logic belongs (Core vs. Storefront).
 
 ## Key steps / config
 
-- Do not access the PHP session from code in the `Core` domain (Store API routes, services, DAL, cart logic).
-- A PHP session only exists for a Storefront request; Store API and Admin API requests have none.
-- Implement and handle session data in the `Storefront` domain.
-- In the installed code, the Storefront itself starts the session: `StorefrontSubscriber::startSession()` returns early unless the main request is a sales-channel request and has a session, then starts it and stores the context token in it. `StorefrontSubscriber::updateSession()` only migrates the session when the route scope contains `StorefrontRouteScope::ID`.
+1. Keep `Core` code (including Store API routes) stateless: pass state through the `SalesChannelContext`/request instead of the PHP session.
+2. Put session handling in the Storefront domain. In the installed code the Storefront starts and fills the session itself, e.g. `Shopware\Storefront\Framework\Routing\StorefrontSubscriber::startSession()`.
+3. Where code must check for a session without starting one, call `Request::hasSession(true)`, not `Request::hasSession()`. The latter returns true for a lazy session factory, and a following `getSession()` then initializes the session and can take the PHP session lock. The PHPStan rule `NoUnsafeRequestHasSessionRule` (identifier `shopware.unsafeRequestHasSession`) reports the unsafe form.
 
 ## Essential identifiers
 
-- `Core` domain — no session access
-- `Storefront` domain — owns session handling
-- `Shopware\Storefront\Framework\Routing\StorefrontSubscriber`
+- `Shopware\Storefront\Framework\Routing\StorefrontSubscriber::startSession()`
+- `Request::hasSession(true)`
+- `Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\NoUnsafeRequestHasSessionRule`
+- `shopware.unsafeRequestHasSession`
 
 ## Gotchas
 
-- Code in `Core` that reads the session breaks for headless (Store API) consumers, because only Storefront requests carry a PHP session.
+- The installed Core code is not literally session-free: `SalesChannelRequestContextResolver` reads the session only via `$request->hasSession(true) ? $request->getSession() : null`, so it uses a session the Storefront already started and leaves Store API requests (lazy session factory only) stateless.
+- Session-owning code that really must initialize the session may use plain `hasSession()` only with a targeted `@phpstan-ignore shopware.unsafeRequestHasSession` comment explaining why.
 
-## Code check (6.7.13.0)
-- confirmed `StorefrontSubscriber::startSession()` — session start lives in the Storefront package — vendor/shopware/storefront/Framework/Routing/StorefrontSubscriber.php:76
-- confirmed `SalesChannelRequest::ATTRIBUTE_IS_SALES_CHANNEL_REQUEST` — session is only started for sales-channel requests — vendor/shopware/storefront/Framework/Routing/StorefrontSubscriber.php:82
-- confirmed `StorefrontSubscriber::updateSession()` — session migration after login/logout is Storefront-side — vendor/shopware/storefront/Framework/Routing/StorefrontSubscriber.php:146
-- confirmed `StorefrontRouteScope::ID` — updateSession skips requests without the storefront route scope — vendor/shopware/storefront/Framework/Routing/StorefrontSubscriber.php:155
+## Code check (6.7.15.1)
+- confirmed `StorefrontSubscriber::startSession()` — Storefront domain starts the session — vendor/shopware/storefront/Framework/Routing/StorefrontSubscriber.php:76
+- confirmed `NoUnsafeRequestHasSessionRule` — PHPStan rule requiring `hasSession(true)` — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/NoUnsafeRequestHasSessionRule.php:22
+- confirmed `shopware.unsafeRequestHasSession` — rule error identifier — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/NoUnsafeRequestHasSessionRule.php:53
+- corrected `getSession()` — docs: Core never accesses the PHP session; Core reads it only when already started (Store API stays stateless) — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:54

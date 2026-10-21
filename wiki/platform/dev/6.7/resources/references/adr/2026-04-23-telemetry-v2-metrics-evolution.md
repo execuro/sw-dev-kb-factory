@@ -1,33 +1,46 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2026-04-23-telemetry-v2-metrics-evolution.md
-title: Telemetry v2 — Metrics Evolution
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-04-23-telemetry-v2-metrics-evolution.html
+id: platform/dev/6.7/resources/references/adr/2026-04-23-telemetry-v2-metrics-evolution.md
 sourceHash: eac044bdd855c870c576985c9379f9f3b5935f6d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["telemetry", "metrics", "MetricTransportInterface", "TelemetryFlushListener", "shopware.telemetry.metrics.enabled", "shopware.telemetry.subscriber", "PeriodicMetricCollectorInterface", "telemetry.collect_periodic_metrics", "Telemetry::instrument()", "DurationMetric", "ConfiguredMetric", "label policy", "TELEMETRY_METRICS", "opentelemetry", "prometheus"]
-summary: "ADR: telemetry metrics v2 adds transport flush(), global enabled switch, subscriber DI tag, label policies, periodic collectors and the Telemetry facade."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-04-23-telemetry-v2-metrics-evolution.html
+title: Telemetry v2 — Metrics Evolution
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["telemetry", "metrics", "MetricTransportInterface", "flush()", "TelemetryFlushListener", "shopware.telemetry.metrics.enabled", "shopware.telemetry.subscriber", "PeriodicMetricCollectorInterface", "telemetry.collect_periodic_metrics", "Telemetry::instrument()", "DurationMetric", "ConfiguredMetric", "label policy", "TELEMETRY_METRICS", "observability"]
+summary: "ADR for telemetry v2: transport flush(), global kill-switch, subscriber tag, label policies, periodic metric collectors and the Telemetry facade."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2026-04-23) revising the telemetry metrics abstraction (behind the experimental `TELEMETRY_METRICS` flag) before stabilisation in v6.8: lifecycle flushing, zero-overhead global disable, strict label validation, scheduled periodic collectors and a `Telemetry` facade. It re-affirms `Meter::emit(ConfiguredMetric)`, `MetricTransportFactoryInterface`, transport-owned storage and the static `MeterProvider`.
+An architecture decision record revising the experimental telemetry metrics layer (behind the `TELEMETRY_METRICS` feature flag) before its stabilisation in 6.8. It addresses unused config keys, the missing global kill-switch, subscribers running while telemetry is off, silent label stripping, the missing `flush()` lifecycle hook, and the lack of a way to collect expensive metrics. It also reaffirms `Meter::emit(ConfiguredMetric)` as the single low-level API, keeps `MetricTransportFactoryInterface` and the static `MeterProvider`, and leaves metric storage and pull/scrape handling to transports.
 
 ## When to use
 
-- Writing or maintaining a metric transport (e.g. shopware/opentelemetry, shopware/prometheus-exporter).
-- Emitting metrics or duration measurements from core or plugin code.
-- Defining metric labels in YAML, or switching metrics off as an operator.
+- Writing or maintaining a metric transport (OpenTelemetry, Prometheus exporter).
+- Emitting metrics from core or a plugin, measuring operation duration, or adding profiler spans.
+- Defining metric labels in YAML, or operating telemetry (enable/disable, collection interval).
 
 ## Key steps / config
 
-1. **Transports** implement `Shopware\Core\Framework\Telemetry\Metrics\MetricTransportInterface`: `emit(Metric $metric): void` and `flush(): void` (no-op if unused). `TelemetryFlushListener` calls `flush()` on `kernel.terminate` and `console.terminate`, and on `WorkerRunningEvent` at most every 60 s (constructor-overridable, no config key).
-2. **Global off**: `shopware.telemetry.metrics.enabled` (default `false`). When false, `Meter::emit()` returns early, a compiler pass removes services tagged `shopware.telemetry.subscriber` and `shopware.telemetry.periodic_metric_collector`, and `CollectPeriodicMetricsTask::shouldRun()` returns false. Tag your own telemetry subscribers with `shopware.telemetry.subscriber`.
-3. **Per-metric off**: a definition's `enabled: false` skips processing; closure values are never invoked.
-4. **Lazy values**: `new ConfiguredMetric(name: '...', value: fn () => expensiveQuery())`.
-5. **Labels**: every label needs `allowed_values` or `policy: open` (not both), otherwise the container fails to build. Policies: `replace` (default for counter, histogram, up-down counter), `discard` (default for gauge), `open`. Replacement string: `shopware.telemetry.metrics.replace_unknown_label_values_with` (default `'other'`). Unknown label names log an error in prod, throw `MissingMetricConfigurationException` in dev/test.
+**Transports** implement both methods (`flush()` may be a no-op):
+
+```php
+interface MetricTransportInterface
+{
+    public function emit(Metric $metric): void;
+    public function flush(): void;
+}
+```
+
+`TelemetryFlushListener` calls `flush()` on all transports on `kernel.terminate` and `console.terminate`, and on `WorkerRunningEvent` at most once every 60 seconds (constructor argument, not a config key). `flush()` is not exposed on `Meter`.
+
+**Global switch**: `shopware.telemetry.metrics.enabled` (default `false`). When false, `Meter::emit()` returns early, a compiler pass removes all services tagged `shopware.telemetry.subscriber` or `shopware.telemetry.periodic_metric_collector`, and `CollectPeriodicMetricsTask` reports `shouldRun() === false`. Toggling requires a container rebuild.
+
+**Per-metric switch**: `enabled: false` on a definition makes `Meter` skip it; a closure value in `ConfiguredMetric` is then never invoked (lazy evaluation: `new ConfiguredMetric(name: '...', value: fn () => expensiveQuery())`).
+
+**Labels**: every label needs either `allowed_values` or `policy: open` — both missing, or `allowed_values` plus `policy: open`, fails container build. Policies: `replace`, `discard`, `open`. Defaults: `replace` for counter, histogram, up-down counter; `discard` for gauge. Replacement string: `shopware.telemetry.metrics.replace_unknown_label_values_with` (default `'other'`). Unknown label names log an error in prod and throw `MissingMetricConfigurationException` in dev/test.
 
 ```yaml
 definitions:
@@ -35,13 +48,14 @@ definitions:
         type: counter
         labels:
             method:
-                allowed_values: ['GET', 'POST']
+                allowed_values: ['GET', 'POST', 'PUT', 'DELETE']
             status_code:
                 policy: open
 ```
 
-6. **Periodic collectors**: implement `PeriodicMetricCollectorInterface::collect(): iterable` (of `ConfiguredMetric`); autoconfiguration adds the tag. Scheduled task `telemetry.collect_periodic_metrics` runs every 300 s by default, tunable via scheduled-task administration; each collector is isolated by try/catch.
-7. **Instrumentation**: inject `Shopware\Core\Framework\Telemetry\Telemetry`:
+**Periodic metrics**: implement `PeriodicMetricCollectorInterface::collect(): iterable` (returns `ConfiguredMetric`s); implementers are autoconfigured with the `shopware.telemetry.periodic_metric_collector` tag. The `telemetry.collect_periodic_metrics` scheduled task runs every 300 s by default (tune via the scheduled-task admin), wraps each collector in try/catch and emits via `Meter`.
+
+**Instrumentation**: inject `Shopware\Core\Framework\Telemetry\Telemetry`:
 
 ```php
 $this->telemetry->instrument(
@@ -52,36 +66,39 @@ $this->telemetry->instrument(
 $this->telemetry->emit(new ConfiguredMetric('order.placed.count', 1, ['channel' => 'web']));
 ```
 
-Duration is always milliseconds; define the metric as a histogram. With neither metric nor span, `instrument()` throws in dev/test. Prefer it over calling `Profiler::trace()` directly.
+Duration is always milliseconds; define the metric as a histogram. Inject `Meter` when only pre-computed values are emitted.
 
 ## Essential identifiers
 
 - `MetricTransportInterface::flush()`, `MetricTransportFactoryInterface`, `TransportConfig`
-- `Meter::emit()`, `MeterProvider`, `ConfiguredMetric`, `TelemetryFlushListener`
+- `TelemetryFlushListener`, `WorkerRunningEvent`
 - `shopware.telemetry.metrics.enabled`, `shopware.telemetry.metrics.replace_unknown_label_values_with`, `shopware.telemetry.metrics.namespace`
-- DI tags `shopware.telemetry.subscriber`, `shopware.telemetry.periodic_metric_collector`
-- `PeriodicMetricCollectorInterface`, `CollectPeriodicMetricsTask`, `telemetry.collect_periodic_metrics`
-- `Telemetry::instrument()`, `Telemetry::emit()`, `DurationMetric`, `Span`
+- `shopware.telemetry.subscriber`, `shopware.telemetry.periodic_metric_collector`
+- `PeriodicMetricCollectorInterface`, `CollectPeriodicMetricsTask` (`telemetry.collect_periodic_metrics`)
+- `Telemetry::instrument()`, `Telemetry::emit()`, `DurationMetric`, `Span`, `ConfiguredMetric`, `Meter::emit()`, `MeterProvider`
 
 ## Gotchas
 
-- Metrics emit only if `shopware.telemetry.metrics.enabled` is true and `TELEMETRY_METRICS` is active.
-- Subscriber removal happens at container build; toggling needs a rebuild.
-- Cardinality control for `policy: open` labels belongs to infrastructure (OTel Collector, Prometheus relabeling).
-- Config keys `allow_unknown_labels`, `allow_unknown_label_values`, `enable_internal_metrics` are deprecated (the ADR notes they were never read by PHP code).
+- Tag your telemetry subscribers with `shopware.telemetry.subscriber`; untagged ones still run when telemetry is disabled.
+- `instrument()` with neither metric nor span throws in dev/test; in prod it only runs the callback.
+- Do not call `Profiler::trace()` directly in new code; route through `Telemetry`.
+- `replace` can hide typos (`GETT` lands in `other`); in dev/test replacements are meant to be logged at notice level.
+- Cardinality control for `policy: open` labels belongs to infrastructure (OTel Collector processors, Prometheus relabelling).
+- The config keys `allow_unknown_labels`, `allow_unknown_label_values` and `enable_internal_metrics` are slated for removal; do not use them.
 
 ## Version notes
 
-- `Telemetry`, `Span`, `DurationMetric`, `PeriodicMetricCollectorInterface` are `@experimental feature:TELEMETRY_METRICS stableVersion:v6.8.0`; the three deprecated config keys are removed in 6.8.0.
+- Telemetry is experimental (`TELEMETRY_METRICS`, stable in 6.8.0). `shopware.telemetry.metrics.enabled` is an additional kill-switch that remains after the flag is removed.
+- Adding `flush()` to `MetricTransportInterface` is a breaking change for transport packages, which must implement it.
 
-## Code check (6.7.13.0)
-- confirmed `MetricTransportInterface::flush()` — declared on the interface — vendor/shopware/core/Framework/Telemetry/Metrics/MetricTransportInterface.php:25
-- confirmed `TelemetryFlushListener::getSubscribedEvents()` — kernel/console terminate plus `WorkerRunningEvent`, 60 s default — vendor/shopware/core/Framework/Telemetry/Metrics/Subscriber/TelemetryFlushListener.php:40
-- confirmed `metrics.enabled` — boolean, default false — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1525
-- confirmed `metrics.replace_unknown_label_values_with` — default `'other'` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1526
-- confirmed `shopware.telemetry.subscriber` — removed with periodic collector tag when disabled — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/TelemetrySubscriberCompilerPass.php:19
-- confirmed `CollectPeriodicMetricsTask::getDefaultInterval()` — `5 * MINUTELY`; `shouldRun()` reads enabled — vendor/shopware/core/Framework/Telemetry/Metrics/ScheduledTask/CollectPeriodicMetricsTask.php:20
-- confirmed `Telemetry::instrument()` — throws in dev/test without metric and span — vendor/shopware/core/Framework/Telemetry/Telemetry.php:52
-- confirmed `labels.policy` — label must have `allowed_values` or `policy: open`, not both — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1559
-- deprecated `metrics.allow_unknown_labels` — also `allow_unknown_label_values`, `enable_internal_metrics`; removal in 6.8.0 — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1513
-- confirmed `Meter::emit()` — returns early unless enabled and `TELEMETRY_METRICS` active — vendor/shopware/core/Framework/Telemetry/Metrics/Meter.php:38
+## Code check (6.7.15.1)
+- confirmed `MetricTransportInterface::flush()` — declared on the experimental interface — vendor/shopware/core/Framework/Telemetry/Metrics/MetricTransportInterface.php:25
+- confirmed `TelemetryFlushListener::getSubscribedEvents()` — kernel/console terminate plus WorkerRunningEvent — vendor/shopware/core/Framework/Telemetry/Metrics/Subscriber/TelemetryFlushListener.php:40
+- confirmed `DEFAULT_WORKER_FLUSH_INTERVAL_SECONDS` — 60 s worker flush throttle — vendor/shopware/core/Framework/Telemetry/Metrics/Subscriber/TelemetryFlushListener.php:21
+- confirmed `CollectPeriodicMetricsTask::getDefaultInterval()` — 5 minutes, task name telemetry.collect_periodic_metrics, shouldRun reads shopware.telemetry.metrics.enabled — vendor/shopware/core/Framework/Telemetry/Metrics/ScheduledTask/CollectPeriodicMetricsTask.php:20
+- confirmed `shopware.telemetry.subscriber` — compiler pass removes both tag groups when disabled — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/TelemetrySubscriberCompilerPass.php:19
+- confirmed `PeriodicMetricCollectorInterface::collect()` — returns iterable of ConfiguredMetric — vendor/shopware/core/Framework/Telemetry/Metrics/Metric/PeriodicMetricCollectorInterface.php:26
+- confirmed `replace_unknown_label_values_with` — default 'other'; label validation requires allowed_values or policy open — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1571
+- confirmed `Telemetry::instrument()` — throws in dev/test without metric or span, emits duration in ms — vendor/shopware/core/Framework/Telemetry/Telemetry.php:53
+- deprecated `allow_unknown_labels` — config node deprecated for removal in 6.8.0 — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1558
+- deprecated `enable_internal_metrics` — config node deprecated for removal in 6.8.0 (same for allow_unknown_label_values) — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1566

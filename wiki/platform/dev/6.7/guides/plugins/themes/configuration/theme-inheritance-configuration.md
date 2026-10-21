@@ -6,24 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/themes/configuration/theme-inheritance-configuration.html
 sourceHash: 84e93e82d97df6070eb1d640af78427bbf147b26
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["configInheritance", "theme.json", "theme inheritance", "inherited config fields", "base theme", "child theme", "corporate design theme", "sw-color-brand-primary", "sw-brand-icon", "theme:refresh", "parent theme"]
-summary: Use configInheritance in theme.json so an extending theme inherits config fields from a base theme and overrides or adds only the fields it needs.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md", "platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md", "platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md", "platform/dev/6.7/guides/plugins/plugins/storefront/templates/customize-templates.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["configInheritance", "theme.json", "config.fields", "SwagBasicExampleTheme", "SwagBasicExampleThemeExtend", "sw-brand-icon", "sw-color-brand-primary", "parentThemeId", "theme config inheritance", "child theme", "seasonal theme", "inherited config fields"]
+summary: Example of a base corporate-design theme and an extending theme that inherits its config fields via configInheritance and overrides selected values.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md
+  - platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md
+  - platform/dev/6.7/guides/plugins/plugins/storefront/templates/customize-templates.md
 ---
 ## What it is
 
-A worked example of `configInheritance`: a base corporate-design theme (`SwagBasicExampleTheme`) defines config fields, and a second theme (`SwagBasicExampleThemeExtend`) inherits them, overrides some defaults and adds fields only it needs (e.g. for a holiday or sales week design).
+Worked example of config inheritance between two themes: a base theme (`SwagBasicExampleTheme`) holds the corporate-design config fields, and an extending theme (`SwagBasicExampleThemeExtend`) inherits them through `configInheritance`, overriding some values and adding fields needed only for a special period (e.g. a holiday week with an advent calendar).
 
 ## When to use
 
-- You keep one base theme with colors, logo and other settings, and need variant themes (seasonal, per sales channel) that reuse those settings without copying them.
+When you need a temporary or sales-channel-specific variant of an existing theme without copying its whole `config` block into the new `theme.json`.
 
 ## Key steps / config
 
-1. Create two themes as described in [Theme inheritance](platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md).
-2. Define fields in the base theme's `theme.json`:
+1. Create both themes as described in [Theme inheritance](platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md).
+2. Define the base fields in `SwagBasicExampleTheme`'s `theme.json`:
 
 ```json
 {
@@ -38,7 +41,7 @@ A worked example of `configInheritance`: a base corporate-design theme (`SwagBas
 }
 ```
 
-3. In the extending theme list the parents in `configInheritance` and declare only overrides and new fields:
+3. In the extending theme, list the parents in `configInheritance` and add/override fields:
 
 ```json
 {
@@ -53,26 +56,28 @@ A worked example of `configInheritance`: a base corporate-design theme (`SwagBas
 }
 ```
 
-Result: all fields from `Storefront` and `SwagBasicExampleTheme` are inherited and shown in the Administration with an inherit anchor, using the parent value until changed. `sw-brand-icon` gets a new default in the extending theme, so it is not inherited even though `SwagBasicExampleTheme` defines it. `sw-advent-calendar-background-color` exists only in the extending theme.
+Result: all fields of `Storefront` and `SwagBasicExampleTheme` are inherited and shown in the Administration with an inherit anchor, using the parent value until changed. `sw-brand-icon` gets a new default and is no longer inherited; `sw-advent-calendar-background-color` exists only in the extending theme.
 
-The parent relationship is set when the theme is installed; run `bin/console theme:refresh` after changing `configInheritance`.
+`configInheritance` is ordered least to most specific. When the theme is installed or refreshed, the last entry that is neither `@Storefront` nor the theme itself (here `SwagBasicExampleTheme`) is stored as the theme's `parentThemeId`.
 
 ## Essential identifiers
 
-- `configInheritance`
-- `theme.json`, `config.fields`
-- `@Storefront` (base theme, always inherited)
-- `bin/console theme:refresh`
+- `configInheritance` (in `theme.json`)
+- `config.fields`
+- `parentThemeId`
+
+## Gotchas
+
+- Field labels written into `theme.json` (`label` maps per field, tab, block or section) are the pre-snippet style; the docs show them only in the "Before v6.8.0.0" variant. Translate via Administration snippets instead.
+- A field redefined in the child theme's `theme.json` with its own `value` is not inherited, even though the parent defines it.
 
 ## Version notes
 
 - `configInheritance` is available since Shopware 6.4.8.0.
-- The source also shows a "Before v6.8.0.0" variant with translated `label` arrays on fields and `blocks`/`sections`/`tabs`; those are deprecated for v6.8 in favor of Administration snippets.
 
-## Code check (6.7.13.0)
-- confirmed `configInheritance` — read from theme.json and copied into the theme config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
-- confirmed `StorefrontPluginConfiguration::getConfigInheritance()` — parent theme is linked during theme lifecycle when non-empty — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:105
-- confirmed `StorefrontPluginRegistry::BASE_THEME_NAME` — base theme 'Storefront' — vendor/shopware/storefront/Theme/StorefrontPluginRegistry.php:20
-- confirmed `isInherited` — computed per field for the Administration inherit state — vendor/shopware/storefront/Theme/ThemeMergedConfigBuilder.php:143
-- deprecated `ThemeConfigField::$label` — tag:v6.8.0, use labelSnippetKey — vendor/shopware/storefront/Theme/ThemeConfigField.php:19
-- confirmed `theme:refresh` — console command — vendor/shopware/storefront/Theme/Command/ThemeRefreshCommand.php:14
+## Code check (6.7.15.1)
+- confirmed `configInheritance` — read from `theme.json` and copied into the base config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
+- confirmed `getConfigInheritance()` — least-to-most-specific order; Storefront and self entries skipped — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:567
+- confirmed `parentThemeId` — set from the last non-Storefront `configInheritance` entry — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:584
+- confirmed `configInheritance` — merged config output carries the inheritance list for the Administration — vendor/shopware/storefront/Theme/ThemeMergedConfigBuilder.php:127
+- confirmed `ThemeConfigField::$labelSnippetKey` — snippet-based field labels — vendor/shopware/storefront/Theme/ThemeConfigField.php:23

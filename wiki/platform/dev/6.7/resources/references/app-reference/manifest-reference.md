@@ -5,75 +5,94 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/manifest-reference.html
-sourceHash: 5766129a9d0450ef4e6526b765ae036c4256a146
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["manifest.xml", "manifest-3.0.xsd", "app manifest", "meta", "setup", "requirements", "public-access", "permissions", "crud", "allowed-hosts", "webhooks", "payments", "shipping-methods", "rule-conditions", "tax"]
-summary: "Reference of app manifest.xml sections: required meta, setup, requirements (public-access), permissions/crud, webhooks, payments, tax."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md", "platform/dev/6.7/guides/plugins/apps/checkout/payment.md", "platform/dev/6.7/guides/plugins/apps/administration/add-custom-modules.md"]
+sourceHash: 914a571cd5ca9eda82628ff03bd069027f30d27d
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["manifest.xml", "app manifest", "meta", "setup", "requirements", "public-access", "permissions", "crud", "allowed-hosts", "webhooks", "template-load-priority", "payments", "shipping-methods", "rule-conditions", "tax-provider"]
+summary: Section-by-section reference of the app manifest.xml - meta, setup, requirements (public-access), permissions/crud, hosts, webhooks, admin, payments, tax.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md
+  - platform/dev/6.7/guides/plugins/apps/storefront/_index.md
+  - platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md
+  - platform/dev/6.7/guides/plugins/apps/administration/add-custom-modules.md
 ---
 ## What it is
 
-Overview of every top-level section of an app's `manifest.xml`. In 6.7 the core validates manifests against `manifest-3.0.xsd`. Only `meta` is required; all other sections are optional.
+Reference of the top-level sections of an app's `manifest.xml`. Only `<meta>` is required; every other section is optional and only needed when the app uses that feature. In the installed 6.7 code the root `<manifest>` element is defined by `manifest-3.0.xsd` as an `xs:all` group, so section order does not matter and each section appears at most once.
 
 ## When to use
 
-When writing or reviewing an app manifest and you need to know which section to add for a capability (registration, permissions, webhooks, admin modules, checkout integrations) and since which version it exists.
+When writing or reviewing an app manifest and you need to know which top-level element configures which feature, and which guide covers it in detail.
 
 ## Key steps / config
 
-Top-level children of `<manifest>` (unordered; only `meta` required):
+Top-level sections of `<manifest>`:
+
+- `<meta>` (required) — app meta information: `name`, `label`, `description`, `author`, `copyright`, `version`, `icon`, `license`, `compatibility`, `privacy`, `privacyPolicyExtensions`.
+- `<setup>` — omit if Shopware and the app server do not communicate. Holds `registrationUrl` and the optional `secret` for local development. See [App registration & backend setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md).
+- `<requirements>` (since `6.7.10.0`) — environment preconditions checked before setup/installation. Presence of a child element enables it. Available: `<public-access/>`.
+- `<storefront>` — `template-load-priority` (int, default `0`). See the [storefront guide](platform/dev/6.7/guides/plugins/apps/storefront/_index.md) and [SEO URLs for App Routes](platform/dev/6.7/guides/plugins/apps/storefront/seo-urls.md).
+- `<permissions>` — `<read>`, `<create>`, `<update>`, `<delete>` per entity, the `<crud>` shortcut (since 6.7.3.0; grants all four), and `<permission>` for additional privileges.
+- `<allowed-hosts>` (since `6.4.12.0`) — `<host>` entries for every external endpoint the app talks to.
+- `<webhooks>` — `<webhook>` entries; the `name` attribute must be unique. See the [webhook guide](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md).
+- `<admin>` — `action-button`, `module`, `main-module`, `base-app-url`. See [add custom modules](platform/dev/6.7/guides/plugins/apps/administration/add-custom-modules.md).
+- `<cookies>` — a single cookie or a cookie group for the consent manager. See [cookies with apps](platform/dev/6.7/guides/plugins/apps/storefront/cookies-with-apps.md).
+- `<payments>` — `payment-method` entries handled by the app server. See [app payment](platform/dev/6.7/guides/plugins/apps/checkout/payment.md).
+- `<shipping-methods>` — `shipping-method` entries. See [shipping methods](platform/dev/6.7/guides/plugins/apps/checkout/shipping-methods.md).
+- `<rule-conditions>` — `rule-condition` with `identifier`, `name`, `group`, `script`, `constraints`. See [rule conditions](platform/dev/6.7/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md).
+- `<tax>` — `tax-provider` with `identifier`, `name`, `priority`, `process-url`. See [tax provider](platform/dev/6.7/guides/plugins/apps/checkout/tax-provider.md).
 
 ```xml
 <manifest>
-  <meta>...</meta>
-  <setup>registrationUrl, secret</setup>
-  <requirements><public-access/></requirements>
-  <storefront><template-load-priority>...</template-load-priority></storefront>
-  <permissions><read>product</read><crud>product</crud></permissions>
-  <allowed-hosts><host>...</host></allowed-hosts>
-  <webhooks/> <admin/> <cookies/> <payments/> <shipping-methods/> <rule-conditions/> <tax/>
+    <meta>...</meta>
+    <requirements><public-access/></requirements>
+    <permissions>
+        <crud>product</crud>
+        <read>order</read>
+    </permissions>
+    <allowed-hosts><host>...</host></allowed-hosts>
 </manifest>
 ```
 
-- **meta** (required): app metadata.
-- **setup**: omit if Shopware and the app need no communication; see [App registration & backend setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md).
-- **requirements** (since `6.7.10.0`): environment preconditions for setup/installation. Available: `public-access` — best-effort check that `APP_URL` is set and uses HTTPS, the host is not `localhost`, an IP address or a reserved domain (`.local`, `.test`, `.example`), resolves via DNS to a public IP, and `/api/_info/health-check` returns HTTP 200.
-- **storefront**: template load priority ([storefront guide](platform/dev/6.7/guides/plugins/apps/storefront/_index.md)).
-- **permissions**: `read`, `create`, `update`, `delete` per entity, or `<crud>` granting all four (since 6.7.3.0).
-- **allowed-hosts** (since `6.4.12.0`): external endpoints the app talks to.
-- **webhooks**: names must be unique ([webhook guide](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md)).
-- **admin**: Administration extension, e.g. custom modules.
-- **cookies**: single cookie or cookie group for the consent manager ([cookies with apps](platform/dev/6.7/guides/plugins/apps/storefront/cookies-with-apps.md)).
-- **payments** / **shipping-methods**: methods handled by the external app server.
-- **rule-conditions**: identifier must be unique and stable ([rule conditions](platform/dev/6.7/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md)).
-- **tax**: external tax provider ([tax provider](platform/dev/6.7/guides/plugins/apps/checkout/tax-provider.md)).
+`<crud>product</crud>` is equivalent to `<read>product</read>`, `<create>product</create>`, `<update>product</update>`, `<delete>product</delete>`.
+
+### `public-access` checks
+
+The validator checks that:
+
+- `APP_URL` is set and uses HTTPS;
+- the host is not `localhost`, an IP address, or a reserved domain (`.local`, `.test`, `.example`, ...);
+- the host resolves via DNS to a public IP address;
+- `/api/_info/health-check` on `APP_URL` returns HTTP 200 (1 s timeout, no redirects followed).
 
 ## Essential identifiers
 
-- `manifest.xml`, `manifest-3.0.xsd`
-- `meta`, `setup`, `requirements`, `public-access`, `storefront`, `template-load-priority`, `permissions`, `crud`, `allowed-hosts`, `webhooks`, `admin`, `cookies`, `payments`, `shipping-methods`, `rule-conditions`, `tax`
+- `manifest.xml`, `<meta>`, `<setup>`, `<requirements>`, `<public-access/>`
+- `<permissions>`, `<crud>`, `<allowed-hosts>`, `<webhooks>`, `<admin>`, `<storefront>`, `template-load-priority`
+- `<cookies>`, `<payments>`, `<shipping-methods>`, `<rule-conditions>`, `<tax>`
 - `APP_URL`, `/api/_info/health-check`
 
 ## Gotchas
 
-- Changing a rule condition identifier creates a separate condition; uses of the old one are lost.
-- `<crud>` is unavailable before 6.7.3.0 — use individual elements for older targets.
-- `public-access` passing once does not guarantee the condition keeps holding; transient network issues can fail it.
-- Inline `custom-fields` in the manifest is deprecated for v6.8.0 in the installed schema; define them in `Resources/config/custom-fields.xml` instead ([custom fields guide](platform/dev/6.7/guides/plugins/apps/custom-data/custom-fields.md)).
+- Rule condition `identifier` must be unique and must not change; changing it creates a separate rule condition and existing uses of the old one are lost.
+- `public-access` is best-effort: a temporary network issue can make it fail, and passing once does not guarantee the shop stays reachable.
+- Use the individual permission elements instead of `<crud>` if the app must support versions before 6.7.3.0.
+- Inline `<custom-fields>` in the manifest is marked `@deprecated tag:v6.8.0` in the installed schema; define custom fields in a separate `Resources/config/custom-fields.xml` instead. See [custom fields](platform/dev/6.7/guides/plugins/apps/custom-data/custom-fields.md).
+- In the installed `manifest-3.0.xsd`, the `storefront` type only declares `template-load-priority`; the schema also contains `gateways` and `documents` sections that this page does not describe.
 
 ## Version notes
 
-- `allowed-hosts` since 6.4.12.0; `crud` since 6.7.3.0; `requirements` / `public-access` since 6.7.10.0.
+- `<allowed-hosts>`: since 6.4.12.0. `<crud>`: since 6.7.3.0. `<requirements>` / `public-access`: since 6.7.10.0.
+- Inline `<custom-fields>` is scheduled for removal in 6.8.0.
 
-## Code check (6.7.13.0)
-- confirmed `manifest-3.0.xsd` — schema used to validate manifests — vendor/shopware/core/Framework/App/Manifest/Manifest.php:33
-- confirmed `meta` — only top-level element without minOccurs="0" — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:8
-- confirmed `requirements` — optional element accepting any requirement child — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:144
-- confirmed `PublicAccess::name()` — returns public-access — vendor/shopware/core/Framework/App/Validation/Requirements/PublicAccess.php:70
-- confirmed `/api/_info/health-check` — health endpoint probed under APP_URL — vendor/shopware/core/Framework/App/Validation/Requirements/PublicAccess.php:57
-- confirmed `crud` — expands to read/create/update/delete — vendor/shopware/core/Framework/App/Manifest/Xml/Permission/Permissions.php:98
-- confirmed `template-load-priority` — storefront child element — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:216
-- confirmed `uniqueWebhookName` — webhook names unique — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:87
-- confirmed `uniqueRuleConditionName` — rule condition identifiers unique — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:127
-- deprecated `custom-fields` — inline manifest custom-fields removed in v6.8.0 — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:69
+## Code check (6.7.15.1)
+- confirmed `meta` — only required manifest child (no minOccurs="0") — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:8
+- confirmed `requirements` — optional manifest section — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:155
+- confirmed `PublicAccess::name()` — returns `public-access` — vendor/shopware/core/Framework/App/Validation/Requirements/PublicAccess.php:68
+- confirmed `APP_URL` — must be set, HTTPS, public, DNS-resolvable — vendor/shopware/core/Framework/App/Validation/Requirements/PublicAccess.php:45
+- confirmed `/api/_info/health-check` — must return HTTP 200 — vendor/shopware/core/Framework/App/Validation/Requirements/PublicAccess.php:57
+- confirmed `crud` — permissions shortcut element — vendor/shopware/core/Framework/App/Manifest/Xml/Permission/Permissions.php:109
+- confirmed `allowed-hosts` — list of `host` elements — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:240
+- confirmed `template-load-priority` — only storefront child, int, default 0 — vendor/shopware/core/Framework/App/Manifest/Xml/Storefront/Storefront.php:31
+- confirmed `tax-provider` — identifier, name, priority, process-url — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:620
+- deprecated `custom-fields` — inline definition removed in v6.8.0 — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:68

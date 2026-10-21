@@ -6,71 +6,82 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-05-10-experimental-features.html
 sourceHash: a207ab07896fbb5cfb4de93caebf405fd70f157a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["@experimental", "stableVersion", "feature", "Experimental", "@internal", "@deprecated", "experimental features", "backwards compatibility", "bc promise", "openapi tag", "AnnotationTagTester", "early access", "adr"]
-summary: "ADR: @experimental marks code outside the BC promise; requires stableVersion and feature properties; API routes get an Experimental tag."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["@experimental", "stableVersion", "experimental features", "backwards compatibility", "bc promise", "@internal", "Experimental tag", "OpenAPI", "feature flag", "OpenApiPathBuilder", "twig block annotation", "early access", "adr"]
+summary: "ADR 2023-05-10: the @experimental stableVersion:vX annotation marks production-ready code that is not yet under the backwards-compatibility promise."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (areas: core, administration, storefront; 2023-05-10) introducing "experimental" features: production-ready increments of features still in active development, shipped early and explicitly excluded from the backwards compatibility (BC) promise. Code is marked with an `@experimental` annotation.
+An architecture decision record (2023-05-10, areas core/administration/storefront) that adds "experimental" features to Shopware. These are increments of a feature that are shipped early and are production-ready, but are not yet covered by the backwards compatibility (BC) promise. The affected code is marked with an `@experimental` annotation that carries a `stableVersion`, such as `@experimental stableVersion:v6.6.0`.
 
 ## When to use
 
-- You find `@experimental` on a class, method, entity definition, route, admin component or Twig block and need to know what stability guarantees apply.
-- You build on or extend a Shopware feature that is still experimental.
-- You mark your own contribution to Shopware core/commercial code as experimental.
+- You extend or build on Shopware code, routes, entities, admin components or Storefront templates marked `@experimental`, and need to know what stability you can rely on.
+- You mark your own contributions as experimental in PHP, JS or Twig.
 
 ## Key steps / config
 
-- Annotate code (class or method level) with `@experimental`, used like `@internal`. The annotation, not a PHP attribute, is used so the same marker works in PHP, JS and Twig and needs no runtime evaluation.
-- Every annotation carries a `stableVersion` property (the major version at which the feature is stable at the latest) and a `feature` property in ALL_CAPS; the installed annotation test rejects annotations missing either.
-- Parts that should never become public API get `@internal` instead; everything `@experimental` is designed to become public API.
+What `@experimental` means:
 
-PHP / Admin JS:
+- The marked code is planned to become public API once the feature is stable. Code that should never become public API uses `@internal` instead.
+- There is no BC promise, so the implementation may change without a deprecation period.
+- Every annotation must carry `stableVersion`. This is the major version by which the feature is stable, or removed. The annotation can be removed earlier, in any minor version. The experimental phase can be extended case by case.
+- Experimental features are always present and cannot be deactivated. If a merchant-facing feature is made opt-in, only its UI entry point is hidden.
+- Data is never discarded. If the underlying structure changes, existing data is migrated. The blue/green migration rules still apply: destructive DB changes happen only in a major version.
+- Killing a feature: it is deprecated for the next major version and never removed in a minor version.
+
+How to mark code, per area:
+
+- **Core (PHP)**: place it in the class or method docblock, in the same way as `@internal`.
+- **API**: add the `Experimental` tag to the route's OpenAPI definition and note in the route summary that it is experimental. For entities, put `@experimental` on the entity definition class. The generated CRUD routes then get the `Experimental` tag automatically.
+- **Admin**: it applies to modules, components, services and similar:
 
 ```js
 /**
- * @experimental stableVersion:v6.8.0 feature:MY_FEATURE
+ * @experimental stableVersion:v6.6.0
  */
 Component.register('sw-new-component', { /* ... */ });
 ```
 
-Storefront Twig (a block, or a whole template before `sw_extends`):
+- **Storefront**: it applies to Twig blocks, SCSS classes and JS plugins. You can mark a single block or a whole template:
 
 ```twig
-{# @experimental stableVersion:v6.8.0 feature:MY_FEATURE #}
+{# @experimental stableVersion:v6.6.0 #}
 {% block awesome_new_feature %}...{% endblock %}
+
+{# @experimental stableVersion:v6.6.0 #}
+{% sw_extends '@Storefront/storefront/page/product-detail/index.html.twig' %}
 ```
 
-API:
-- Mark an entity definition class with `@experimental`: the OpenAPI generator adds the `Experimental` tag to its auto-generated CRUD routes and appends a note to the summary that the API is not part of the BC promise.
-- For custom routes, add the `Experimental` tag to the route's OpenAPI definition and mention the experimental state in its summary.
+Automated checks defined by the ADR:
+
+- A static analysis rule or unit test requires `stableVersion` and rejects annotations for versions that have already been released, as is already done for `@deprecated`.
+- The BC checker treats `@experimental` like `@internal`.
+- The API schema generator adds the `Experimental` tag to the auto-generated CRUD routes of experimental entity definitions.
+- The OpenAPI route test checks that experimental routes and controller methods are marked as experimental in the docs.
 
 ## Essential identifiers
 
-- `@experimental` with properties `stableVersion` and `feature`
-- `Experimental` — OpenAPI tag
-- `@internal`, `@deprecated` — related annotations
+- `@experimental stableVersion:v<major>` (PHP/JS docblock, Twig comment)
+- `@internal`, `@deprecated` (sibling annotations)
+- `Experimental` (OpenAPI tag)
+- `Shopware\Core\Framework\Api\ApiDefinition\Generator\OpenApi\OpenApiPathBuilder` (adds the tag for experimental entity definitions)
 
 ## Gotchas
 
-- No opt-in: experimental features are always present and cannot be deactivated technically. Any merchant-facing opt-in may only hide the UI entry point.
-- Data is never discarded: if the underlying structure changes, existing data is migrated. Blue/green migration rules still apply, so destructive DB changes (dropping tables/columns) only happen in a major version.
-- Killing a feature: it is deprecated and removed only with the next major version, never in a minor.
-- The `@experimental` status can be removed in any minor; at the latest it must be gone by `stableVersion`. The phase may be extended case by case.
-- The ADR's examples use only `stableVersion:v6.6.0`; the `feature` property was added by a later ADR and is enforced in 6.7.13.
-- There is by default no UI distinction for merchants between experimental and stable features.
+- An annotation was chosen over a PHP attribute for these reasons: it matches `@deprecated`/`@internal`, the same syntax works in PHP, JS and templates, it needs no runtime evaluation, and Symfony also uses `@experimental`.
+- Experimental is not the old feature-flag approach. Feature flags hid work-in-progress code. Experimental code is finished and usable, but the feature may still be incomplete.
+- By default, the UI does not distinguish experimental features from stable ones. Commercial features follow the same rules.
+- Experimental features get dev, API and user docs, all labelled as not yet stable.
 
 ## Version notes
 
-Original examples target `v6.6.0`; annotations in the installed 6.7.13 code use `stableVersion:v6.8.0` together with a `feature:` value.
+- A later ADR, "Add Feature property to `@experimental` annotation" (2023-09-06), supplements this one. Installed 6.7.15.1 code uses the extended form, for example `@experimental stableVersion:v6.8.0 feature:SPATIAL_BASES`.
 
-## Code check (6.7.13.0)
-- corrected `stableVersion` — docs: only `stableVersion` required; code also requires `feature` in ALL_CAPS — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:155
-- confirmed `feature` — missing property throws — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:156
-- confirmed `@experimental` — PHP class docblock usage — vendor/shopware/core/Content/Cookie/SalesChannel/CookieRoute.php:21
-- confirmed `@experimental` — Twig comment usage in storefront templates — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image-gallery.html.twig:227
-- confirmed `@experimental` — admin source usage — vendor/shopware/administration/Resources/app/administration/src/app/adapter/composition-extension-system.ts:18
-- confirmed `Experimental` — tag added to CRUD routes of experimental entity definitions — vendor/shopware/core/Framework/Api/ApiDefinition/Generator/OpenApi/OpenApiPathBuilder.php:82
-- confirmed `EXPERIMENTAL_ANNOTATION_NAME` — generator detects the annotation in the definition docblock — vendor/shopware/core/Framework/Api/ApiDefinition/Generator/OpenApi/OpenApiPathBuilder.php:537
+## Code check (6.7.15.1)
+- confirmed `@experimental` — PHP class docblock with `stableVersion` — vendor/shopware/core/Framework/Mcp/McpAllowedHostsProvider.php:9
+- confirmed `OpenApiPathBuilder::isExperimental()` — reads `@experimental` from the entity definition docblock — vendor/shopware/core/Framework/Api/ApiDefinition/Generator/OpenApi/OpenApiPathBuilder.php:81
+- confirmed `Experimental` — tag added to generated CRUD paths — vendor/shopware/core/Framework/Api/ApiDefinition/Generator/OpenApi/OpenApiPathBuilder.php:82
+- confirmed `@experimental stableVersion` — Twig comment form, with `feature:` property — vendor/shopware/storefront/Resources/views/storefront/utilities/qr-code-modal.html.twig:1
+- confirmed `@experimental stableVersion` — Admin JS docblock form — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/view/sw-product-detail-base/index.js:217

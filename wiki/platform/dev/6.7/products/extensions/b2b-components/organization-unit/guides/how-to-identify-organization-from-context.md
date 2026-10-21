@@ -6,25 +6,24 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/organization-unit/guides/how-to-identify-organization-from-context.html
 sourceHash: a17251d4be5bdf07dec5be5e38b2624645142718
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["organization unit", "organizationId", "EmployeeEntity", "SalesChannelContextFactoryDecorator", "CUSTOMER_EMPLOYEE_EXTENSION", "getExtension", "getCustomer", "SalesChannelContext", "b2b employee", "b2b components", "commercial plugin", "employee organization"]
-summary: Get a B2B employee's organization unit - read the employee extension from the SalesChannelContext customer, then its organizationId.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["organizationId", "EmployeeEntity", "SalesChannelContextFactoryDecorator", "CUSTOMER_EMPLOYEE_EXTENSION", "getExtension", "getCustomer", "SalesChannelContext", "organization unit", "current employee", "b2b components", "customer extension"]
+summary: Get the current B2B employee's organization unit id from the SalesChannelContext via the customer's employee extension and its organizationId.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A short recipe from the B2B Components (Commercial) docs for finding the organization unit an employee belongs to: fetch the employee entity from the customer in the sales channel context, then read its `organizationId`.
+How to find the organization unit the logged-in B2B employee belongs to: read the employee entity from the customer in the sales channel context, then its `organizationId`.
 
 ## When to use
 
-In storefront or Store API code running for a logged-in B2B employee, when you need to load organization-related data or restrict what the employee may access based on their organization unit.
+Code running in a storefront/store-api request needs to load organization-specific data or restrict what the current employee may access.
 
 ## Key steps / config
 
-1. Take the customer from the `SalesChannelContext` (`getCustomer()` may return `null`).
-2. Read the employee extension from the customer using the constant `SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION`.
-3. Bail out if the result is not an `EmployeeEntity`.
-4. Read `organizationId` from the employee entity.
+1. Get the customer from the `SalesChannelContext` and read its employee extension, keyed by `SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION`.
+2. Bail out if the result is not an `EmployeeEntity` (the customer is not an employee).
+3. Read `organizationId` from the employee.
 
 ```php
 $employee = $context->getCustomer()?->getExtension(SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION);
@@ -36,24 +35,21 @@ if (!$employee instanceof EmployeeEntity) {
 $organizationId = $employee->get('organizationId');
 ```
 
-The resulting `organizationId` is the ID of the organization unit associated with the employee.
+Use `$organizationId` to load organization-related data or for access decisions.
 
 ## Essential identifiers
 
-- `SalesChannelContext::getCustomer()`
-- `getExtension()` (on the customer entity)
-- `SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION` (Commercial plugin)
-- `EmployeeEntity` (Commercial plugin)
+- `SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION`
+- `EmployeeEntity`
 - `organizationId`
 
 ## Gotchas
 
-- The customer is nullable (guest/no login) and a regular customer has no employee extension; always guard with the `instanceof EmployeeEntity` check.
-- `SalesChannelContextFactoryDecorator` and `EmployeeEntity` live in the Shopware Commercial plugin, not in the core; the source does not give their namespaces.
+- `SalesChannelContext::getCustomer()` is nullable (no customer logged in), hence the nullsafe `?->` before `getExtension()`.
 
-## Code check (6.7.13.0)
-- confirmed `SalesChannelContext::getCustomer()` — returns `?CustomerEntity`, so the null-safe call is needed — vendor/shopware/core/System/SalesChannel/SalesChannelContext.php:132
-- confirmed `ExtendableTrait::getExtension()` — `getExtension(string $name): ?Struct` — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:51
-- confirmed `Entity::get()` — generic property accessor used for `organizationId` — vendor/shopware/core/Framework/DataAbstractionLayer/Entity.php:99
-- unverified `SalesChannelContextFactoryDecorator::CUSTOMER_EMPLOYEE_EXTENSION` — Commercial plugin, outside the installed vendor/shopware roots
-- unverified `EmployeeEntity` — Commercial plugin, outside the installed vendor/shopware roots
+## Code check (6.7.15.1)
+- confirmed `SalesChannelContext::getCustomer()` — returns `?CustomerEntity` — vendor/shopware/core/System/SalesChannel/SalesChannelContext.php:132
+- confirmed `ExtendableTrait::getExtension()` — returns `?Struct` by name — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:51
+- confirmed `Entity::get()` — generic property accessor — vendor/shopware/core/Framework/DataAbstractionLayer/Entity.php:99
+- unverified `SalesChannelContextFactoryDecorator` — commercial B2B Components class, not in core/storefront/administration
+- unverified `EmployeeEntity` — commercial B2B Components entity, out of scope

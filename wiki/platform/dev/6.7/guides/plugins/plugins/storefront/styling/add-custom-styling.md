@@ -1,37 +1,37 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-custom-styling.md
-title: Add Custom Styling
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/styling/add-custom-styling.html
+id: platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-custom-styling.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
+  - platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md
 sourceHash: 6c8e31eb34d9e6032cb7d1ceff88505eb9d92d5d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["base.scss", "src/Resources/app/storefront/src/scss", "abstract/variables.scss", "shopware-cli project storefront-build", "shopware-cli project storefront-watch", "composer run build:js:storefront", "composer run watch:storefront", "hot proxy", "scss", "css", "plugin styling", "storefront"]
-summary: Plugin Storefront styles are loaded from src/Resources/app/storefront/src/scss/base.scss; build with storefront-build or watch via hot proxy on port 9998.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/styling/add-custom-styling.html
+title: Add Custom Styling
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["base.scss", "scss", "css", "storefront styling", "plugin styles", "scss variables", "shopware-cli project storefront-build", "shopware-cli project storefront-watch", "composer run build:js:storefront", "composer run watch:storefront", "hot-proxy", "StorefrontPluginConfigurationFactory", "theme compile"]
+summary: "Add Storefront styles from a plugin: base.scss in src/Resources/app/storefront/src/scss, SCSS variables, build and hot-proxy watch commands."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a plugin adds its own (S)CSS to the Storefront: Shopware picks up a `base.scss` entry file from a fixed directory in the plugin and compiles it into the theme.
+How a plugin ships custom SCSS for the Storefront. Shopware picks up a single entry file named `base.scss` from the plugin's Storefront SCSS directory and compiles it into the theme.
 
 ## When to use
 
-Your plugin changes Storefront templates and needs custom styles for them. To override Shopware's default (Bootstrap) variables instead, see [Override Bootstrap Variables in a Theme](platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md). Prerequisites: a plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) and SCSS knowledge.
+Your plugin changes Storefront templates and needs its own styles, or you want reusable SCSS variables for those styles.
 
 ## Key steps / config
 
-1. Create the entry file `<plugin root>/src/Resources/app/storefront/src/scss/base.scss`. Only a file named `base.scss` directly in that `scss` directory (not in subfolders) is registered as a style entry.
-
+1. Create the entry file `<plugin root>/src/Resources/app/storefront/src/scss/base.scss`. Only a file with exactly this name, directly in that directory, is registered as the plugin's style entry.
    ```scss
    body {
        background: blue;
    }
    ```
-
-2. Optional: put shared variables in `src/Resources/app/storefront/src/scss/abstract/variables.scss` and import them from `base.scss`:
-
+2. Optional: put variables in `<plugin root>/src/Resources/app/storefront/src/scss/abstract/variables.scss` and import them from `base.scss`:
    ```scss
    // abstract/variables.scss
    $sw-storefront-assets-color-background: blue;
@@ -40,32 +40,32 @@ Your plugin changes Storefront templates and needs custom styles for them. To ov
    @import 'abstract/variables.scss';
    body { background: $sw-storefront-assets-color-background; }
    ```
-
 3. Build the Storefront so the SCSS is compiled:
-   - Template project: `shopware-cli project storefront-build`
-   - Platform contribution setup: `composer run build:js:storefront`
+   - project template: `shopware-cli project storefront-build`
+   - platform contribution setup: `composer run build:js:storefront`
+4. For live reloading use the hot-proxy:
+   - project template: `shopware-cli project storefront-watch`
+   - platform contribution setup: `composer run watch:storefront`
 
-4. For live style changes use the Storefront hot proxy:
-   - Template project: `shopware-cli project storefront-watch`
-   - Platform contribution setup: `composer run watch:storefront`
+   With the hot-proxy running, open the shop on port `9998` (e.g. `domainToYourEnvironment.in:9998`).
 
-   Then open the shop on port `9998` (e.g. `domainToYourEnvironment.in:9998`).
+To override Shopware's default (Bootstrap) variables instead of defining your own, see [Override Bootstrap Variables in a Theme](platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md). Creating the plugin itself is covered in the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
 
 ## Essential identifiers
 
-- `src/Resources/app/storefront/src/scss/base.scss`
+- `base.scss` (style entry file)
+- `<plugin root>/src/Resources/app/storefront/src/scss`
 - `shopware-cli project storefront-build` / `shopware-cli project storefront-watch`
 - `composer run build:js:storefront` / `composer run watch:storefront`
-- Hot proxy port `9998`
 
 ## Gotchas
 
-- Styles do not appear until the Storefront is rebuilt (or the watcher is running).
-- The hot proxy port defaults to `9998` but the Storefront build scripts read `STOREFRONT_PROXY_PORT` to override it.
+- Partials in subdirectories such as `abstract/` are not auto-loaded. Only the top-level `base.scss` is found (the finder uses depth 0), so import everything else from it.
+- Styles appear only after a Storefront build or with the watcher running. Editing the files alone changes nothing.
 
-## Code check (6.7.13.0)
-- confirmed `base.scss` — style entry discovered via Finder, depth 0 only — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:202
-- confirmed `Resources/app/storefront/src/scss` — directory scanned for the plugin's style entry — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:126
-- confirmed `STOREFRONT_PROXY_PORT` — hot proxy port defaults to 9998 — vendor/shopware/storefront/Resources/app/storefront/build/start-hot-reload.js:15
-- unverified `shopware-cli project storefront-build` — shopware-cli tool, out of scope
-- unverified `composer run build:js:storefront` — platform root composer scripts, out of scope
+## Code check (6.7.15.1)
+- confirmed `Resources/app/storefront/src/scss` — style directory scanned per plugin — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:126
+- confirmed `base.scss` — only file name accepted as entry, depth 0 — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:202
+- unverified `shopware-cli project storefront-build` — shopware-cli tool, outside the vendor roots
+- unverified `composer run build:js:storefront` — root composer script, outside the vendor roots
+- unverified `9998` — hot-proxy port lives in the Storefront build tooling, not checked

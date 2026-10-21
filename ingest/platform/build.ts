@@ -15,7 +15,7 @@ import { parsePage } from "../shared/frontmatterValidate.js";
 import { buildDirectoryIndex, type IndexablePage } from "../shared/indexfiles.js";
 import { checkLinks } from "../shared/links.js";
 import { cacheDirs, fileSha256, listAllFiles } from "../shared/workitems.js";
-import { isSynonymDataLine } from "./synonyms.js";
+import { isSynonymDataLine, pruneSynonymsOutput } from "./synonyms.js";
 import { sha256 } from "../shared/hash.js";
 import { resolveVendorRoot, resolveCodeIndexContext } from "./codeIndex.js";
 import { paths } from "../../src/paths.js";
@@ -226,6 +226,10 @@ export async function run(flags: CliFlags): Promise<number> {
   filesToScanForLinks.push(...guidelines.filesToScanForLinks);
   Object.assign(manifestPages, guidelines.manifestEntries);
 
+  // knownPaths is complete here (pages, aliases, hubs, guidelines) — the same set lint.ts's
+  // `lintSynonyms` resolves against, so a page removed since the last synonyms ingest is
+  // dropped from the synonyms output before it is scanned and counted.
+  const removedSynonymsPaths = pruneSynonymsOutput(wikiRoot, knownPaths, config);
   filesToScanForLinks.push(...synonymsFilesToScan(platformRoot));
 
   const linkCheck = checkLinks(filesToScanForLinks, knownPaths);
@@ -276,6 +280,7 @@ export async function run(flags: CliFlags): Promise<number> {
       hubs: hubPages.length,
       indexFiles,
       removedArticles: pruneResult.removed.length,
+      removedSynonymsPaths,
       links: { total: linkCheck.total, unresolved: linkCheck.unresolved.length },
       synonymsLines: countSynonymsLines(platformRoot),
       coldStartMs,

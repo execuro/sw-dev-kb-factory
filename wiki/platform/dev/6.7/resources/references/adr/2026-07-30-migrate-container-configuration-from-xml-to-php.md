@@ -5,52 +5,65 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-07-30-migrate-container-configuration-from-xml-to-php.html
-sourceHash: ca9ed456142ad30e1593b1eaace8f62579d9c563
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["services.xml", "services.php", "routes.php", "ContainerConfigurator", "RoutingConfigurator", "Kernel::CONFIG_EXTS", "XmlFileLoader", "dependency injection", "service container", "symfony 8", "xml deprecation", "plugin config", "adr"]
-summary: "ADR: platform DI/route config moves from XML to PHP; plugin XML config deprecated in 6.7, removed in 6.8. Installed 6.7.13.0 still mixes XML and PHP."
-lastBuilt: 2026-09-15
+sourceHash: bf853324f8b8b5777fd4205d86d29b9cc67c104e
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["services.xml", "services.php", "routes.php", "ContainerConfigurator", "RoutingConfigurator", "Kernel::CONFIG_EXTS", "debug:container", "debug:router", "UPGRADE-6.8.md", "dependency injection", "xml to php migration", "plugin service definitions", "symfony 8", "autowiring"]
+summary: "ADR: platform DI and route config moved from XML to PHP; plugin XML service/route/package config is deprecated in 6.7 and removed in 6.8."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2026-07-30, accepted): because Symfony 7.4 deprecates and Symfony 8 removes the XML loaders for services and routes, all platform service and route definitions move to PHP configuration (`ContainerConfigurator` / `RoutingConfigurator`), and XML configuration support for plugins is deprecated in 6.7 and removed in 6.8.
+An architecture decision record (2026-07-30). Symfony 7.4 deprecates the XML configuration loaders for service definitions and routes and Symfony 8 removes them. At the time the platform defined roughly 2,350 services across 101 XML files plus 12 XML route files, and plugins ship `Resources/config/services.xml` by convention — both blocked the Symfony 8 upgrade. Decision: migrate all platform service and route definitions to PHP configuration (`ContainerConfigurator` / `RoutingConfigurator`) and deprecate, then remove, XML configuration support for plugins.
 
 ## When to use
 
-When writing or maintaining a plugin's `Resources/config/services.xml`, routes or package config and planning the move to `services.php` / `routes.php` before Shopware 6.8, or when adding core services and choosing the file format.
+- Maintaining a plugin or app server that still ships `services.xml`, XML route files or XML package config.
+- Adding new services to core — they go into the existing `DependencyInjection/*.php` files, following their style.
+- Seeing an "XML configuration file ... is deprecated and will not be loaded in v6.8.0.0" deprecation.
 
 ## Key steps / config
 
-1. Ship plugin service definitions as `Resources/config/services.php` (PHP `ContainerConfigurator`), routes as `routes.php`, package config as PHP. The installed bundle loader already accepts PHP: `Bundle` globs `Resources/config/services.*` and loads through XML, YAML and PHP file loaders.
-2. Use `::class` constants for every class reference so static analysis and IDE refactoring verify the wiring.
-3. Wire explicitly, no autowiring: keep argument order deliberate (it is part of the decoration contract).
-4. When converting, map each XML file 1:1 to a PHP file with the same basename loaded at the same position; the platform proved equivalence by diffing `debug:container` and `debug:router` JSON dumps before and after.
-5. In core, register new services in the existing `DependencyInjection/*.php` files following their style.
-6. `UPGRADE-6.8.md` documents the XML-to-PHP mapping.
+1. Replace `Resources/config/services.xml` with `Resources/config/services.php` (and `services_test.xml` with `services_test.php`).
+2. Replace XML route files (`routes.xml`, `routes/*.xml`, `routes_<env>.xml`, `routes_overwrite.xml`) with their `.php` counterparts.
+3. Move XML package configuration under `Resources/config/packages/` to YAML or PHP.
+4. PHP service config shape (as used by core):
+
+```php
+return static function (ContainerConfigurator $containerConfigurator): void {
+    $services = $containerConfigurator->services();
+    $services->set(MyService::class)
+        ->args([service(OtherService::class)]);
+};
+```
+
+5. Keep wiring explicit; core does not use autowiring. Argument order is part of the decoration contract.
+6. To verify a 1:1 migration, diff `debug:container` and `debug:router` JSON dumps (including hidden services and parameters) before and after.
+
+Plugins can already ship `services.php`, `routes.php` and PHP package config on all supported 6.x versions. `UPGRADE-6.8.md` documents the XML-to-PHP mapping.
 
 ## Essential identifiers
 
-- `Resources/config/services.xml` → `services.php`, `routes.php`
 - `ContainerConfigurator`, `RoutingConfigurator`
+- `Resources/config/services.php`, `routes.php`
 - `Kernel::CONFIG_EXTS` (currently `.{php,xml,yaml,yml}`)
 - `debug:container`, `debug:router`
+- `UPGRADE-6.8.md`
 
 ## Gotchas
 
-- Installed 6.7.13.0 is mid-migration: `Framework::build()` still loads many XML files (`services.xml`, `acl.xml`, `cache.xml`, ...) next to PHP ones (`app.php`, `webhook.php`, `plugin.php`, ...). The ADR's "platform contains no XML" state is not reached in this version.
-- The ADR says loading plugin XML triggers a deprecation (with bundle and file context) and throws with the 6.8 major feature flag; in 6.7.13.0 `Bundle` uses Symfony's `XmlFileLoader` directly with no Shopware deprecation call, so do not rely on seeing that notice.
-- No vendored XML loader will be kept; YAML remains supported by Symfony but was rejected as the target.
+- Every XML config load triggers a deprecation naming the bundle and file; with the 6.8 major feature flag (`v6.8.0.0`) active it throws instead.
+- No vendored XML loader will be maintained — maintaining one was rejected as long-term cost for a format Symfony abandoned.
+- PHP was chosen over YAML because `::class` references are checked by static analysis, IDEs and refactoring tools.
 
 ## Version notes
 
-- 6.7: plugin XML service/route/package config deprecated; PHP config works on all supported 6.x versions.
-- 6.8: XML loaders dropped and `xml` removed from `Kernel::CONFIG_EXTS`.
+- 6.7: platform has no XML container or route configuration; plugin XML config still loads but is deprecated.
+- 6.8: XML loaders are dropped and `xml` is removed from `Kernel::CONFIG_EXTS`.
 
-## Code check (6.7.13.0)
-- confirmed `Kernel::CONFIG_EXTS` — still includes xml — vendor/shopware/core/Kernel.php:40
-- confirmed `XmlFileLoader` — plugin services.* loaded via XML/YAML/PHP loaders — vendor/shopware/core/Framework/Bundle.php:216
-- confirmed `services.*` — bundle globs Resources/config/services.* — vendor/shopware/core/Framework/Bundle.php:222
-- corrected `Bundle::registerContainerFile()` — docs: XML load triggers deprecation in 6.7; no Shopware deprecation trigger in loader — vendor/shopware/core/Framework/Bundle.php:212
-- corrected `Framework::build()` — docs: platform has no XML container config; still loads services.xml via XmlFileLoader — vendor/shopware/core/Framework/Framework.php:72
-- confirmed `webhook.php` — PHP DI file loaded via PhpFileLoader — vendor/shopware/core/Framework/Framework.php:101
-- confirmed `XmlFileLoader` — package config loaders include XML — vendor/shopware/core/Framework/Bundle.php:150
+## Code check (6.7.15.1)
+- confirmed `Kernel::CONFIG_EXTS` — still `.{php,xml,yaml,yml}` in 6.7 — vendor/shopware/core/Kernel.php:41
+- confirmed `Bundle::triggerXmlConfigDeprecation()` — `Feature::triggerDeprecationOrThrow('v6.8.0.0', …)` with file and bundle name — vendor/shopware/core/Framework/Bundle.php:87
+- confirmed `Bundle::registerContainerFile()` — loads `Resources/config/services.*` via XML/YAML/PHP loaders — vendor/shopware/core/Framework/Bundle.php:227
+- deprecated `XmlFileLoader` — plugin XML service loader marked `@deprecated tag:v6.8.0` — vendor/shopware/core/Framework/Bundle.php:232
+- confirmed `Bundle::configureRoutes()` — XML route files trigger deprecation, then glob import — vendor/shopware/core/Framework/Bundle.php:79
+- confirmed `ContainerConfigurator` — core DI files are PHP closures, e.g. webhook services — vendor/shopware/core/Framework/DependencyInjection/webhook.php:60

@@ -6,71 +6,68 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/event/add-custom-event.html
 sourceHash: aa6ded210c37e1a3c35adf8738809699635c3ec6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["custom event", "ShopwareEvent", "ShopwareSalesChannelEvent", "SalesChannelAware", "GenericEvent", "NestedEvent", "FlowEventAware", "EventDispatcherInterface", "event_dispatcher", "dispatch", "fire event", "getSalesChannelContext"]
-summary: Create a plugin event class implementing ShopwareSalesChannelEvent and dispatch it via Symfony's EventDispatcherInterface (event_dispatcher service).
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ShopwareEvent", "ShopwareSalesChannelEvent", "SalesChannelAware", "GenericEvent", "NestedEvent", "event_dispatcher", "EventDispatcherInterface", "dispatch", "getSalesChannelContext", "custom event", "fire event", "create event"]
+summary: Define a custom plugin event class implementing ShopwareSalesChannelEvent and fire it with the event_dispatcher service's dispatch() method.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md
 ---
 ## What it is
 
-How to define your own event class in a plugin, choosing the right Shopware event interface, and how to fire it through Symfony's event dispatcher so other code can subscribe to it.
+How to create your own event class in a plugin and dispatch it, using Shopware's event interfaces on top of the Symfony event dispatcher.
 
 ## When to use
 
-Your plugin performs an action that other plugins or your own subscribers should be able to react to. For consuming events see [Listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md).
+Your plugin code performs an action other code (or other plugins) should be able to react to.
 
 ## Key steps / config
 
-**Event interfaces and classes** (all in `Shopware\Core\Framework\Event`):
+Available base types (`Shopware\Core\Framework\Event\...`):
 
-- `ShopwareEvent` - basic event; requires `getContext(): Context`.
-- `ShopwareSalesChannelEvent` - extends `ShopwareEvent`; additionally requires `getSalesChannelContext(): SalesChannelContext`.
-- `SalesChannelAware` - requires `getSalesChannelId(): string`.
-- `GenericEvent` - requires `getName(): string`; use it to give the event a specific name like DAL events (`product.written`). Otherwise listeners reference the event class.
-- `NestedEvent` - abstract class for events containing other events (e.g. `EntityDeletedEvent` extends `EntityWrittenEvent`).
-- `FlowEventAware` - extends `ShopwareEvent`; the interface core business events such as `CustomerLoginEvent` implement to be available in Flow Builder (requires `getName()` and static `getAvailableData()`).
+- `ShopwareEvent` — interface, requires `getContext(): Context`.
+- `ShopwareSalesChannelEvent` — extends `ShopwareEvent`, adds `getSalesChannelContext(): SalesChannelContext`.
+- `SalesChannelAware` — requires `getSalesChannelId(): string`.
+- `GenericEvent` — requires `getName(): string`; use it to give the event a string name (like DAL events, e.g. `product.written`); otherwise listeners reference the event class.
+- `NestedEvent` — abstract class for events containing other events (e.g. `EntityDeletedEvent` extends `EntityWrittenEvent`).
 
-1. **Create the event class**, e.g. `<plugin root>/src/Core/Content/Example/Event/ExampleEvent.php`, implementing `Shopware\Core\Framework\Event\ShopwareSalesChannelEvent`:
+1. Create the event class implementing `Shopware\Core\Framework\Event\ShopwareSalesChannelEvent`:
 
 ```php
 class ExampleEvent implements ShopwareSalesChannelEvent
 {
-    public function __construct(protected ExampleEntity $exampleEntity, protected SalesChannelContext $salesChannelContext) {}
-    public function getExample(): ExampleEntity { return $this->exampleEntity; }
+    public function __construct(ExampleEntity $exampleEntity, SalesChannelContext $context) { /* ... */ }
+    public function getExample(): ExampleEntity { /* ... */ }
     public function getContext(): Context { return $this->salesChannelContext->getContext(); }
-    public function getSalesChannelContext(): SalesChannelContext { return $this->salesChannelContext; }
+    public function getSalesChannelContext(): SalesChannelContext { /* ... */ }
 }
 ```
 
-2. **Fire the event** from a service (e.g. `ExampleEventService`) that receives `Symfony\Contracts\EventDispatcher\EventDispatcherInterface` (service id `event_dispatcher`):
+2. Fire it from a service that receives the `event_dispatcher` service (`Symfony\Contracts\EventDispatcher\EventDispatcherInterface`):
 
 ```php
 $this->eventDispatcher->dispatch(new ExampleEvent($exampleEntity, $context));
 ```
 
-Without a second argument to `dispatch`, listeners subscribe using the event class name (`ExampleEvent::class`).
+Without a second `dispatch` argument, listeners subscribe by class name. Next: [Listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md).
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Event\ShopwareSalesChannelEvent`
-- `Shopware\Core\Framework\Event\ShopwareEvent`
-- `Shopware\Core\System\SalesChannel\SalesChannelContext`
-- `Symfony\Contracts\EventDispatcher\EventDispatcherInterface`, service `event_dispatcher`
+- `Shopware\Core\Framework\Event\ShopwareSalesChannelEvent`, `ShopwareEvent`, `SalesChannelAware`, `GenericEvent`, `NestedEvent`
+- `ShopwareSalesChannelEvent::getSalesChannelContext()`, `ShopwareEvent::getContext()`
+- `event_dispatcher`, `EventDispatcherInterface::dispatch()`
 
 ## Gotchas
 
-- The docs list `BusinessEventInterface` ("extends ShopwareEvent, used for dynamic assignment, always named"). It does not exist in the installed 6.7 code; core business events (e.g. `CustomerLoginEvent`) implement `FlowEventAware` instead.
-- A class implementing `ShopwareSalesChannelEvent` must declare both `getContext()` and `getSalesChannelContext()`.
+- The source lists `BusinessEventInterface` (for named, dynamically assigned events); it does not exist in 6.7 — Flow Builder events implement `FlowEventAware` instead.
 
-## Code check (6.7.13.0)
-- confirmed `ShopwareSalesChannelEvent::getSalesChannelContext()` — required interface method — vendor/shopware/core/Framework/Event/ShopwareSalesChannelEvent.php:11
-- confirmed `ShopwareEvent::getContext()` — required interface method — vendor/shopware/core/Framework/Event/ShopwareEvent.php:11
-- confirmed `SalesChannelAware::getSalesChannelId()` — interface method — vendor/shopware/core/Framework/Event/SalesChannelAware.php:11
-- confirmed `GenericEvent::getName()` — interface method — vendor/shopware/core/Framework/Event/GenericEvent.php:10
+## Code check (6.7.15.1)
+- confirmed `ShopwareEvent::getContext()` — required member — vendor/shopware/core/Framework/Event/ShopwareEvent.php:11
+- confirmed `ShopwareSalesChannelEvent::getSalesChannelContext()` — required member, interface extends ShopwareEvent — vendor/shopware/core/Framework/Event/ShopwareSalesChannelEvent.php:11
+- confirmed `SalesChannelAware::getSalesChannelId()` — required member — vendor/shopware/core/Framework/Event/SalesChannelAware.php:11
+- confirmed `GenericEvent::getName()` — required member — vendor/shopware/core/Framework/Event/GenericEvent.php:10
 - confirmed `NestedEvent` — abstract class implementing ShopwareEvent — vendor/shopware/core/Framework/Event/NestedEvent.php:11
-- confirmed `EntityDeletedEvent` — extends EntityWrittenEvent — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityDeletedEvent.php:15
-- absent `BusinessEventInterface` — not found anywhere in the installed shopware code index
-- confirmed `CustomerLoginEvent` — implements FlowEventAware, not a business-event interface — vendor/shopware/core/Checkout/Customer/Event/CustomerLoginEvent.php:26
-- confirmed `FlowEventAware::getAvailableData()` — declared alongside getName() — vendor/shopware/core/Framework/Event/FlowEventAware.php:11
-- unverified `EventDispatcherInterface` — vendor/symfony, out of scope
+- confirmed `EntityDeletedEvent` — extends EntityWrittenEvent — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityDeletedEvent.php:17
+- absent `BusinessEventInterface` — no definition or usage in the installed code
+- confirmed `FlowEventAware` — current interface for flow-capable events — vendor/shopware/core/Framework/Event/FlowEventAware.php:9
+- confirmed `event_dispatcher` — service id injected by core services — vendor/shopware/core/Content/DependencyInjection/revocation_request_form.php:20

@@ -6,34 +6,37 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-11-16-deprecate-csrf.html
 sourceHash: b0b2641f16f0cce122edb06e9d20ca8710b32c71
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["csrf", "csrf token", "cross-site request forgery", "samesite", "samesite cookies", "cookie_samesite", "storefront security", "storefront forms", "ajax calls", "adr"]
-summary: "ADR 2022-11-16: storefront CSRF protection removed in favor of SameSite cookies; no CSRF tokens needed in storefront forms or ajax calls."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["csrf", "csrf token", "cross-site request forgery", "samesite", "cookie_samesite", "samesite cookies", "storefront security", "storefront forms", "ajax", "adr", "session cookie"]
+summary: "ADR 2022-11-16: the Storefront CSRF token implementation is removed in favour of SameSite session cookies, which already prevent CSRF attacks."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2022-11-16, area storefront) that removes the Storefront's own CSRF (cross-site request forgery) token implementation and relies on SameSite cookies instead.
+An architecture decision record (area: storefront, 2022-11-16) that removes the Storefront's own CSRF protection and relies on SameSite cookies instead.
 
 ## When to use
 
-When a plugin or theme still tries to add or validate CSRF tokens in Storefront forms or ajax calls, or when you need to know why the Storefront has no CSRF token handling.
+When building Storefront forms or ajax calls and wondering whether a CSRF token must be rendered or sent, or when porting a pre-6.5 theme or plugin that still uses the old CSRF handling.
 
 ## Key steps / config
 
-- Context given by the ADR: with the browsers supported since 6.5, SameSite cookies are widely available; the CSRF implementation added complexity to every Storefront form and ajax call; it gave little extra security on top of the SameSite strategy.
-- Decision: remove the Storefront CSRF protection; SameSite cookies prevent CSRF attacks.
-- Consequence: all CSRF implementations in the Storefront are removed, so custom forms and ajax requests do not need to send a CSRF token.
-- In the installed core, the Symfony session cookie is configured with `cookie_samesite: lax` in the framework package config.
+- Do not add CSRF tokens to Storefront forms or ajax requests; all CSRF implementations in the Storefront are removed.
+- Protection comes from the session cookie's SameSite attribute. In 6.7 core sets `framework.session.cookie_samesite: lax` (with `cookie_secure: 'auto'`) in its framework package config.
 
 ## Essential identifiers
 
-- `cookie_samesite` (session config, value `lax`)
+- `framework.session.cookie_samesite` — `lax` by default in Shopware's framework config
 
 ## Gotchas
 
-- Protection now depends on the SameSite attribute of the session cookie; changing `cookie_samesite` away from `lax`/`strict` in a project config removes that protection.
+The reasoning given: after dropping support for older browsers in 6.5, SameSite cookies are widely supported; the CSRF implementation added complexity to every Storefront form and ajax call; and on top of the SameSite strategy it added little security.
 
-## Code check (6.7.13.0)
-- confirmed `cookie_samesite` — core framework session config sets `lax` — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:22
-- confirmed `csrf_token` — only remaining storefront occurrence is a Twig lint-config entry; no CSRF token handling in storefront PHP/Twig — vendor/shopware/storefront/Resources/views/ludtwig-config.toml:266
+## Version notes
+
+Decided for the 6.5 major, where older browser support was dropped. The installed 6.7 Storefront PHP code has no CSRF service or config node left.
+
+## Code check (6.7.15.1)
+- confirmed `framework.session.cookie_samesite` — set to `lax` for the session cookie — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:22
+- confirmed `framework.session.cookie_secure` — set to `'auto'` next to the SameSite setting — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:21
+- unverified `csrf` — no CSRF class or config key found in the Storefront PHP sources; absence has no line to cite

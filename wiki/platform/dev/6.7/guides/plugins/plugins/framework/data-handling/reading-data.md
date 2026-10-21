@@ -5,73 +5,76 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/data-handling/reading-data.html
-sourceHash: 2b6f43684351331a4767a3df23e298f3501b2e46
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["read data", "dal", "EntityRepository", "product.repository", "Criteria", "EqualsFilter", "OrFilter", "RangeFilter", "addPostFilter", "addAssociation", "AvgAggregation", "FieldSorting", "RepositoryIterator", "searchIds", "pagination"]
-summary: "DAL reads: inject entity_name.repository, build Criteria with filters, associations, aggregations, paging, sorting; batch large sets with RepositoryIterator."
-lastBuilt: 2026-09-15
+sourceHash: c540e9ed773d41a3e9b56b9e30c60b629a779eab
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["EntityRepository", "Criteria", "EqualsFilter", "OrFilter", "RangeFilter", "addPostFilter", "getAssociation", "AvgAggregation", "FieldSorting", "RepositoryIterator", "setTotalCountMode", "product.repository", "dal search", "read entities", "pagination"]
+summary: Reading entities via DAL repositories with Criteria - filters, post filters, associations, aggregations, paging, sorting, count modes, RepositoryIterator.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/concepts/framework/data-abstraction-layer.md", "platform/dev/6.7/guides/development/troubleshooting/dal-reference/filters-reference.md", "platform/dev/6.7/guides/development/troubleshooting/dal-reference/aggregations-reference.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md"]
 ---
 ## What it is
 
-How to fetch data in a plugin or core contribution through Shopware's Data Abstraction Layer (DAL) — Shopware uses no ORM. Reads go through the generated repository of each entity and a `Criteria` object carrying IDs, filters, associations, aggregations, paging and sorting. Background: [Data abstraction layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md).
+How to read data from the database in a plugin through the Data Abstraction Layer (DAL): inject the auto-generated entity repository, build a `Criteria`, and call `search()`. Covers filters, post filters, associations (incl. filtered associations), aggregations, limit/offset/sorting, total count modes, and batch reading with `RepositoryIterator`. Shopware uses no ORM; the DAL is a thin abstraction layer. See [Data abstraction layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md).
 
 ## When to use
 
-Any service, controller or subscriber that loads entities (products, orders, …), filters them, aggregates values, or walks very large data sets in batches.
+Any service, subscriber or controller that needs to fetch entities (products, orders, custom entities) from the database, or iterate over large data sets without exhausting memory.
 
 ## Key steps / config
 
-1. **Inject the repository.** Service id pattern `entity_name.repository` (e.g. `product.repository`, `order.repository`), typed as `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`:
-
-```php
-$services->set(ReadingData::class)
-    ->args([service('product.repository')]);
-```
-
-2. **Search.** Imports `Shopware\Core\Framework\Context` and `Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria`. `search()` returns a result wrapper; take the entity collection from it with `getEntities()`:
-
-```php
-$products = $this->productRepository->search(new Criteria(), $context)->getEntities();
-$product = $this->productRepository->search(new Criteria([$myId]), $context)->getEntities()->first(); // null if none
-```
-
-3. **Filter.** `$criteria->addFilter(new EqualsFilter('name', 'Example name'))`; combine with `new OrFilter([...])` (also `AndFilter`, `NandFilter`). `addPostFilter(...)` filters the result without affecting aggregations. Classes: `Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter`, `...\Filter\OrFilter`, `...\Filter\RangeFilter`. Field names come from the entity definition (e.g. `ProductDefinition`); all filters: [filters reference](platform/dev/6.7/guides/development/troubleshooting/dal-reference/filters-reference.md).
-4. **Associations.** `addAssociation('productReviews')`, chainable as `addAssociation('productReviews.customer')`. `getAssociation('productReviews')` returns the association's own `Criteria`; `->addFilter(new RangeFilter('points', [RangeFilter::GTE => 4]))` there limits only which reviews get attached. A root filter on `productReviews.points` instead limits which products are returned.
-5. **Aggregations.** `addAggregation(new AvgAggregation('avg-rating', 'productReviews.points'))`, then `->getAggregations()->get('avg-rating')` on the search result. Class: `Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\AvgAggregation`; see [aggregations reference](platform/dev/6.7/guides/development/troubleshooting/dal-reference/aggregations-reference.md).
-6. **Limit, offset, sorting.** `setLimit(1)`, `setOffset(1)`, `addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING))` — `Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting`.
-7. **Large sets.** `Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\RepositoryIterator` returns one batch per `fetch()` until `null`:
-
-```php
-$criteria = (new Criteria())->setLimit(500);
-$criteria->addSorting(new FieldSorting('manufacturerNumber'), new FieldSorting('id'));
-$iterator = new RepositoryIterator($this->productRepository, $context, $criteria);
-while (($result = $iterator->fetch()) !== null) {
-    $products = $result->getEntities();
-}
-```
+1. Inject the repository. Service id pattern: `<entity_name>.repository`, e.g. `product.repository`, `order.repository`:
+   ```php
+   $services->set(ReadingData::class)
+       ->args([service('product.repository')]);
+   // constructor: __construct(EntityRepository $productRepository)
+   ```
+   Type: `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`.
+2. Search: `$this->productRepository->search(new Criteria(), $context)` returns an `EntitySearchResult` (an iterable collection). `$context` (`Shopware\Core\Framework\Context`) is usually passed down from a controller or event. `Criteria` lives in `Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria`.
+3. By IDs: `new Criteria([$myId])` accepts an array of IDs; call `->first()` on the result to get one entity (or `null`).
+4. Filters: `$criteria->addFilter(new EqualsFilter('name', 'Example name'))`. Combine with `OrFilter`, `AndFilter`, `NandFilter`, e.g. `new OrFilter([new EqualsFilter('id', ...), new EqualsFilter('name', ...)])`. Available fields come from the entity definition (e.g. `ProductDefinition`).
+5. Post filters: `$criteria->addPostFilter(...)` filters the result but not aggregation results.
+6. Associations: `$criteria->addAssociation('productReviews')`; chain with dots: `'productReviews.customer'`. To filter loaded association data, use `$criteria->getAssociation('productReviews')->addFilter(new RangeFilter('points', [RangeFilter::GTE => 4]))` — this keeps the parent and only loads matching reviews. A root filter on `productReviews.points` instead returns only products having a matching review.
+7. Aggregations: `$criteria->addAggregation(new AvgAggregation('avg-rating', 'productReviews.points'))`, then `$result->getAggregations()->get('avg-rating')` (do not call `first()`).
+8. Paging/sorting: `setLimit(1)`, `setOffset(1)`, `addSorting(new FieldSorting('createdAt', FieldSorting::ASCENDING))`.
+9. Total count: `$criteria->setTotalCountMode(Criteria::TOTAL_COUNT_MODE_NEXT_PAGES)`. Modes: `TOTAL_COUNT_MODE_NONE` (default, no count), `TOTAL_COUNT_MODE_EXACT` (exact, slow), `TOTAL_COUNT_MODE_NEXT_PAGES` (bounded look-ahead of limit * 6 + 1 rows).
+10. Debug labels: `$criteria->setTitle('acme-plugin::product-export')` — the DAL adds it as an SQL comment with the operation appended (e.g. `-- acme-plugin::product-export::search-ids`); association queries inherit it.
+11. Large data sets:
+    ```php
+    $criteria = new Criteria();
+    $criteria->setLimit(500);
+    $iterator = new RepositoryIterator($this->productRepository, $context, $criteria);
+    while (($result = $iterator->fetch()) !== null) {
+        $products = $result->getEntities();
+    }
+    ```
+    Use `fetchIds()` when only IDs are needed. If no limit is set, the iterator uses 50.
 
 ## Essential identifiers
 
-- `EntityRepository::search()`, `EntityRepository::searchIds()`
-- `Criteria`: `addFilter`, `addPostFilter`, `addAssociation`, `getAssociation`, `addAggregation`, `setLimit`, `setOffset`, `addSorting`
-- `EqualsFilter`, `OrFilter`, `AndFilter`, `NandFilter`, `RangeFilter`
-- `AvgAggregation`, `FieldSorting`, `RepositoryIterator`
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`, `EntitySearchResult`
+- `Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria`
+- `Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter`, `...\Filter\OrFilter`, `...\Filter\RangeFilter`
+- `Shopware\Core\Framework\DataAbstractionLayer\Search\Aggregation\Metric\AvgAggregation`
+- `Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting`
+- `Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\RepositoryIterator`
+- `search()`, `searchIds()`, `addFilter()`, `addPostFilter()`, `addAssociation()`, `getAssociation()`, `addAggregation()`, `setTotalCountMode()`, `setTitle()`
 
 ## Gotchas
 
-- Mapping entities of `ManyToMany` associations (e.g. `ProductCategoryDefinition`, `product_category.repository`) cannot be read with `search()`; use `searchIds()`.
-- `RepositoryIterator` needs a deterministic sorting (add a unique field such as `id` as secondary sort), otherwise entities repeat or get skipped across batches. Each iteration is a query; do not use it for small sets. Without a limit the iterator sets 50; for auto-increment definitions it adds its own `autoIncrement` sorting.
-- The source calls `first()` directly on the `EntitySearchResult` and iterates it as an `EntityCollection`. In 6.7.13.0 that class is marked to stop extending `EntityCollection` in 6.8 and its collection methods are deprecated — call `getEntities()` first.
+- Mapping entities of `ManyToMany` associations (e.g. `ProductCategoryDefinition`, `product_category.repository`) cannot be read with `search()`; use `searchIds()` — they consist only of two primary keys.
+- `search()` always returns a collection even for a single ID; use `first()`.
+- `RepositoryIterator` issues a new query per batch — do not use it for small data sets.
+- Without explicit sorting, entities with an auto-increment field are paginated by that field (key-set, efficient for `fetch()` and `fetchIds()`). Explicit sorting disables this and must be deterministic — e.g. add `new FieldSorting('id')` after `manufacturerNumber`, otherwise entities can be duplicated or skipped across batches.
+- Without sorting, offset/limit results are unpredictable.
 
-## Code check (6.7.13.0)
-- deprecated `EntitySearchResult` — will no longer extend EntityCollection in v6.8.0 — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:25
-- deprecated `EntitySearchResult::first()` — removed in v6.8.0, use getEntities()->first() — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:374
-- corrected `EntitySearchResult::getEntities()` — docs: call first() on and iterate the search result directly — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:109
-- confirmed `EntityRepository::searchIds()` — returns IdSearchResult — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:87
-- confirmed `Criteria::addPostFilter()` — variadic Filter arguments — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:294
-- confirmed `Criteria::getAssociation()` — returns a nested Criteria — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:240
-- confirmed `RangeFilter::GTE` — constant value gte — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Filter/RangeFilter.php:18
-- confirmed `FieldSorting::ASCENDING` — constant value ASC — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Sorting/FieldSorting.php:12
-- confirmed `AvgAggregation` — in Search/Aggregation/Metric namespace — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Aggregation/Metric/AvgAggregation.php:12
-- confirmed `RepositoryIterator` — constructor takes repository, context, optional criteria — vendor/shopware/core/Framework/DataAbstractionLayer/Dbal/Common/RepositoryIterator.php:19
+## Code check (6.7.15.1)
+- confirmed `EntityRepository::search()` — returns `EntitySearchResult` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:66
+- confirmed `EntityRepository::searchIds()` — returns `IdSearchResult` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:97
+- confirmed `Criteria::TOTAL_COUNT_MODE_NEXT_PAGES` — value 2, fetches limit * 6 + 1 rows — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:54
+- confirmed `Criteria::$totalCountMode` — default `TOTAL_COUNT_MODE_NONE` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:92
+- confirmed `Criteria::getAssociation()` — returns a nested `Criteria` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:252
+- confirmed `Criteria::addPostFilter()` — variadic `Filter` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:306
+- confirmed `Criteria::setTitle()` — accepts `?string` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:635
+- confirmed `RepositoryIterator::__construct()` — default limit 50 when unset — vendor/shopware/core/Framework/DataAbstractionLayer/Dbal/Common/RepositoryIterator.php:35
+- confirmed `RepositoryIterator::fetchIds()` — auto-increment key-set pagination when no sorting — vendor/shopware/core/Framework/DataAbstractionLayer/Dbal/Common/RepositoryIterator.php:78
+- confirmed `AvgAggregation` — in `Search\Aggregation\Metric` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Aggregation/Metric/AvgAggregation.php:12

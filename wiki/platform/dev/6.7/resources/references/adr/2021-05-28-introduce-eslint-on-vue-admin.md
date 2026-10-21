@@ -6,81 +6,77 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.html
 sourceHash: 642998310b07c58c8aab4f507964d9f6b7cf6e7c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["eslint", "linting", "administration", "vue", "html.twig", "eslint-twig-vue-plugin", "vue/require-prop-types", "vue/attribute-hyphenation", "vue/component-name-in-template-casing", "max-len", "eslint-disable", "eslint.additional.file.extensions", "twig block indentation", "self-closing components", "adr"]
-summary: "ADR: ESLint for the Vue administration, JS rule adjustments, twig-as-HTML-comment template linting, block indentation, self-closing tags, attribute per line."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["eslint", "linting", "administration", "vue", "eslint-twig-vue-plugin", "*.html.twig", "twig block indentation", "self-closing components", "attribute alignment", "eslint-disable", "eslint.additional.file.extensions", "phpstorm", "vscode", "adr"]
+summary: "ADR: ESLint for the Vue administration; JS rule deviations, twig-to-HTML-comment template linting, indentation and attribute rules, IDE setup."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (administration area) introducing ESLint for the Vue administration app: `*.js` files follow a standard Vue CLI lint setup with a few rule changes, and `*.html.twig` templates are linted by converting Twig syntax into HTML comments during linting via a custom `eslint-twig-vue-plugin`.
+Architecture decision record (2021-05-28, area administration) introducing ESLint for the Vue-based Administration, for both `*.js` files and `*.html.twig` component templates, and the template-writing conventions that come with it.
 
 ## When to use
 
-- Writing or reviewing administration components and `*.html.twig` templates in core or a plugin that must pass the ESLint CI step.
-- Understanding why admin templates use flat block indentation, self-closing components and one attribute per line.
+- When writing or reviewing Administration JS or Twig templates in core or in a plugin and the linter complains.
+- When setting up PHPStorm or VSCode to lint Administration templates.
 
 ## Key steps / config
 
-**`*.js` adjustments** to the standard Vue linting:
+**`*.js` linting** follows standard Vue CLI linting with these adjustments:
 
-- `'vue/require-prop-types': 'error'` — always define prop types.
-- `'vue/require-default-prop': 'error'` — optional props need a default.
-- `'vue/no-mutating-props': ['off']` — tradeoff, mutation already heavily used.
-- `'vue/component-definition-name-casing': ['error', 'kebab-case']`.
+- `'vue/require-prop-types': 'error'` — always type `props`
+- `'vue/require-default-prop': 'error'` — default for optional `props`
+- `'vue/no-mutating-props': ['off']` — tradeoff, mutation is already widely used
+- `'vue/component-definition-name-casing': ['error', 'kebab-case']`
 
-**`*.spec.js`**: no `max-len` warning for unit tests (long test names, selectors).
+**`*.spec.js`**: no `max-len` warning in unit tests (long test names and selectors).
 
-**`*.html.twig` exceptions**:
+**`*.html.twig` linting**: all Twig syntax is converted to HTML comments during linting, so templates are linted like Vue templates. Tradeoff: Twig blocks do not count for indentation. Exceptions:
 
 - `'vue/component-name-in-template-casing': ['error', 'kebab-case']`
-- `'vue/no-multiple-template-root': 'off'` and `'vue/valid-template-root': 'off'` — external templates and component inheritance
+- `'vue/no-multiple-template-root': 'off'`, `'vue/valid-template-root': 'off'` — external templates, inheritance
 - `'vue/attribute-hyphenation': 'error'` — `hello-word=""`, not `helloWorld=""`
-- `'vue/no-parsing-error': ['error', {'nested-comment': false}]` — nested comments from the twig-to-comment conversion
-- `'vue/valid-v-slot': ['error', { allowModifiers: true }]` — dots in slot names
-- `'vue/no-unused-vars'`, `'vue/no-template-shadow'`, `'vue/no-lone-template'`, `'vue/no-v-html'` — all `'off'`
+- `'vue/no-parsing-error': ['error', {'nested-comment': false}]`
+- `'vue/valid-v-slot': ['error', { allowModifiers: true }]` — `.` in slot names
+- `'vue/no-unused-vars': 'off'`, `'vue/no-template-shadow': 'off'`, `'vue/no-lone-template': 'off'`, `'vue/no-v-html': 'off'`
 
-**Template writing rules** that follow from the parser:
+Template conventions enforced by the custom `eslint-twig-vue-plugin` processor:
 
-```twig
+```html
 <div>
     {% block block_name %}
     <div>
         <sw-language-switch />
-        <div
-            v-for="strategy in strategies"
-            class="sw-app-app-url-changed-modal__content-choices"
-        >
+        <sw-icon
+            small
+            name="default-basic-shape-circle-filled"
+        />
 ```
 
-- Content inside a `{% block %}` is not indented further (Twig is treated as a comment, so it does not count for indentation).
+- Content inside a `{% block %}` is not indented further than the block tag.
 - Components without content are self-closing.
 - With more than one attribute, each attribute goes on its own line.
 
-**Disabling a rule in a template**: place an HTML comment containing `eslint-disable <rule>` before the element (installed templates use e.g. `eslint-disable vue/no-use-v-if-with-v-for`). Follow "know the rules, break the rules", not "don't bug me linter".
+**Disabling a rule in a template**: put an HTML comment with `eslint-disable <rule>` (or `eslint-disable-next-line <rule>`) in front of the element. Follow "know the rules, break the rules", not "don't bug me linter".
 
-**IDE setup**: `*.js` linting works out of the box in PHPStorm/VSCode; VSCode also handles twig via the repository's `.vscode/settings.json`. In PHPStorm add `html,twig` to the `eslint.additional.file.extensions` registry key and restart.
+**IDE setup**: `*.js` linting works out of the box in PHPStorm and VSCode. For Twig, VSCode works via the repository's `.vscode/settings.json`; in PHPStorm add `html,twig` to `eslint.additional.file.extensions` in the Registry (Help > Find Action..., "registry") and restart. ESLint runs in CI, so a working setup is mandatory.
 
 ## Essential identifiers
 
-- `eslint-twig-vue-plugin` (`twigVuePlugin/lib/processors/twig-vue-processor.js`)
-- `eslint.additional.file.extensions`
-- rule ids listed above, e.g. `vue/require-prop-types`, `vue/attribute-hyphenation`, `vue/no-parsing-error`
+- `eslint-twig-vue-plugin` (twig-vue processor)
+- `eslint.additional.file.extensions` (PHPStorm registry key)
+- `eslint-disable`, `eslint-disable-next-line` template comments
 
 ## Gotchas
 
-- A heavily red-marked template (`invalid-x-end-tag`) usually means a missing space before `%}`: `{% block block_name %}` is valid, `{% block block_name%}` is not.
-- The linter cannot take Twig blocks into account when computing indentation levels.
-- ESLint runs in CI, so a working ESLint environment is mandatory.
+- A heavily red file usually means broken Twig syntax, error `invalid-x-end-tag`: write `{% block block_name %}` with a space before `%}`, never `{% block block_name%}`. Some installed 6.7 templates still contain the no-space form.
+- The ADR's example component `sw-language-switcher` is not present in the 6.7 Administration source; the language switch component is `sw-language-switch`.
 
-## Version notes
-
-- The ADR (2021) targets "a standard vue2 app linting"; the installed 6.7 administration boots on Vue 3 (`createApp` from `vue`), so the Vue 2 reference is historical.
-
-## Code check (6.7.13.0)
-- confirmed `createApp` — 6.7 admin view adapter uses Vue 3, not vue2 — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:14
-- confirmed `sw-language-switch` — self-closing, one attribute per line in installed template — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/page/sw-settings-state-machine-detail/sw-settings-state-machine-detail.html.twig:13
-- confirmed `eslint-disable` — template-level rule disabling via HTML comment is used — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-country/component/sw-settings-country-new-snippet-modal/sw-settings-country-new-snippet-modal.html.twig:116
-- unverified `eslint-twig-vue-plugin` — lives in twigVuePlugin outside the administration src root, out of scope
-- unverified `vue/require-prop-types` — ESLint config file is outside the administration src root, out of scope
-- unverified `eslint.additional.file.extensions` — PHPStorm registry key, not in vendor code
+## Code check (6.7.15.1)
+- confirmed `sw-language-switch` — used self-closing in a template — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-customer-group/page/sw-settings-customer-group-list/sw-settings-customer-group-list.html.twig:43
+- confirmed `eslint-disable` — rule-disable HTML comment in a template — vendor/shopware/administration/Resources/app/administration/src/module/sw-product-stream/component/sw-product-stream-value/sw-product-stream-value.html.twig:444
+- confirmed `eslint-disable-next-line` — next-line disable comment in a template — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-tag/page/sw-settings-tag-list/sw-settings-tag-list.html.twig:185
+- unverified `sw-language-switcher` — not found in administration src; full index not searched
+- unverified `vue/require-prop-types` — ESLint config lives outside the administration src root, out of scope
+- unverified `eslint-twig-vue-plugin` — plugin lives in twigVuePlugin outside the administration src root, out of scope
+- unverified `eslint.additional.file.extensions` — PHPStorm setting, not in Shopware code

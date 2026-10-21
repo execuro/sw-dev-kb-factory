@@ -6,74 +6,69 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/flow-concept.html
 sourceHash: 0daa6a28949a0d751a656429cb05478e5e4a639a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["flow builder", "automation", "FlowDispatcher", "FlowExecutor", "FlowEventAware", "FlowFactory", "StorableFlow", "FlowStorer", "OrderStorer", "StopFlowAction", "FlowAction", "trigger", "action", "flow template", "storer"]
-summary: Flow Builder concept - triggers, conditions, actions, templates; how FlowDispatcher and FlowExecutor run sequences; FlowStorer data storage.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["flow builder", "automation", "workflow", "trigger", "action", "FlowDispatcher", "FlowExecutor", "StopFlowAction", "FlowEventAware", "FlowStorer", "StorableFlow", "FlowFactory", "OrderStorer", "flow template", "checkout.order.placed"]
+summary: "Flow Builder concept: flows, triggers, conditions, actions, templates; FlowDispatcher/FlowExecutor evaluation and FlowStorer store/restore of flow data."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Concept page for Flow Builder, Shopware's no-code automation: a flow binds a trigger (event) to actions, optionally gated by conditions (rules). The page also explains how the core dispatches and executes flow sequences and how flow data is stored via storer classes.
+Flow Builder is Shopware's automation feature: shop owners build workflows (flows) that run actions when a trigger fires, optionally gated by conditions, without programming. This page explains the building blocks and how the Core evaluates a flow sequence and stores flow data.
 
 ## When to use
 
-- You need the vocabulary (flow, trigger, condition, action, flow template) before writing a custom trigger, action or storer.
-- You are debugging why a flow action did or did not run for an event.
+Read this before writing custom flow triggers, actions or storers in a plugin or app, or when debugging why a flow action did or did not run.
 
 ## Key steps / config
 
-Terms:
+Building blocks:
 
-- **Flow** — automation process; several flows with the same trigger run in order of their priority.
-- **Trigger** — an event from the Storefront or application that starts the flow; triggers implement `FlowEventAware` (plus `*Aware` interfaces).
-- **Condition** — a business rule deciding whether an action runs.
-- **Action** — a task run on the trigger or when conditions match. "Stop flow" (`StopFlowAction`) stops further actions in the sequence.
-- **Flow template** — a pre-created, read-only flow shipped in the flow library; created by apps or plugins.
+- **Flow** - an automation process: which actions a trigger runs, under which conditions. If several flows share a trigger, their priority decides which runs first.
+- **Trigger** - an event from the Storefront or the application that starts the flow; one trigger can have multiple actions.
+- **Condition** - a business rule deciding whether an action executes.
+- **Action** - a task executed on the trigger or when conditions match. The special "Stop flow" action stops all further actions in the sequence.
+- **Flow template** - a pre-created flow from the flow library; created by apps or plugins; viewable like a flow but not modifiable.
 
-Evaluation path in 6.7.13.0:
+Evaluation in the Core:
 
-1. `FlowDispatcher::dispatch()` dispatches the event normally; if it is `FlowEventAware`, not propagation-stopped and the context lacks `Context::SKIP_TRIGGER_FLOW`, it creates a `StorableFlow` via `FlowFactory::create()` and runs the matching flows.
-2. `FlowExecutor::execute()` walks each flow's sequences through `FlowExecutor::executeSequence()`.
-3. An if-sequence is resolved by `FlowExecutor::executeIf()`, which calls the private `sequenceRuleMatches()` and continues with the true or false branch.
-4. `FlowExecutor::executeAction()` calls the action's `handleFlow(StorableFlow $flow)` (inside a transaction for `TransactionalAction`), then follows `nextAction`; it returns early when the flow state is stopped or delayed.
+1. Triggers are events implementing the `*Aware` interfaces, in particular `FlowEventAware`.
+2. `FlowDispatcher::dispatch()` passes the event to `FlowExecutor::execute()`.
+3. `FlowExecutor::executeSequence()` walks the sequence: an if-sequence evaluates its rule (`FlowExecutor::sequenceRuleMatches()`) and continues on the true or false branch; an action sequence runs `FlowExecutor::executeAction()`.
+4. `StopFlowAction::handleFlow()` ends the sequence.
 
-Example: placing an order → `checkout.order.place` dispatched through `FlowDispatcher::dispatch()` → `FlowExecutor::execute()` → `FlowExecutor::executeAction()` → action `handleFlow()`.
+Example - placing an order: `CartOrderRoute::order()` dispatches `checkout.order.placed` → `FlowDispatcher::dispatch()` → `FlowExecutor::execute()` → `FlowExecutor::executeAction()` → `StopFlowAction::handleFlow()`.
 
-Storer concept: storer classes (`ProductStorer`, `OrderStorer`, `MailStorer`, …) extend abstract `FlowStorer`, which declares:
+Storer concept: storer classes (`ProductStorer`, `OrderStorer`, `MailStorer`, ...) extend the abstract `FlowStorer`, which declares:
 
 ```php
 abstract public function store(FlowEventAware $event, array $stored): array;
 abstract public function restore(StorableFlow $storable): void;
 ```
 
-They are invoked when `FlowFactory` builds the `StorableFlow`; `restore` loads data directly or lazily. Storers map to `*Aware` interfaces — e.g. `CheckoutOrderPlacedEvent` implements `OrderAware`, so `OrderStorer` stores/restores the order.
+`FlowFactory::create()` builds the `StorableFlow` and calls the storers; `restore` loads the stored data directly or lazily. Storers are tied to `*Aware` interfaces: `CheckoutOrderPlacedEvent` implements `OrderAware`, so `OrderStorer` stores and restores the order.
 
 ## Essential identifiers
 
-- `FlowDispatcher::dispatch()`, `FlowFactory::create()`, `StorableFlow`
-- `FlowExecutor::execute()`, `FlowExecutor::executeSequence()`, `FlowExecutor::executeIf()`, `FlowExecutor::executeAction()`
-- `FlowAction` (abstract `requirements()`, `handleFlow()`), `StopFlowAction`
-- `FlowStorer::store()`, `FlowStorer::restore()`, `OrderStorer`, `ProductStorer`, `MailStorer`
-- `FlowEventAware`, `OrderAware`, `CheckoutOrderPlacedEvent`
+- `FlowDispatcher::dispatch()`, `FlowExecutor::execute()`, `FlowExecutor::executeSequence()`, `FlowExecutor::executeAction()`, `FlowExecutor::sequenceRuleMatches()`
+- `StopFlowAction::handleFlow()`
+- `FlowEventAware`, `OrderAware`, `CheckoutOrderPlacedEvent` (`checkout.order.placed`)
+- `FlowStorer::store()`, `FlowStorer::restore()`, `ProductStorer`, `OrderStorer`, `MailStorer`
+- `StorableFlow`, `FlowFactory`, `CartOrderRoute::order()`
 
 ## Gotchas
 
-- The docs' diagram labels methods `executeAction1()`, `executeAction2()`, `executeAction3()`; these do not exist — they are diagram placeholders for `executeAction()` reached via different branches.
-- Flow data is not persisted by default; it is restored in the same request. Only delayed flows persist stored data for later execution.
-- Setting `Context::SKIP_TRIGGER_FLOW` on the event context suppresses flow execution.
+- The docs' diagram labels `FlowExecutor::executeAction1()`, `executeAction2()` and `executeAction3()` are not real methods - they stand for `FlowExecutor::executeAction()` on the false, true and no-condition branches.
+- The docs' event label `checkout.order.place` is `checkout.order.placed` in code.
+- Flow data is not persisted by default; it is restored in the same request for instant actions. Only delayed flows persist it for later execution.
 
-## Version notes
-
-- With feature flag `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` (default off, "will become the default for next major 6.8") or `v6.8.0.0` active, `FlowDispatcher` queues a buffered flow (`FlowFactory::createBuffered()`, `BufferedFlowQueue`) instead of executing immediately.
-
-## Code check (6.7.13.0)
-- absent `executeAction3` — not in installed code; diagram placeholder
-- absent `executeAction2` — not in installed code; diagram placeholder
-- absent `executeAction1` — not in installed code; diagram placeholder
-- confirmed `FlowDispatcher::dispatch()` — only `FlowEventAware` events trigger flows — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:41
-- confirmed `FlowExecutor::execute()` — entry point per flow — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:102
-- confirmed `FlowExecutor::executeAction()` — calls handleFlow, follows nextAction — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:130
-- confirmed `FlowExecutor::sequenceRuleMatches()` — private, called from executeIf — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:231
-- confirmed `StopFlowAction::handleFlow()` — stop flow action — vendor/shopware/core/Content/Flow/Dispatching/Action/StopFlowAction.php:28
-- confirmed `FlowStorer::store()` — abstract store/restore pair — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:17
-- confirmed `FlowFactory::create()` — builds the StorableFlow from a FlowEventAware event — vendor/shopware/core/Content/Flow/Dispatching/FlowFactory.php:29
+## Code check (6.7.15.1)
+- absent `executeAction1` — diagram placeholder, no such method in the installed code
+- absent `executeAction2` — diagram placeholder, no such method in the installed code
+- absent `executeAction3` — diagram placeholder, no such method in the installed code
+- confirmed `FlowDispatcher::dispatch()` — entry point for flow events — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:41
+- confirmed `FlowExecutor::executeAction()` — runs an `ActionSequence` — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:124
+- confirmed `FlowExecutor::sequenceRuleMatches()` — private rule check for if-sequences — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:239
+- confirmed `StopFlowAction::handleFlow()` — stop-flow action, delayable — vendor/shopware/core/Content/Flow/Dispatching/Action/StopFlowAction.php:28
+- confirmed `FlowStorer::store()` — abstract, with `restore(StorableFlow)` — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:17
+- confirmed `FlowFactory::create()` — builds `StorableFlow` from a `FlowEventAware` event — vendor/shopware/core/Content/Flow/Dispatching/FlowFactory.php:29
+- corrected `CheckoutOrderPlacedEvent::EVENT_NAME` — docs: `checkout.order.place`; code `checkout.order.placed` — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:34

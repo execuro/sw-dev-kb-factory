@@ -6,56 +6,63 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-05-09-optimise-cart-cleanup.html
 sourceHash: 5188f7c59e38d89bb7ca84740abfae7ef8517d7f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cart cleanup", "cart table", "idx.cart.created_at", "created_at", "CartPersister::prune()", "CleanupCartTask", "cart.cleanup", "shopware.cart.expire_days", "expired carts", "delete old carts", "sql index", "performance"]
-summary: "ADR: cart cleanup query filters on indexed created_at (idx.cart.created_at); CartPersister::prune() deletes old carts in batches of 1000."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cart cleanup", "CartPersister::prune()", "CleanupCartTask", "CleanupCartTaskHandler", "idx.cart.created_at", "cart table", "shopware.cart.expire_days", "expired carts", "delete old carts", "sql index", "performance", "adr"]
+summary: "ADR 2023-05-09: cart cleanup DELETE filters on indexed created_at first (idx.cart.created_at) so high-traffic shops avoid 30s+ full scans."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (area: core, performance, 2023-05-09) about the SQL that deletes outdated rows from the `cart` table. The original query did not use any index, which on high-traffic shops led to query times above 30 seconds.
+An architecture decision record (2023-05-09, area core, performance) about the SQL that deletes outdated rows from the `cart` table. The original statement used no database index (`EXPLAIN` showed `possible_keys` = `NULL`), which on high-traffic shops led to query times above 30 seconds.
 
 ## When to use
 
-When investigating slow or locking cart cleanup, tuning cart expiry, or writing a custom cart persister that has to remove old carts efficiently.
+- Investigating slow cart cleanup or long-running `DELETE FROM cart` statements.
+- Writing custom cleanup SQL against the `cart` table and wanting it to hit an index.
 
 ## Key steps / config
 
-The decision: order the `WHERE` clause so rows are narrowed down by the indexed `created_at` column first. `EXPLAIN` on the rewritten query showed `possible_keys` = `idx.cart.created_at` instead of `NULL`.
+The decision: reorder the conditions so that the rows can be narrowed down by the indexed `created_at` column first. The logic stays the same; only the lookup time drops.
 
-ADR version of the query:
+Original (no index used):
 
 ```sql
 DELETE FROM cart
-  WHERE created_at <= :timestamp
-    AND (updated_at IS NULL OR updated_at <= :timestamp) LIMIT 1000;
+WHERE (updated_at IS NULL AND created_at <= '2023-02-01')
+   OR (updated_at IS NOT NULL AND updated_at <= '2023-02-01') LIMIT 1000;
 ```
 
-What the installed 6.7 code does:
+ADR version (uses `idx.cart.created_at`):
 
-- Scheduled task `CleanupCartTask` (name `cart.cleanup`, daily) runs `CleanupCartTaskHandler`, which calls `AbstractCartPersister::prune(int $days)`.
-- `$days` is `%shopware.cart.expire_days%` (default `120` in `shopware.yaml`).
-- `CartPersister::prune()` runs `DELETE FROM cart WHERE created_at <= :timestamp LIMIT 1000` repeatedly until no row is affected; it no longer checks `updated_at` at all.
-- Custom persisters override `prune()`; the base implementation in `AbstractCartPersister` is a no-op.
+```sql
+DELETE FROM cart
+WHERE created_at <= '2023-02-01'
+  AND (updated_at IS NULL OR updated_at <= '2023-02-01') LIMIT 1000;
+```
+
+In 6.7.15.1 the cleanup is `CartPersister::prune()`, called by `CleanupCartTaskHandler` (scheduled task `CleanupCartTask`) with `shopware.cart.expire_days` (default `120`). It deletes in batches of 1000 until no rows are affected, using only `WHERE created_at <= :timestamp`. When a cart is saved, `CartPersister` writes `created_at = :now` on both insert and update, so `created_at` acts as the last-modified time.
 
 ## Essential identifiers
 
-- `idx.cart.created_at` — index on `cart.created_at`
+- `cart` table, index `idx.cart.created_at`
 - `Shopware\Core\Checkout\Cart\CartPersister::prune()`
-- `Shopware\Core\Checkout\Cart\AbstractCartPersister::prune()`
-- `Shopware\Core\Checkout\Cart\Cleanup\CleanupCartTask` / `CleanupCartTaskHandler`
+- `CleanupCartTask`, `CleanupCartTaskHandler`
 - `shopware.cart.expire_days`
 
 ## Gotchas
 
-- The ADR's `updated_at IS NULL OR updated_at <= ...` condition is not in the 6.7.13 query: carts are pruned by `created_at` only, so a cart still being updated is removed once its creation date passes the expiry window.
-- Deletion happens in `LIMIT 1000` batches in a loop, not one large statement.
+- Keep custom cleanup SQL filtering on `created_at` so that `idx.cart.created_at` can be used. A leading `OR` across `updated_at` forces a full scan.
 
-## Code check (6.7.13.0)
-- confirmed `idx.cart.created_at` — index added on `cart.created_at` — vendor/shopware/core/Migration/V6_4/Migration1617784658AddCartIndex.php:22
-- corrected `CartPersister::prune()` — docs: filter `created_at` AND (`updated_at IS NULL` OR `updated_at <=`); code filters `created_at <= :timestamp` only, LIMIT 1000 in a loop — vendor/shopware/core/Checkout/Cart/CartPersister.php:148
-- confirmed `AbstractCartPersister::prune()` — non-abstract no-op called by the cleanup task — vendor/shopware/core/Checkout/Cart/AbstractCartPersister.php:33
-- confirmed `CleanupCartTask::getTaskName()` — returns `cart.cleanup`, default interval daily — vendor/shopware/core/Checkout/Cart/Cleanup/CleanupCartTask.php:11
-- confirmed `CleanupCartTaskHandler::run()` — calls `prune($this->days)` — vendor/shopware/core/Checkout/Cart/Cleanup/CleanupCartTaskHandler.php:34
-- confirmed `shopware.cart.expire_days` — injected into the handler — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:42
-- confirmed `expire_days` — cart default `120` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:439
+## Version notes
+
+- The ADR's query still filters on `updated_at`. The installed 6.7.15.1 statement no longer uses `updated_at` at all: it filters on `created_at` only, because a save refreshes `created_at`.
+
+## Code check (6.7.15.1)
+- confirmed `idx.cart.created_at` — index on `cart.created_at` added by migration — vendor/shopware/core/Migration/V6_4/Migration1617784658AddCartIndex.php:22
+- confirmed `CartPersister::prune()` — deletes in `LIMIT 1000` batches until nothing is affected — vendor/shopware/core/Checkout/Cart/CartPersister.php:161
+- corrected `created_at <= :timestamp` — docs: `created_at <= … AND (updated_at IS NULL OR updated_at <= …)`; code filters on `created_at` only — vendor/shopware/core/Checkout/Cart/CartPersister.php:167
+- confirmed `created_at` — refreshed to now on every cart update — vendor/shopware/core/Checkout/Cart/CartPersister.php:118
+- confirmed `CleanupCartTaskHandler` — calls `prune($this->days)` — vendor/shopware/core/Checkout/Cart/Cleanup/CleanupCartTaskHandler.php:18
+- confirmed `CleanupCartTask` — scheduled task class — vendor/shopware/core/Checkout/Cart/Cleanup/CleanupCartTask.php:9
+- confirmed `shopware.cart.expire_days` — injected into the Redis cart persister — vendor/shopware/core/Checkout/DependencyInjection/cart.php:736
+- confirmed `cart.expire_days` — default 120 days — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:477

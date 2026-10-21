@@ -5,36 +5,34 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/creating-a-staging-instance.html
-sourceHash: cab669b88579b3649ccc34d90fb4517117fd8da8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["staging", "staging mode", "system:setup:staging", "shopware.staging", "domain_rewrite", "SetupStagingEvent", "shopware-cli project dump", "anonymize database", "SHOPWARE_ES_INDEX_PREFIX", "core.app.shopId", "test environment", "staging.yaml", "disable_delivery"]
-summary: Build a staging copy of a shop (DB dump, separate .env) and activate staging mode with system:setup:staging and config/packages/staging.yaml.
-lastBuilt: 2026-09-15
+sourceHash: 22ec26ac9939f1453f15666a7a8413910e507c46
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["staging", "staging mode", "system:setup:staging", "staging.yaml", "shopware.staging", "domain_rewrite", "SetupStagingEvent", "shopware-cli project dump", "SHOPWARE_ES_INDEX_PREFIX", "core.app.shopId", "test environment", "database copy", "anonymize"]
+summary: Building a staging copy of a Shopware shop (DB dump, .env) and activating staging mode via system:setup:staging and shopware.staging config.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/tools/cli/installation.md", "platform/dev/6.7/products/tools/cli/project-commands/mysql-dump.md"]
 ---
 ## What it is
 
-Guide for creating a staging environment (a non-production copy of the shop: own hosting, domain, database, Redis, search index prefix, `.env`) and then enabling Shopware's staging mode (since 6.6.1.0) on it, which adjusts data inside that instance so it does not mail customers, keep live app connections or live sales channel URLs.
+How to create a staging copy of a live shop and how to switch on Shopware's **staging mode** (since 6.6.1.0) on it. The staging environment (separate hosting, domain, database, Redis, search index prefix, `.env`) is your deployment work; staging mode is a console command that adjusts data inside that copy so it does not email customers, keep live app connections or live sales channel URLs.
 
 ## When to use
 
-Testing updates, extensions or features on a copy of production data without affecting the live shop.
+When setting up a test/staging instance from production data, or when a plugin must change its own data (e.g. switch a payment provider to test mode) when a staging copy is prepared.
 
 ## Key steps / config
 
-1. Deploy the same codebase to a separate installation (preferably from Git), on its own domain/subdomain; update `APP_URL` in `.env`. Keep the live domain as the license domain in the Shopware Account.
-2. Duplicate the live database. Recommended: `shopware-cli` (see [installation](platform/dev/6.7/products/tools/cli/installation.md), [dump options via `.shopware-project.yml`](platform/dev/6.7/products/tools/cli/project-commands/mysql-dump.md)):
+1. **Install a separate Shopware instance** — preferably deploy from your Git repository; copying files also works. Use a separate (sub)domain and update `APP_URL` in `.env`. Keep the live domain under `Shopware Account > License Domain`.
+2. **Duplicate the live database** — `mysqldump`/`mysql` must come from the same vendor and major version. Recommended: `shopware-cli` ([installation](platform/dev/6.7/products/tools/cli/installation.md)):
+   ```bash
+   shopware-cli project dump --clean --host localhost --username db_user --password db_pass --output shop.sql shopware
+   shopware-cli project dump --clean --anonymize --host localhost --username db_user --password db_pass --output shop.sql shopware
+   ```
+   `--clean` excludes cart data; `--anonymize` removes personal data. Configure skipped tables/anonymized fields in `.config/shopware-project.yml` ([dump docs](platform/dev/6.7/products/tools/cli/project-commands/mysql-dump.md)).
+3. **Configure the instance** — point `.env` at the staging database; with Elasticsearch/OpenSearch set `SHOPWARE_ES_INDEX_PREFIX`. Never share MySQL, Redis or search servers with live.
+4. **Activate staging mode** — `./bin/console system:setup:staging` (add `--no-interaction --force` to skip the confirmation). It deletes apps with external connections and their integrations, resets the app instance ID, disables mail delivery, rewrites sales channel URLs (if configured), checks that no search indices exist, and shows a staging banner in Administration and Storefront. It does not copy installations, databases or files, nor touch live.
 
-```bash
-shopware-cli project dump --clean --host localhost --username db_user --password db_pass --output shop.sql shopware
-shopware-cli project dump --clean --anonymize --host localhost --username db_user --password db_pass --output shop.sql shopware
-```
-
-`--clean` excludes cart data, `--anonymize` removes personal data. `mysqldump` and `mysql` must be the same vendor and major version.
-3. Point `.env` to the staging database; with Elasticsearch/OpenSearch set a distinct `SHOPWARE_ES_INDEX_PREFIX`. Never share MySQL, Redis or search servers with live.
-4. Activate staging mode: `./bin/console system:setup:staging` (add `--no-interaction --force` to skip the confirmation). It deletes apps with external connections and their integrations, resets the app instance ID, disables mail delivery, rewrites sales channel URLs, verifies no search indices exist, and shows admin/storefront banners. It does not copy code, database or files.
-
-Configuration in `config/packages/staging.yaml` (defaults from code):
+`config/packages/staging.yaml` (all booleans default `true`):
 
 ```yaml
 shopware:
@@ -48,49 +46,48 @@ shopware:
         elasticsearch: { check_for_existence: true }
 ```
 
-`domain_rewrite.type`: `equal` (default; exact URL match), `prefix` (replace the URL start, e.g. `/en` path kept), `regex` (`match` is a PCRE such as `'/https?:\/\/(\w+)\.(\w+)$/m'`, `replace` may use `$1`, `$2`). The installed code also accepts `extensions.disable` (list of extensions) and `system_config` overrides under `shopware.staging`.
+`domain_rewrite` rule `type`: `equal` (exact URL match, the default), `prefix` (replace leading part, `/en` paths kept) or `regex` (pattern in `match`, backreferences like `$1` in `replace`). The installed code also accepts `extensions.disable` (list) and `system_config` overrides under `shopware.staging`.
 
-5. After staging mode, reinstall needed apps to get new, isolated instance IDs.
-6. Protect access (basic auth, IP firewall, OAuth proxy). Apache example keeps `/api` open:
+Plugin hook: subscribe to `Shopware\Core\Maintenance\Staging\Event\SetupStagingEvent`:
 
-```apache
-SetEnvIf Request_URI /api noauth=1
-<RequireAny>
-Require env noauth
-Require env REDIRECT_noauth
-Require valid-user
-</RequireAny>
+```php
+class StagingSubscriber implements EventSubscriberInterface
+{
+    public static function getSubscribedEvents(): array
+    {
+        return [SetupStagingEvent::class => 'onSetupStaging'];
+    }
+    public function onSetupStaging(SetupStagingEvent $event): void { /* enable test mode */ }
+}
 ```
-
-7. Plugins can react via `Shopware\Core\Maintenance\Staging\Event\SetupStagingEvent` (subscribe with `EventSubscriberInterface::getSubscribedEvents()` returning `[SetupStagingEvent::class => 'onSetupStaging']`), e.g. to switch a payment provider to test mode.
 
 ## Essential identifiers
 
 - `system:setup:staging` (`--force`)
-- `shopware.staging.mailing.disable_delivery`, `.storefront.show_banner`, `.administration.show_banner`, `.sales_channel.domain_rewrite`, `.elasticsearch.check_for_existence`
 - `Shopware\Core\Maintenance\Staging\Event\SetupStagingEvent`
-- `shopware-cli project dump --clean --anonymize`
+- `shopware.staging.mailing.disable_delivery`, `shopware.staging.storefront.show_banner`, `shopware.staging.administration.show_banner`, `shopware.staging.sales_channel.domain_rewrite`, `shopware.staging.elasticsearch.check_for_existence`
 - `SHOPWARE_ES_INDEX_PREFIX`, `APP_URL`
+- `shopware-cli project dump`
 
 ## Gotchas
 
-- Without staging mode, manually disable mail sending and delete `core.app.shopId` from `system_config`, otherwise apps leak data between live and staging.
-- `SetupStagingEvent` is marked `@internal` in the installed code, so its constructor/properties may change without deprecation.
-- With `ComposerPluginLoader`, extensions listed for disabling cannot be disabled by the command; uninstall them with Composer.
-- The command sets system config flag `core.staging` after dispatching the event.
+- Without staging mode, disable mail sending yourself and delete `core.app.shopId` from `system_config`, otherwise app data leaks between live and staging. 6.7.15.1 additionally stores `core.app.shopIdV2`.
+- After running the command, reinstall apps so they get new instance IDs.
+- The command overwrites data in the configured database — run it only against the staging database.
+- Protect staging via basic auth (`.htaccess`/`auth_basic`), IP restriction, or an auth proxy; the source's Apache example exempts `/api` via `SetEnvIf Request_URI /api noauth=1`.
 
 ## Version notes
 
-- 6.6.1.0: staging mode and `system:setup:staging` introduced.
+- Staging mode (`system:setup:staging`) is available since 6.6.1.0.
 
-## Code check (6.7.13.0)
-- confirmed `system:setup:staging` — command, confirmation skipped with `--force` — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:24
-- confirmed `SetupStagingEvent` — dispatched by the command; class is `@internal` — vendor/shopware/core/Maintenance/Staging/Event/SetupStagingEvent.php:15
-- confirmed `SetupStagingEvent::CONFIG_FLAG` — value `core.staging` — vendor/shopware/core/Maintenance/Staging/Event/SetupStagingEvent.php:17
-- confirmed `staging.mailing.disable_delivery` — default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1228
-- confirmed `staging.storefront.show_banner` — default true (administration likewise) — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1233
-- confirmed `domain_rewrite.type` — default `equal` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1254
+## Code check (6.7.15.1)
+- confirmed `system:setup:staging` — command name — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:25
+- confirmed `force` — option skipping confirmation — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:48
+- confirmed `SetupStagingEvent` — dispatched by the command — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:68
+- confirmed `disable_delivery` — staging.mailing, default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1264
+- confirmed `show_banner` — storefront and administration, default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1269
+- confirmed `domain_rewrite` — list of match/type/replace, type default `equal` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1286
+- confirmed `check_for_existence` — staging.elasticsearch, default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1299
 - confirmed `regex` — rewrite types equal/regex/prefix handled — vendor/shopware/core/Maintenance/Staging/Handler/StagingSalesChannelHandler.php:40
-- confirmed `staging.elasticsearch.check_for_existence` — default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1263
-- confirmed `core.app.shopId` — `ShopIdProvider::SHOP_ID_SYSTEM_CONFIG_KEY` — vendor/shopware/core/Framework/App/ShopId/ShopIdProvider.php:23
-- confirmed `SHOPWARE_ES_INDEX_PREFIX` — env var, default `sw` — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:51
+- confirmed `core.app.shopId` — ShopIdProvider config key (plus `core.app.shopIdV2`) — vendor/shopware/core/Framework/App/ShopId/ShopIdProvider.php:23
+- unverified `SHOPWARE_ES_INDEX_PREFIX` — Elasticsearch package, outside the checked roots

@@ -1,80 +1,134 @@
 ---
 id: platform/guidelines/6.6/be-qa-guidelines.md
-title: Backend QA and unit test guidelines
+title: Backend QA guidelines
 docType: guideline
 version: "6.6"
-summary: PHPUnit rules for Shopware 6.6 backend code - use-case coverage, isolation and cleanup, stubs over mocks, behaviour-focused tests.
-keywords: ["phpunit", "unit tests", "integration tests", "mocks", "stubs", "staticentityrepository", "staticsystemconfigservice", "test isolation", "paratest", "database transaction", "test coverage"]
-sources: [{url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html", hash: "2faac0a3b4dd53d90d2724a144ddff1b188596a442cee27025390096930a3be3"}]
-codeVersion: "6.6.10.24+87965325"
-lastBuilt: 2026-09-15
+summary: PHPUnit conventions for Shopware 6.6 extensions - test doubles, test behaviour traits, API contexts, queue/cache, migrations, store review checks
+keywords: ["phpunit", "unit tests", "integration tests", "test doubles", "mocks", "migration test", "store api", "admin api", "message queue", "cache", "versioning", "store review", "code quality"]
+sources: [{url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html", hash: "2faac0a3b4dd53d90d2724a144ddff1b188596a442cee27025390096930a3be3"}, {url: "https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html", hash: "b6ee57ed7dd9ac55d3ea86222d54874e7e476478b6952fd01697b46fb75ce4cf"}, {url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/store/quality-guidelines-plugins/", hash: "dd5dc97d3a71506ac1a0d5bebf908f8c9d3dc309716261f1745cc1406a0be585"}, {url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/store/quality-guidelines-apps/", hash: "b59165a564bab1fd651523727a3a683cdd5b2b3a67567fe0843bc24230d55625"}]
+codeVersion: "6.6.10.29+c8b59f9d"
+lastBuilt: 2026-10-21
 ---
-## test coverage by use case
 
-- Unit test every service and functionality you add or change; cover every use case of the service, not a coverage percentage.
-- Test failure paths (exceptions, invalid input, missing data) as well as the success path.
-- Structure cases so a new case is one added data-provider row or one short method, not dozens of new lines. A test matrix over one service is the preferred shape.
-- Write tests first where possible; test-first code rarely starts from configuring a mock.
+## unit test principles
 
-Enforced by: review
-
-Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
-Read more: platform/dev/6.6/resources/references/adr/2023-02-13-follow-test-pyramid.md
-
-## unit tests over integration tests
-
-- Prefer unit tests: instantiate the class under test yourself and pass its dependencies directly instead of booting the whole request or service stack.
-- Keep tests fast; the suite grows with every release.
-- Reserve integration tests for code whose purpose is a side effect (DB, filesystem, cache). In core, integration tests use the `IntegrationTestBehaviour` trait, which bundles `KernelTestBehaviour`, `DatabaseTransactionBehaviour`, `CacheTestBehaviour`, `FilesystemBehaviour` and related traits.
-- Keep every test compatible with the paratest (parallel) runner: no reliance on execution order or shared global state.
-
-Enforced by: review
-
-Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
-Read more: platform/dev/6.6/resources/references/adr/2022-10-20-test-structure.md
-
-## isolation and cleanup
-
-- Make each test independent: it must not fail because another test left files, storage records or registered listeners behind.
-- Remove dynamically registered event listeners in teardown.
-- Roll back database writes and schema changes. `DatabaseTransactionBehaviour` opens a transaction in a `#[Before]` hook (`startTransactionBefore`) and rolls it back in an `#[After]` hook (`stopTransactionAfter`). It asserts that the previous test closed its transaction and that the nesting level is exactly 1, so never leave an extra transaction open.
-
-Enforced by: review
+- Test every use case of a service, not a coverage number; test failure paths, not only the happy path.
+- Write unit tests by default: instantiate the class under test yourself and replace only side-effecting collaborators. Reserve integration tests for wiring and persistence.
+- Keep tests isolated and paratest-compatible: no test may depend on artifacts (files, DB rows, listeners) left by another.
+- Clean up in teardown: remove dynamically registered event listeners, roll back DB and schema changes.
+- Structure cases as data-provider matrices so a new case is one entry, not dozens of lines.
+- Write the test first; it keeps mock configuration out of the design.
 
 Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
 
-## stubs over mocks
+## test doubles
 
-Pick the test double in this order:
+- Prefer, in order: the real implementation; a hand-written stub; PHPUnit mocks only as last resort.
+- Mock only when construction needs deep dependency graphs or the class causes side effects (DB writes, HTTP, file deletes).
+- Assert behaviour (`what`), never call sequences (`how`): a refactor from `search()->first()?->getId()` to `searchIds()->firstId()` must not break the test.
+- Use the core stubs instead of mocking repositories/config:
+  - `Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository` — pass canned results (or callables receiving `Criteria`, `Context`) as `$searches`; inspect writes via its public `$upserts`, `$updates`, `$creates`, `$deletes`.
+  - `Shopware\Core\Test\Stub\SystemConfigService\StaticSystemConfigService` — construct with a config array; per-sales-channel values nest under the sales channel id.
+- Heavy mocking signals missing encapsulation; extract a port/adapter rather than adding more mocks.
 
-1. The real implementation, when it is cheap to build and has no side effects.
-2. A hand-written static stub. Core ships `Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository` (constructor takes a `$searches` list of results or callables `(Criteria, Context)` plus an optional `EntityDefinition`; it records writes in the public `$upserts`, `$updates`, `$creates` and `$deletes` arrays) and `Shopware\Core\Test\Stub\SystemConfigService\StaticSystemConfigService` (constructor takes an in-memory config array, optionally keyed by sales channel id).
-3. PHPUnit mocks, only when the real object needs deep nested dependencies to build or produces unwanted side effects such as DB writes.
+Rationale: mocks are not refactor-safe and PHPStan cannot catch drift between mock and real behaviour.
 
-- Do not mock every dependency by default. Heavy mocking is hard to refactor, PHPStan does not catch mock drift, and it may mean the class needs better encapsulation. Separate business logic from side-effect adapters so the logic can be tested without mocks.
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
+
+## plugin test setup
+
+- Put `phpunit.xml` in the plugin root (generated by `bin/console plugin:create`) with `KERNEL_CLASS` = `Shopware\Core\Kernel`, `APP_ENV=test` and `executionOrder="random"`.
+- Bootstrap with `Shopware\Core\TestBootstrapper`: `->addCallingPlugin()->addActivePlugins('<YourPlugin>')->setForceInstallPlugins(true)->bootstrap()`; `setForceInstallPlugins(true)` installs and activates the plugin even when the test DB already exists.
+- Override side-effecting services for tests in `Resources/config/services_test.*` (xml/yml/php); the bundle loads these only when `kernel.environment` is `test`.
+- Run a suite with `./vendor/bin/phpunit --configuration="custom/plugins/<Plugin>" --testsuite "<name>"`; narrow with `--filter <class|method>`.
+- On a Symfony Flex project install the `dev-tools` package (`composer require --dev dev-tools`) before running tests.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html
+
+## integration test traits
+
+- Use `Shopware\Core\Framework\Test\TestCaseBase\IntegrationTestBehaviour` for kernel-backed tests; it bundles `KernelTestBehaviour`, `DatabaseTransactionBehaviour`, `CacheTestBehaviour`, `FilesystemBehaviour`, `BasicTestDataBehaviour`, `RequestStackTestBehaviour`, `SessionTestBehaviour`, `TranslationTestBehaviour`.
+- Use `KernelTestBehaviour` alone when you only need the container (`getContainer()`), e.g. a migration test.
+- `DatabaseTransactionBehaviour` opens a transaction before and rolls back after each test and fails if nesting level is not 1 at the end — always commit/roll back every transaction your code opens.
+- Use `Context::createDefaultContext()` only in tests/CLI paths; it is `@internal` and builds a `SystemSource` context.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html
+
+## store and admin api contexts
+
+- For Store API request tests, use `SalesChannelApiTestBehaviour`: `createCustomSalesChannelBrowser()`, `getSalesChannelBrowser()`, `login()` for a customer session.
+- For a `SalesChannelContext` in unit tests, call `Generator::generateSalesChannelContext()`; `Generator::createSalesChannelContext()` is deprecated for 6.7.
+- For Admin API request tests, use `AdminApiTestBehaviour`: `getBrowser()` (authorized by default, optional `$scopes`/`$permissions` for ACL cases), `getBrowserAuthenticatedWithIntegration()`, and `assertEntityExists()` / `assertEntityNotExists()`.
+- Cover ACL denial by passing restricted permissions, not only the full-admin path.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html
+
+## async and cache assertions
+
+- Use `QueueTestBehaviour` for message handlers: it clears `messenger_messages` and resets the test bus before and after each test; call `runWorker()` to consume the `async` receiver until idle, then assert results.
+- Keep dispatched messages under 262,144 bytes (256 KB); common queue workers reject larger ones.
+- `CacheTestBehaviour` clears caches and calls `services_resetter` before and after each test — assert cache hits/misses inside a single test, never across tests.
+
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/store/quality-guidelines-plugins/
+
+## migration lifecycle
+
+- Give each `MigrationStep` a test that runs `update()` and `updateDestructive()` on an existing schema and asserts `SHOW CREATE TABLE` is unchanged (idempotency).
+- Add a test that drops the table, runs `update()`, and asserts the table exists again.
+- Return a `getCreationTimestamp()` between 1 and 2147483647; out-of-range values trigger a deprecation in 6.6 and throw with `v6.7.0.0` active.
+- Test uninstall both ways via `UninstallContext::keepUserData()`: the user must be able to choose between deleting and keeping data, snippets, media folders and table changes.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html
+
+## versioned entity cases
+
+- For versioned entities (e.g. `order`), test the draft path: `EntityRepository::createVersion()`, write via `$context->createWithVersionId($versionId)`, then `EntityRepository::merge()` and assert the live version.
+- Assert that reads with the default context do not see un-merged version data.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/php-unit.html
+
+## store code quality checks
+
+- Never ship `die`, `exit` or `var_dump`; SonarQube treats them as blockers.
+- Expect the automatic PHPStan/SonarQube review; run the store-plugin-codereview configs locally before upload.
+- Ship no dev files: `./tests`, `phpunit.xml.dist`, `phpstan.neon`, `composer.lock`, `.git*`, `package.json`, `rector.php`, `Makefile` and similar; remove commented-out code.
+- Declare every third-party dependency in `composer.json`; return `true` from `Plugin::executeComposerCommands()` when the plugin needs them installed (`composer require` on install, `composer remove` on uninstall).
+- Set the technical name in `composer.json` under `extra.shopware-plugin-class` exactly matching the bootstrap class; require `shopware/storefront` when using `Shopware\Storefront\*` classes.
+- Constrain `shopware/core` to a version range, never `*`.
+- Log only to your own file under `var/log/` named `MyExtension-Year-Month-Day.log`, or to a DB table pruned by a scheduled task within 6 months.
+- Never return a 500; return 400 only for API-call errors. No exceptions or 400s during install/uninstall/reinstall.
+- Ship unminified JavaScript sources alongside the compiled build.
 
 Enforced by: review
 
-Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/store/quality-guidelines-plugins/
 
-## test behaviour not implementation
+## app review checks
 
-- Assert what the class returns or changes, not which dependency methods it calls.
-- Pure refactorings must not break tests. Switching from `$repository->search($criteria, $context)->first()?->getId()` to `$repository->searchIds($criteria, $context)->firstId()`, or from `fetchAllAssociative` plus manual mapping to `fetchKeyValue`, keeps the behaviour the same. A test that mocks those exact calls fails anyway, so avoid that coupling or use a stub such as `StaticEntityRepository`, which implements both `search` and `searchIds`.
-- Keep tests readable for other maintainers: descriptive case names and reusable helpers.
+- Apps follow the same review: identical license in `manifest.xml`, display name without "plugin"/"shopware", per-sales-channel `config.xml`, English fallback translations (tested with Dutch as default).
+- Add `X-Robots-Tag: noindex, nofollow` to new storefront XHR responses; set cookies secure and register them in the Cookie Consent Manager.
 
 Enforced by: review
 
-Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/unit-tests.html
-Read more: platform/dev/6.6/resources/guidelines/code/core/unit-tests.md
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/store/quality-guidelines-apps/
 
-## Code check (6.6.10.24+87965325)
+## Code check (6.6.10.29+c8b59f9d)
 
-- confirmed `StaticEntityRepository` — DAL repository stub for unit tests — core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:31
-- confirmed `StaticSystemConfigService` — in-memory system config stub — core/Test/Stub/SystemConfigService/StaticSystemConfigService.php:10
-- confirmed `IntegrationTestBehaviour` — trait bundling kernel, DB transaction, cache and filesystem behaviours — core/Framework/Test/TestCaseBase/IntegrationTestBehaviour.php:5
-- confirmed `DatabaseTransactionBehaviour` — wraps each test in a rolled-back transaction — core/Framework/Test/TestCaseBase/DatabaseTransactionBehaviour.php:13
-- confirmed `KernelTestBehaviour` — kernel/container access trait — core/Framework/Test/TestCaseBase/KernelTestBehaviour.php:8
-- confirmed `searchIds` — EntityRepository id search — core/Framework/DataAbstractionLayer/EntityRepository.php:80
-- confirmed `firstId` — IdSearchResult first id accessor — core/Framework/DataAbstractionLayer/Search/IdSearchResult.php:69
-- unverified `fetchKeyValue` — Doctrine DBAL Connection method, vendor/doctrine, out of scope
+- absent `Shopware\Core\System\Snippet\Files\SnippetFileInterface` — not present in this codeVersion
+- confirmed `StaticEntityRepository` — public write recorders — core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:31
+- confirmed `StaticSystemConfigService` — array-backed config stub — core/Test/Stub/SystemConfigService/StaticSystemConfigService.php:10
+- confirmed `setForceInstallPlugins` — core/TestBootstrapper.php:302
+- confirmed `services_test` — loaded only in test env — core/Framework/Bundle.php:207
+- confirmed `IntegrationTestBehaviour` — bundles transaction/cache/kernel traits — core/Framework/Test/TestCaseBase/IntegrationTestBehaviour.php:5
+- confirmed `getTransactionNestingLevel` — rollback and nesting assert — core/Framework/Test/TestCaseBase/DatabaseTransactionBehaviour.php:45
+- confirmed `runWorker` — core/Framework/Test/TestCaseBase/QueueTestBehaviour.php:29
+- confirmed `clearCacheData` — core/Framework/Test/TestCaseBase/CacheTestBehaviour.php:14
+- confirmed `assertEntityExists` — core/Framework/Test/TestCaseBase/AdminApiTestBehaviour.php:99
+- confirmed `login` — Store API customer login — core/Framework/Test/TestCaseBase/SalesChannelApiTestBehaviour.php:99
+- confirmed `generateSalesChannelContext` — core/Test/Generator.php:70
+- deprecated `createSalesChannelContext` — removed in 6.7 — core/Test/Generator.php:213
+- confirmed `createWithVersionId` — core/Framework/Context.php:132
+- confirmed `merge` — version merge — core/Framework/DataAbstractionLayer/EntityRepository.php:165
+- confirmed `updateDestructive` — core/Framework/Migration/MigrationStep.php:36
+- confirmed `keepUserData` — core/Framework/Plugin/Context/UninstallContext.php:27
+- confirmed `executeComposerCommands` — core/Framework/Plugin.php:91

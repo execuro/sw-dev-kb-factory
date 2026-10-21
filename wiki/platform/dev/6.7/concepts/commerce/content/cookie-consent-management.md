@@ -1,96 +1,91 @@
 ---
-id: platform/dev/6.7/concepts/commerce/content/cookie-consent-management.md
-title: Cookie Consent Management
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
+id: platform/dev/6.7/concepts/commerce/content/cookie-consent-management.md
+sourceHash: a030236eceac757798c19b39f559397e8d6cd5fa
+sourceUrl: https://developer.shopware.com/docs/concepts/commerce/content/cookie-consent-management.html
+title: Cookie Consent Management
 version: "6.7"
 versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/concepts/commerce/content/cookie-consent-management.html
-sourceHash: a030236eceac757798c19b39f559397e8d6cd5fa
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cookie consent", "gdpr", "cookie-config-hash", "cookie-preference", "store-api/cookie-groups", "CookieEntry", "CookieGroup", "CookieGroupCollectEvent", "cookie.groupRequired", "cookie.groupComfortFeatures", "cookie.groupMarketing", "cookie.groupStatistical", "re-consent", "cookie banner"]
-summary: Shopware 6.7 cookie consent concept - four cookie groups, per-language cookie-config-hash re-consent, Store API cookie groups route, protected cookies.
-lastBuilt: 2026-09-15
+keywords: ["cookie consent", "gdpr", "cookie banner", "cookie-config-hash", "cookie-preference", "CookieEntry", "CookieGroup", "CookieProvider", "store-api.cookie.groups", "cookie.groupRequired", "cookie.groupStatistical", "re-consent", "cookie groups"]
+summary: Shopware cookie consent - four cookie groups, CookieEntry/CookieGroup structs, per-language config hash re-consent, Store API cookie-groups route.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Concept page for Shopware's cookie consent system: cookie definitions from core, plugins and apps are collected by a cookie provider service, exposed with a configuration hash via the Store API, and managed in the Storefront by a consent UI that re-prompts users when the configuration changes. The hash and re-consent functionality exists since Shopware 6.7.3.0.
+Shopware's cookie consent system collects cookie definitions from core, plugins and apps, exposes them (with a configuration hash) via the Store API, and lets the Storefront consent UI store user choices. When the cookie configuration changes, the hash changes and the user is asked to consent again. Shop owners remain responsible for actual GDPR compliance.
 
 ## When to use
 
-- Deciding which consent group a new cookie belongs to.
-- Building a headless or custom frontend that must read cookie groups and track consent per language.
-- Understanding why users see the cookie banner again after a plugin or app changed cookies.
+- Adding cookies from a plugin or app and choosing the right category.
+- Building a headless/custom frontend that needs the cookie configuration and hash.
+- Understanding why the consent banner reappears after a plugin update.
 
 ## Key steps / config
 
-Flow: the Storefront fetches cookie groups (with hash and language ID), compares the hash stored for the current language, shows the banner if it differs, otherwise applies stored preferences; after the user chooses, preferences and hash are stored.
+Components:
 
-Cookie groups (technical names):
+1. Internal cookie collection service in the `Shopware\Core\Content\Cookie\Service` namespace — builds the four default groups, then dispatches a collect event and a script hook so plugins and apps can add or change groups and entries.
+2. Store API route `GET /store-api/cookie-groups` (route name `store-api.cookie.groups`) — returns the cookie groups, the configuration hash (string) and the language ID.
+3. Storefront component — `cookie-configuration.plugin.js` / `cookie-permission.plugin.js` manage UI and preferences.
+4. Configuration hash — compared per language on each visit.
 
-| Group | Technical name |
+Categories (snippet keys used as group technical names):
+
+| Group | Key |
 |---|---|
 | Technically required (cannot be disabled) | `cookie.groupRequired` |
-| Comfort functions (video platforms, chat, social) | `cookie.groupComfortFeatures` |
-| Marketing (pixels, remarketing, conversion) | `cookie.groupMarketing` |
-| Statistics and tracking (analytics, A/B tests) | `cookie.groupStatistical` |
+| Comfort functions (video, chat, social) | `cookie.groupComfortFeatures` |
+| Marketing (pixels, remarketing, affiliate) | `cookie.groupMarketing` |
+| Statistics and tracking (analytics, A/B) | `cookie.groupStatistical` |
 
-Configuration hash:
+Hash mechanism:
 
-1. Calculated server-side from all cookie groups and entries (technical names, names, descriptions, values, expiration, hidden flag).
-2. Stored in the browser cookie `cookie-config-hash` as an object keyed by language ID: `{"<languageId>":"<hash>"}`.
-3. On each visit, compared against the stored hash for the current language.
-4. If different, all non-essential cookies are removed and consent is requested again.
-
-The hash changes when cookies are added, modified or removed, groups are restructured, or descriptions or settings change.
+- The hash is computed from all groups and entries (technical name, required flag, name, description, value, expiration, cookie name, hidden flag), sorted deterministically.
+- The browser stores it in the `cookie-config-hash` cookie as an object keyed by language ID: `{"<languageId>":"<hash>"}`.
+- If the stored hash for the current language differs, all non-essential cookies are removed and consent is requested again; if it matches, stored preferences apply.
+- The hash changes when cookies are added/modified/removed, groups are restructured, or descriptions/settings change.
 
 System cookies:
 
 | Cookie | Purpose | Lifetime |
 |---|---|---|
-| `cookie-preference` | user's consent choices | 30 days |
-| `cookie-config-hash` | configuration changes per language | 30 days |
+| `cookie-preference` | Stores consent choices | 30 days |
+| `cookie-config-hash` | Tracks config changes per language | 30 days |
 
-Protected (never removed, even on re-consent): `session-*`, `timezone`.
+Protected (never removed during re-consent): `session-*` and `timezone`.
 
-Store API route `GET /store-api/cookie-groups` (route name `store-api.cookie.groups`) returns cookie groups, the hash as a string, and the language ID. Headless frontends store them in `cookie-config-hash` in the same language-ID-keyed shape.
-
-Extension points:
-
-- Plugins add cookies with an event listener on `CookieGroupCollectEvent`.
-- Apps define cookies in `manifest.xml`.
-- Custom Storefront scripts can react to consent change events.
-
-Structured definitions: `CookieEntry` (single cookie), `CookieGroup` (group of related cookies). Use a group when several cookies serve one purpose (e.g. a YouTube group); use an individual cookie for a standalone purpose needing granular control.
+Extension: plugins add cookies with an event listener; apps declare cookies in `manifest.xml`; custom scripts in the Storefront can react to consent-change events.
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Cookie\Struct\CookieEntry`, `Shopware\Core\Content\Cookie\Struct\CookieGroup`
-- `Shopware\Core\Content\Cookie\Event\CookieGroupCollectEvent`
-- `cookie.groupRequired`, `cookie.groupComfortFeatures`, `cookie.groupMarketing`, `cookie.groupStatistical`
-- `cookie-config-hash`, `cookie-preference`
+- `Shopware\Core\Content\Cookie\Struct\CookieEntry` — single cookie definition
+- `Shopware\Core\Content\Cookie\Struct\CookieGroup` — group of related cookies
+- `Shopware\Core\Content\Cookie\SalesChannel\CookieRoute` / `AbstractCookieRoute`
 - `GET /store-api/cookie-groups`
+- `cookie-preference`, `cookie-config-hash`
 
 ## Gotchas
 
-- The docs page names the Store API endpoint `GET /store-api/cookie/groups`; the installed route is `/store-api/cookie-groups`. `/cookie/groups` is the Storefront route `frontend.cookie.groups`.
-- The Store API cookie route class is annotated experimental with stable version v6.8.0 in the 6.7 code.
-- `Shopware\Storefront\Framework\Cookie\CookieProviderInterface` (array-based legacy provider) is deprecated for 6.8.0; use `CookieGroupCollectEvent` instead.
-- Only truly essential cookies belong in `cookie.groupRequired`; check consent before loading third-party scripts or setting marketing or analytics cookies.
-- Shop owners remain responsible for legal GDPR compliance; the system only provides technical support.
+- The docs write the endpoint as `/store-api/cookie/groups`; the installed route path is `/store-api/cookie-groups`.
+- `CookieRoute` is marked `@experimental stableVersion:v6.8.0` in the installed code — its contract may still change.
+- The collection service `CookieProvider` is `@internal` and its legacy cookie conversion branch is marked `@deprecated tag:v6.8.0`; do not depend on it directly — use the collect event or app manifest instead.
+- Domains separate cookies per browser; the language-ID key only matters when several languages share one domain.
+- Check consent before loading third-party scripts, setting marketing cookies, or collecting analytics.
 
 ## Version notes
 
-- 6.7.3.0: cookie-hash re-consent functionality and the Store API cookie groups endpoint introduced.
-- 6.8.0: removal of the legacy `CookieProviderInterface` and stabilisation of the Store API route are announced in code.
+- The cookie-hash/re-consent functionality and the Store API cookie-groups endpoint are available from Shopware 6.7.3.0.
+- The legacy Storefront cookie provider conversion inside `CookieProvider` is slated for removal in 6.8.0.
 
-## Code check (6.7.13.0)
-- corrected `/store-api/cookie-groups` — docs: GET /store-api/cookie/groups — vendor/shopware/core/Content/Cookie/SalesChannel/CookieRoute.php:40
-- confirmed `frontend.cookie.groups` — Storefront route on /cookie/groups — vendor/shopware/storefront/Controller/CookieController.php:73
-- confirmed `cookie.groupRequired` — required group technical name — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:28
-- confirmed `cookie.groupStatistical` — statistics group — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:29
-- confirmed `cookie.groupComfortFeatures` — comfort group — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:30
-- confirmed `cookie.groupMarketing` — marketing group — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:31
-- confirmed `cookie-config-hash` — required hash cookie entry — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:32
-- confirmed `cookie-preference` — required entry, expiration 30 — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:108
-- confirmed `CookieEntry` — struct for a single cookie — vendor/shopware/core/Content/Cookie/Struct/CookieEntry.php:14
-- deprecated `CookieProviderInterface` — removed in 6.8.0, use CookieGroupCollectEvent — vendor/shopware/storefront/Framework/Cookie/CookieProviderInterface.php:12
+## Code check (6.7.15.1)
+- corrected `CookieRoute::getCookieGroups()` — docs: GET /store-api/cookie/groups; route path is /store-api/cookie-groups — vendor/shopware/core/Content/Cookie/SalesChannel/CookieRoute.php:40
+- confirmed `CookieEntry` — struct class exists — vendor/shopware/core/Content/Cookie/Struct/CookieEntry.php:14
+- confirmed `CookieGroup` — struct class exists — vendor/shopware/core/Content/Cookie/Struct/CookieGroup.php:18
+- confirmed `SNIPPET_NAME_COOKIE_GROUP_REQUIRED` — value cookie.groupRequired, alongside groupStatistical/groupComfortFeatures/groupMarketing — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:30
+- confirmed `COOKIE_ENTRY_CONFIG_HASH_COOKIE` — value cookie-config-hash — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:34
+- deprecated `CookieProvider` — legacy cookie conversion branch marked @deprecated tag:v6.8.0 — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:59
+- confirmed `CookieRoute` — marked experimental, stableVersion v6.8.0 — vendor/shopware/core/Content/Cookie/SalesChannel/CookieRoute.php:25
+- confirmed `cookie-preference` — Storefront preference cookie name — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-configuration.plugin.js:56
+- confirmed `defaultCookieExpiration` — default 30 days — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-configuration.plugin.js:53
+- confirmed `timezone` — session- and timezone are the protected prefixes — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-configuration.plugin.js:419

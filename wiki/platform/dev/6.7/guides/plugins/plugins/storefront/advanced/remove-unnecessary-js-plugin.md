@@ -1,49 +1,61 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/storefront/advanced/remove-unnecessary-js-plugin.md
-title: Remove JavaScript Plugin
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/advanced/remove-unnecessary-js-plugin.html
+id: platform/dev/6.7/guides/plugins/plugins/storefront/advanced/remove-unnecessary-js-plugin.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md
+  - platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md
 sourceHash: 72ac892a37fa15fd8e387e7337e67b06a356901c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["PluginManager.deregister", "PluginManager.getPluginList", "window.PluginManager", "OffCanvasCart", "[data-off-canvas-cart]", "main.js", "remove javascript plugin", "unregister storefront plugin", "disable core js plugin", "storefront javascript"]
-summary: "Remove a registered Storefront JS plugin (e.g. OffCanvasCart) from your plugin's main.js with window.PluginManager.deregister(name, selector)."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md", "platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/advanced/remove-unnecessary-js-plugin.html
+title: Remove JavaScript Plugin
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["PluginManager.deregister", "PluginManager.getPluginList", "window.PluginManager", "OffCanvasCart", "[data-off-canvas-cart]", "main.js", "remove js plugin", "unregister javascript plugin", "disable core storefront plugin", "storefront javascript", "offcanvas cart"]
+summary: Remove a registered Storefront JS plugin such as OffCanvasCart from a plugin's main.js via window.PluginManager.deregister(name, selector).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a Shopware plugin excludes (unregisters) an existing Storefront JavaScript plugin, e.g. a core plugin that would interfere with your own code.
+How a Shopware plugin excludes (deregisters) an existing Storefront JavaScript plugin, for example a Core plugin that would interfere with your own code. The Storefront's `PluginManager` keeps a registry of plugins by name and selector; removing an entry stops it from being initialised.
 
 ## When to use
 
-A core or third-party JS plugin conflicts with your implementation and you want it not to be initialised at all, rather than overriding it (see [Override existing JavaScript](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md)).
+- A Core (or third-party) Storefront JS plugin conflicts with your own JavaScript and should not run at all.
+- You want to test a page without a specific plugin, e.g. disable the offcanvas cart.
+
+To change a plugin's behaviour instead of removing it, see [Override existing JavaScript](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md) or [Reacting to JavaScript events](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md).
 
 ## Key steps / config
 
-1. Add one line to your plugin's Storefront entry file `<plugin root>/src/Resources/app/storefront/src/main.js`, passing the plugin name and the selector it was registered with:
-   ```javascript
-   window.PluginManager.deregister('OffCanvasCart', '[data-off-canvas-cart]');
-   ```
-   Core registers this plugin as `PluginManager.register('OffCanvasCart', () => import(...), '[data-off-canvas-cart]')`.
-2. Rebuild the Storefront. The off-canvas cart should no longer open.
-3. Verify in the browser console with `PluginManager.getPluginList()` — `OffCanvasCart` should no longer be listed.
+1. Have a plugin installed (see the plugin base guide); a custom JS plugin setup helps but is not required.
+2. In `<plugin root>/src/Resources/app/storefront/src/main.js` add one line, using the plugin name and the selector it was registered with:
+
+```javascript
+// <plugin root>/src/Resources/app/storefront/src/main.js
+window.PluginManager.deregister('OffCanvasCart', '[data-off-canvas-cart]');
+```
+
+3. Rebuild the Storefront. The offcanvas cart should no longer open.
+4. Verify in the browser devtools console with `PluginManager.getPluginList()` — `OffCanvasCart` should no longer be listed.
+
+The Core registers this plugin in the Storefront `main.js` as `PluginManager.register('OffCanvasCart', () => import(...), '[data-off-canvas-cart]')`, which is where name and selector come from.
 
 ## Essential identifiers
 
-- `window.PluginManager.deregister(pluginName, selector)`
-- `PluginManager.getPluginList()`
-- `OffCanvasCart`, selector `[data-off-canvas-cart]`
-- `<plugin root>/src/Resources/app/storefront/src/main.js`
+- `window.PluginManager` — global Storefront plugin manager
+- `PluginManager.deregister(pluginName, selector)` — removes a plugin registration
+- `PluginManager.getPluginList()` — returns the names of all registered plugins
+- `OffCanvasCart` / `[data-off-canvas-cart]` — example plugin name and selector
 
 ## Gotchas
 
-- `deregister` looks up the name/selector pair first; if that pair is not registered but the name is, the plugin is deleted by name alone. If the name is not registered at all, it logs a console warning (`The plugin "..." is not registered.`) and returns `false`.
-- Changes take effect only after rebuilding the Storefront JavaScript.
+- In the installed code, `deregister` first looks for the name+selector pair; if that pair is not registered but the name is, it deletes the plugin by name only. If the name is not registered at all it logs `The plugin "<name>" is not registered.` and returns `false`.
+- The change only takes effect after the Storefront JavaScript is rebuilt.
 
-## Code check (6.7.13.0)
-- confirmed `PluginManager::deregister()` — signature `deregister(pluginName, selector = document)` — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:96
-- confirmed `PluginManager.deregister()` — static facade `deregister(pluginName, selector)` — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:678
-- confirmed `PluginManager.getPluginList()` — returns registry keys — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:143
-- confirmed `OffCanvasCart` — registered in core main.js with `[data-off-canvas-cart]` — vendor/shopware/storefront/Resources/app/storefront/src/main.js:59
+## Code check (6.7.15.1)
+- confirmed `PluginManager::deregister()` — static wrapper delegating to the instance — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:851
+- confirmed `deregister()` — falls back to delete-by-name, warns when name unknown — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:101
+- confirmed `PluginManager::getPluginList()` — returns registry keys — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:880
+- confirmed `window.PluginManager` — exposed globally — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:971
+- confirmed `OffCanvasCart` — registered with selector `[data-off-canvas-cart]` — vendor/shopware/storefront/Resources/app/storefront/src/main.js:60

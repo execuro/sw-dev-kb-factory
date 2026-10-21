@@ -5,33 +5,42 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/shopware-account-commands/updating-store-page.html
-sourceHash: 5a30dc15975d67fcfc8d1a72cbda306244268bc5
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli account producer extension info pull", "shopware-cli account producer extension info push", ".shopware-extension.yml", "store.images", "store.image_directory", "store page", "store listing", "shopware store", "extension metadata", "store images", "listing as code", "producer account"]
-summary: "shopware-cli account producer extension info pull/push syncs Store listing metadata and images via .shopware-extension.yml; pushes go live immediately."
-lastBuilt: 2026-09-15
+sourceHash: 18f3d80cb2139cdba6cf0eaea5a97ad5e779fd89
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli account producer extension info pull", "shopware-cli account producer extension info push", ".config/shopware-extension.yml", "store.images", "store.image_directory", "shopware store listing", "store page", "extension metadata", "store images", "preview image", "listing as code", "ci/cd store update"]
+summary: Manage an extension's Shopware Store listing as code with shopware-cli info pull/push and .config/shopware-extension.yml image and metadata config.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/tools/cli/shopware-account-commands/authentication.md", "platform/dev/6.7/products/tools/cli/shopware-account-commands/releasing-extension-to-shopware-store.md"]
 ---
 ## What it is
 
-Shopware CLI commands that manage an extension's Shopware Store listing (descriptions, tags, installation instructions, images) as a file kept next to the extension code, so the listing can be versioned in Git and pushed from CI/CD instead of edited only in the Store UI.
+Shopware CLI can manage an extension's Shopware Store listing as code: descriptions, tags, installation instructions, images and other Store metadata live next to the extension in `.config/shopware-extension.yml`, are reviewed in Git, and are pushed from a workstation or CI/CD instead of being maintained only in the Store UI.
 
 ## When to use
 
-- You maintain one or several extensions (possibly with localized listings) and want Store page changes reviewed through pull requests.
-- You want to automate Store page updates as part of a release pipeline.
+- You want Store listing changes tracked and reviewed together with code changes (pull requests for localized or marketing content).
+- You maintain several extensions or localized listings and want reproducible listing history per extension.
+- You want to automate Store page updates instead of copying content manually into the Store UI.
 
 Prerequisite: you are logged into the Shopware Store with Shopware CLI (see [Authentication](platform/dev/6.7/products/tools/cli/shopware-account-commands/authentication.md)).
 
 ## Key steps / config
 
-1. Pull the current Store page once when adopting the workflow:
-   `shopware-cli account producer extension info pull <path-to-extension-folder>`
-   This downloads all uploaded Store images and creates `.shopware-extension.yml` with the Store metadata.
-2. Edit `.shopware-extension.yml` and the referenced images in the extension repository.
-3. Review the listing changes in Git like any other change.
-4. Push approved metadata:
-   `shopware-cli account producer extension info push <path-to-extension-folder>`
+1. Fetch the current Store page once, when adopting the workflow:
+
+   ```bash
+   shopware-cli account producer extension info pull <path-to-extension-folder>
+   ```
+
+   This downloads all uploaded Store images and creates `.config/shopware-extension.yml` with the extension's Store metadata. The file can be committed; it is removed automatically when you build a ZIP with Shopware CLI.
+2. Edit `.config/shopware-extension.yml` and the referenced images in the extension repository.
+3. Review the listing changes in Git like any other content change.
+4. Push the approved metadata:
+
+   ```bash
+   shopware-cli account producer extension info push <path-to-extension-folder>
+   ```
+
    This uploads all configured images and metadata to the Store page.
 5. Validate and upload the release package separately via the [Store release workflow](platform/dev/6.7/products/tools/cli/shopware-account-commands/releasing-extension-to-shopware-store.md) — listing updates and package uploads are separate actions.
 
@@ -61,19 +70,20 @@ store:
 
 - `shopware-cli account producer extension info pull`
 - `shopware-cli account producer extension info push`
-- `.shopware-extension.yml`
+- `.config/shopware-extension.yml`
 - `store.images` (`file`, `priority`, `activate`, `preview`)
 - `store.image_directory`
 
 ## Gotchas
 
-- `info push` changes go live immediately on the Shopware Store for all users; the Store page cache refreshes every 6 hours, so mistakes can stay visible that long. Review before pushing.
-- `.shopware-extension.yml` can be committed; it is automatically removed from ZIP files created by Shopware CLI, so listing configuration does not end up in the distributed package.
-- Only one image may be marked as preview (per language).
+- `info push` changes go live immediately on the Shopware Store and are visible to all users. The Store page cache refreshes every 6 hours, so a mistake can stay visible for that period — review before pushing.
+- Only one image per language can be the preview image.
+- `info push` does not upload a new extension version; package validation and upload are a separate step.
 
-## Code check (6.7.13.0)
-- unverified `shopware-cli account producer extension info pull` — external Go CLI, not part of vendor/shopware
-- unverified `shopware-cli account producer extension info push` — external Go CLI, not part of vendor/shopware
-- unverified `.shopware-extension.yml` — read only by shopware-cli; no reference in vendor/shopware/core
-- unverified `store.image_directory` — shopware-cli config schema, out of scope
-- unverified `store.images` — shopware-cli config schema, out of scope
+## Code check (6.7.15.1)
+- unverified `shopware-cli account producer extension info pull` — Shopware CLI (Go tool), not part of vendor/shopware, out of scope
+- unverified `shopware-cli account producer extension info push` — Shopware CLI command, out of scope
+- unverified `.config/shopware-extension.yml` — read by Shopware CLI only; not referenced in vendor/shopware/core
+- unverified `store.images` — Shopware CLI config schema, out of scope
+- unverified `store.image_directory` — Shopware CLI config schema, out of scope
+- confirmed `shopware-cli` — core registers Shopware CLI as a public OAuth client under `shopware.api.oauth_clients` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:244

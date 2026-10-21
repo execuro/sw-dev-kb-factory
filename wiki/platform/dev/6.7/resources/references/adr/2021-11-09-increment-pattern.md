@@ -6,74 +6,73 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-11-09-increment-pattern.html
 sourceHash: bc86584f734e75a781864686456b4e371da821de
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["increment", "AbstractIncrementer", "IncrementGatewayRegistry", "shopware.increment", "shopware.increment.gateway", "user_activity", "increment pool", "counter", "redis", "mysql", "array adapter", "frequently used modules", "message_queue_stats"]
-summary: "ADR 2021-11-09: increment table and pluggable counter gateways (mysql/redis/array) per pool, configured under shopware.increment."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["increment", "AbstractIncrementer", "IncrementGatewayRegistry", "IncrementerGatewayCompilerPass", "shopware.increment", "message_queue_stats", "increment pool", "counter", "redis", "mysql", "user_activity", "frequently used modules"]
+summary: "ADR (2021-11-09): increment table and pluggable gateway (mysql/redis/array) per pool via shopware.increment, replacing the message_queue_stats table."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2021-11-09, area `services-settings`) introducing the increment pattern: countable data (message queue statistics, "Frequently Used modules" in the Administration) moves from the per-row `message_queue_stats` table to an `increment` table behind a gateway that can be backed by MySQL, Redis or an in-memory array. Storage is chosen per pool in config, bypassing the DAL to avoid write bottlenecks and deadlocks.
+Architecture decision record introducing the increment pattern: a generic store for counters behind a swappable gateway. It replaced the `message_queue_stats` table, which caused bottlenecks and deadlocks on write-heavy systems because every queued message triggered an insert/duplicate-key update via MySQL. The admin's "Frequently Used modules" counter had the same problem.
 
 ## When to use
 
-When you need a high-write counter (visits, queue sizes) without DAL overhead, want to move an existing pool to Redis, or need to replace the default adapter of a pool with your own gateway.
+Read this when configuring counter storage (e.g. moving it to Redis), implementing a custom incrementer gateway, or working with the increment API endpoints.
 
 ## Key steps / config
 
-1. Gateways extend `Shopware\Core\Framework\Increment\AbstractIncrementer`. Abstract members a gateway must implement (installed code):
+1. Counters live in the new `increment` table by default, accessed through gateways instead of the DAL.
+2. A gateway extends `Shopware\Core\Framework\Increment\AbstractIncrementer`. Abstract members in the installed code:
    - `increment(string $cluster, string $key): void`
    - `decrement(string $cluster, string $key): void`
    - `list(string $cluster, int $limit = 5, int $offset = 0): array` (limit `-1` = no limit)
    - `reset(string $cluster, ?string $key = null): void`
-   - Concrete, set by the container: `getPool(): string`, `getConfig(): array`.
-2. Define or retune pools under `shopware.increment`. Each pool has `type` (`mysql`, `redis`, `array`) and an optional free-form `config`. For `redis`, the compiler pass reads `config.connection` (a connection name resolved through `RedisConnectionProvider::getConnection()`):
+   - concrete: `getPool(): string`, `getConfig(): array`; `delete(string $cluster, array $keys = [])` becomes abstract in v6.8.0.
+3. Pools are configured under `shopware.increment`; each pool has a `type` and an optional free-form `config`. Shipped adapter types: `mysql`, `redis`, `array`. Shopware's defaults define `user_activity` and `message_queue` as `mysql`.
 
 ```yaml
 shopware:
     increment:
         user_activity:
             type: 'mysql'
-        custom_pool:
+        message_queue:
             type: 'redis'
             config:
-                connection: '<redis connection name>'
-        other_pool:
+                connection: 'my_redis_connection'
+        custom_pool:
             type: 'array'
 ```
 
-3. To override an adapter for a pool, register your own service with the id `shopware.increment.<custom_pool>.gateway.<adapter>`; its class must be a subclass of `AbstractIncrementer`. The compiler pass tags it `shopware.increment.gateway` and calls `setPool()`/`setConfig()`. Without such a service, `mysql`/`array` fall back to `shopware.increment.gateway.<type>`.
-4. Fetch a gateway at runtime via `IncrementGatewayRegistry::get(string $pool)`; the pool constant `IncrementGatewayRegistry::USER_ACTIVITY_POOL` is `user_activity`.
-5. Admin API: `POST /api/_action/increment/{pool}`, `POST /api/_action/decrement/{pool}`, `GET /api/_action/increment/{pool}`, `POST /api/_action/reset-increment/{pool}`, `DELETE /api/_action/delete-increment/{pool}`.
+4. `IncrementerGatewayCompilerPass` resolves each pool to the service id `shopware.increment.<pool>.gateway.<type>`. If you register a service with that id, it is used (override); otherwise `mysql`/`array` are cloned from `shopware.increment.gateway.<type>`, and `redis` is built from the named `config.connection`. The class must extend `AbstractIncrementer`; it gets the `shopware.increment.gateway` tag and `setPool()`/`setConfig()` calls.
+5. Admin API endpoints (ACL `increment:manage`): `POST /api/_action/increment/{pool}`, `POST /api/_action/decrement/{pool}`, `GET /api/_action/increment/{pool}`, `POST /api/_action/reset-increment/{pool}`, `DELETE /api/_action/delete-increment/{pool}`.
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\Increment\AbstractIncrementer`
 - `Shopware\Core\Framework\Increment\IncrementGatewayRegistry`
+- `Shopware\Core\Framework\Increment\IncrementerGatewayCompilerPass`
 - `MySQLIncrementer`, `RedisIncrementer`, `ArrayIncrementer`
-- `shopware.increment`, `shopware.increment.gateway` (tag)
-- `shopware.increment.<custom_pool>.gateway.<adapter>`
-- `increment` table
+- `shopware.increment`, `shopware.increment.<custom_pool>.gateway.<adapter>`
+- `api.increment.increment`, `api.increment.list`, `api.increment.reset`
 
 ## Gotchas
 
-- The ADR's Redis example uses `config.url`; the installed compiler pass only reads `config.connection` — with `url` alone no Redis gateway definition is created and container build fails with a gateway-not-found error.
-- The ADR lists `reset(): array` and `getDecorated(): self`; the installed abstract class has `reset(): void` and no `getDecorated()`.
-- `AbstractIncrementer::delete()` exists but is `@deprecated tag:v6.8.0` (will become abstract) — implement it in custom gateways now.
+- The ADR's Redis example uses `config.url`; the installed compiler pass only reads `config.connection` (a named Redis connection). Without it, the `redis` type expects you to have registered `shopware.increment.<pool>.gateway.redis` yourself, or the container build fails.
+- The ADR lists `reset()` returning `array` and a `getDecorated()` method; the installed `AbstractIncrementer` declares `reset()` as `void` and has no `getDecorated()`.
+- The `message_queue_stats` table was dropped in a 6.5 migration (data was migrated into `increment` in 6.4).
 
 ## Version notes
 
-- The `message_queue` pool, `IncrementGatewayRegistry::MESSAGE_QUEUE_POOL` and the `enable_queue_stats_worker` option are deprecated for 6.8.0; use `shopware.messenger.stats.enabled` instead.
-- The old `message_queue_stats` table is dropped by a 6.5 migration.
+- 6.7: the increment-based message queue statistics are deprecated for 6.8 (`shopware.admin_worker.enable_queue_stats_worker` is deprecated; use `shopware.messenger.stats.enabled`). `AbstractIncrementer::delete()` becomes abstract in 6.8.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractIncrementer::increment()` — abstract, `(string $cluster, string $key): void` — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:20
-- corrected `AbstractIncrementer::reset()` — docs: returns array; code returns void — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:29
-- corrected `AbstractIncrementer` — docs: gateway has getDecorated(): self; abstract class declares no such member — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:9
-- deprecated `AbstractIncrementer::delete()` — tag:v6.8.0, will become abstract — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:36
-- confirmed `shopware.increment.%s.gateway.%s` — custom gateway service id pattern, tag shopware.increment.gateway — vendor/shopware/core/Framework/Increment/IncrementerGatewayCompilerPass.php:30
-- corrected `config.connection` — docs: redis pool config key url; compiler pass reads connection — vendor/shopware/core/Framework/Increment/IncrementerGatewayCompilerPass.php:88
-- confirmed `increment` — config node with per-pool type and config — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1097
-- deprecated `MESSAGE_QUEUE_POOL` — message_queue pool deprecated for v6.8.0 — vendor/shopware/core/Framework/Increment/IncrementGatewayRegistry.php:16
-- corrected `message_queue_stats` — docs: table deprecated; installed migration drops it — vendor/shopware/core/Migration/V6_5/Migration1675082889DropUnusedTables.php:22
-- confirmed `api.increment.increment` — POST /api/_action/increment/{pool} — vendor/shopware/core/Framework/Increment/Controller/IncrementApiController.php:27
+## Code check (6.7.15.1)
+- confirmed `AbstractIncrementer::increment()` — abstract gateway method — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:21
+- confirmed `AbstractIncrementer::list()` — default limit 5, offset 0 — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:28
+- corrected `AbstractIncrementer::reset()` — docs: returns array; code: void — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:30
+- corrected `AbstractIncrementer` — docs: gateway has getDecorated(): self; class declares none — vendor/shopware/core/Framework/Increment/AbstractIncrementer.php:10
+- confirmed `shopware.increment.%s.gateway.%s` — per-pool gateway service id — vendor/shopware/core/Framework/Increment/IncrementerGatewayCompilerPass.php:30
+- corrected `config.connection` — docs: config.url for redis pool — vendor/shopware/core/Framework/Increment/IncrementerGatewayCompilerPass.php:88
+- confirmed `user_activity` — default pool, type mysql — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:221
+- confirmed `increment` — config node with type and config per pool — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1133
+- deprecated `enable_queue_stats_worker` — removed in 6.8.0 — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:266
+- confirmed `message_queue_stats` — table dropped by migration — vendor/shopware/core/Migration/V6_5/Migration1675082889DropUnusedTables.php:22

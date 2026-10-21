@@ -6,68 +6,62 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-03-09-reset-class-state-during-requests.html
 sourceHash: 90c6756ff32dc15e89685a14b790a643dab2910a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ResetInterface", "Symfony\\Contracts\\Service\\ResetInterface", "kernel.reset", "reset()", "memoization", "instance state", "service reset", "IntegrationTestBehaviour", "roadrunner", "swoole", "long-running php", "adr"]
-summary: "ADR: services memoizing data in instance properties implement Symfony ResetInterface reset() and get the kernel.reset tag so state clears between requests."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ResetInterface", "Symfony\\Contracts\\Service\\ResetInterface", "kernel.reset", "reset()", "services_resetter", "memoization", "instance state", "IntegrationTestBehaviour", "CacheTestBehaviour", "roadrunner", "swoole", "application server", "stale data"]
+summary: "ADR: services that memoize data in instance properties implement ResetInterface and get the kernel.reset tag so state is cleared between requests."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2022-03-09): any Shopware service that memoizes data in an instance variable must provide a way to reset it between requests, by implementing `\Symfony\Contracts\Service\ResetInterface` and tagging the service with `kernel.reset`.
+An architecture decision record (2022-03-09, area core). Many services memoize data in instance variables to reuse it within one request. That relied on PHP-FPM-style behaviour where each request gets fresh service instances. With long-running PHP application servers (e.g. roadrunner, swoole) service instances may be shared across requests, so memoized state must be reset explicitly.
 
 ## When to use
 
-When writing a service that caches computed or fetched data in a property for reuse within a request. Classic PHP-FPM reboots the kernel per request, but application servers such as roadrunner or swoole share service instances across requests, and in the cloud the next request may belong to another shop/tenant, so unreset state would leak data from a different instance.
+When writing or reviewing a service that caches data in a property (e.g. `private array $data = []` filled lazily), or when a test needs to reset a service's internal state between test cases.
 
 ## Key steps / config
 
 1. Implement `\Symfony\Contracts\Service\ResetInterface` and clear the memoized state in `public function reset(): void`:
+   ```php
+   use Symfony\Contracts\Service\ResetInterface;
 
-```php
-use Symfony\Contracts\Service\ResetInterface;
+   class FooService implements ResetInterface
+   {
+       private array $data = [];
+       public function getData(): array { /* memoize into $this->data */ }
+       public function reset(): void { $this->data = []; }
+   }
+   ```
+2. Tag the service with Symfony's `kernel.reset` tag, naming the reset method. The ADR shows the XML form:
+   ```xml
+   <service id="FooService">
+       <tag name="kernel.reset" method="reset"/>
+   </service>
+   ```
+   6.7 core declares its own services in PHP DI config files with the equivalent `->tag('kernel.reset', ['method' => 'reset'])`.
+3. If the class already has an unrelated `reset` method, add a differently named method for clearing internal state and set that name as the tag's `method`.
 
-class FooService implements ResetInterface
-{
-    private array $data = [];
-
-    public function getData(): array { /* memoize into $this->data */ }
-
-    public function reset(): void
-    {
-        $this->data = [];
-    }
-}
-```
-
-2. Tag the service in the DI container (the same form core uses, e.g. in `product.xml`):
-
-```xml
-<service id="FooService">
-    <tag name="kernel.reset" method="reset"/>
-</service>
-```
-
-3. Exception: if the service already has an unrelated `reset` method, add a differently named method that clears the internal state and set that name in the tag's `method` attribute.
-
-Symfony then resets the tagged services between requests automatically.
+Symfony then resets tagged services between requests. Shopware's integration test behaviour also resets them between test cases.
 
 ## Essential identifiers
 
-- `\Symfony\Contracts\Service\ResetInterface`
-- `public function reset(): void`
-- `kernel.reset` (DI tag, attribute `method`)
-- `IntegrationTestBehaviour`
+- `Symfony\Contracts\Service\ResetInterface`, `reset(): void`
+- DI tag `kernel.reset` with attribute `method`
+- `services_resetter` (container service called to reset tagged services)
+- `IntegrationTestBehaviour` (test trait)
 
 ## Gotchas
 
-- The ADR says a hook in `IntegrationTestBehaviour` also resets this state between test cases, so tests should not use `Reflection` to overwrite private properties. Needing Reflection to reset state in a test is a red flag that the class should use `ResetInterface` plus `kernel.reset`.
-- PHPUnit reuses service instances between test cases, which is another reason to make state resettable.
+- In cloud setups the next request may belong to a different shop/tenant; an un-reset service would serve another instance's data, not just stale data.
+- Resetting private properties via `Reflection` in tests is a red flag; use `ResetInterface` plus the `kernel.reset` tag instead.
+- PHPUnit reuses service instances across test cases, which is another reason to make state resettable.
+- In 6.7 the test hook lives in `CacheTestBehaviour::clearCacheData()` (run `#[Before]` and `#[After]` each test), which `IntegrationTestBehaviour` pulls in; it calls `services_resetter`'s `reset()`.
 
-## Code check (6.7.13.0)
-- confirmed `ResetInterface` — core services implement it with a reset() method, e.g. CurrencyFormatter — vendor/shopware/core/System/Currency/CurrencyFormatter.php:13
-- confirmed `CurrencyFormatter::reset()` — clears memoized formatter array — vendor/shopware/core/System/Currency/CurrencyFormatter.php:42
-- confirmed `kernel.reset` — tag with method="reset" used in core DI config — vendor/shopware/core/Content/DependencyInjection/product.xml:309
-- confirmed `kernel.reset` — same tag form in service DI config — vendor/shopware/core/Service/DependencyInjection/services.xml:35
-- confirmed `IntegrationTestBehaviour` — test trait exists in core — vendor/shopware/core/Framework/Test/TestCaseBase/IntegrationTestBehaviour.php:5
-- confirmed `KernelLifecycleManager::ensureKernelShutdown()` — resets the container when it implements ResetInterface — vendor/shopware/core/Framework/Test/TestCaseBase/KernelLifecycleManager.php:185
-- unverified `Symfony\Contracts\Service\ResetInterface` — interface definition lives in vendor/symfony, out of scope
+## Code check (6.7.15.1)
+- confirmed `ResetInterface` — implemented by core services that memoize state — vendor/shopware/core/System/Locale/LanguageLocaleCodeProvider.php:13
+- confirmed `LanguageLocaleCodeProvider::reset()` — public reset(): void — vendor/shopware/core/System/Locale/LanguageLocaleCodeProvider.php:57
+- confirmed `kernel.reset` — tag with `method => reset` in core DI config — vendor/shopware/core/System/DependencyInjection/locale.php:30
+- confirmed `IntegrationTestBehaviour` — trait including CacheTestBehaviour — vendor/shopware/core/Framework/Test/TestCaseBase/IntegrationTestBehaviour.php:5
+- confirmed `services_resetter` — reset before/after each test — vendor/shopware/core/Framework/Test/TestCaseBase/CacheTestBehaviour.php:21
+- corrected `CacheTestBehaviour::clearCacheData()` — docs: hook in IntegrationTestBehaviour; code: in CacheTestBehaviour used by it — vendor/shopware/core/Framework/Test/TestCaseBase/CacheTestBehaviour.php:14
+- unverified `kernel.reset` semantics — reset between requests is Symfony behaviour, vendor/symfony out of scope

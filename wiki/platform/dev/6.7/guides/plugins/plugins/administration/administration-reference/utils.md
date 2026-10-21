@@ -1,65 +1,68 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md
-title: Utils
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/administration-reference/utils.html
+id: platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/utils.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-utils.md
 sourceHash: f81d42ad52025e00660fd2c76a1f4c66c3576400
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Shopware.Utils", "utils", "helper functions", "createId", "debounce", "throttle", "object.cloneDeep", "debug.warn", "format.currency", "dom.copyStringToClipboard", "string.kebabCase", "types.isEmpty", "fileReader", "array.uniqBy", "util.service"]
-summary: "Reference of Shopware.Utils helpers in the 6.7 Administration: createId, debounce, object, debug, format, dom, string, types, fileReader, sort, array."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-utils.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/administration-reference/utils.html
+title: Utils
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["utils", "Shopware.Utils", "createId", "debounce", "throttle", "object.cloneDeep", "format.currency", "dom.copyStringToClipboard", "debug.warn", "string.kebabCase", "types.isEmpty", "fileReader", "lodash helpers", "uuid"]
+summary: Shopware.Utils helper namespaces in the 6.7 Administration (createId, debounce, object, format, dom, string, types, fileReader, sort, array).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An overview of the utility functions bound to the global Shopware object as `Shopware.Utils` in the Administration. They are collected in `src/core/service/util.service.ts`; many wrap lodash (`lodash-es`) functions.
+Reference of the utility functions bound to the global object as `Shopware.Utils`, defined in `src/core/service/util.service.ts`. Many are re-exports of lodash functions; the rest are Shopware helpers.
 
 ## When to use
 
-When writing Administration code (components, services) and you need a helper for IDs, debouncing, object diffing/merging, formatting, string casing or type checks, instead of adding your own dependency. See [Using utils](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-utils.md).
+For common tasks in admin components or plugins (IDs, deep copies, formatting, type checks, file reading) instead of adding your own helpers. Usage guide: [using utils](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-utils.md).
 
 ## Key steps / config
 
-Access pattern: `Shopware.Utils.<group>.<fn>`, e.g. `Shopware.Utils.format.currency(...)`, `Shopware.Utils.createId()`.
+Call through the namespace, e.g. `Shopware.Utils.createId()`, `Shopware.Utils.object.cloneDeep(obj)`, `Shopware.Utils.format.currency(...)`.
 
-Top level: `createId` (UUID hex string without dashes, generated with `uuidv7`), `throttle`, `debounce`, `flow`, `get`, `moveItem`.
+| Namespace | Functions (6.7.15.1) |
+|---|---|
+| top level | `createId` (UUID as hex string), `throttle`, `debounce`, `flow`, `get`, `moveItem` |
+| `object` | `deepCopyObject`, `hasOwnProperty`, `getObjectDiff` (no entity-schema logic), `getArrayChanges`, `cloneDeep`, `merge`, `mergeWith`, `deepMergeObject`, `get`, `set`, `pick`, `unset`, `has` |
+| `debug` | `warn` (console.warn), `error` (console.error); output only in development mode |
+| `format` | `currency`, `date` (`Intl.DateTimeFormat`), `dateWithUserTimezone`, `fileSize`, `localeName`, `md5`, `toISODate` |
+| `dom` | `getScrollbarHeight`, `getScrollbarWidth`, `copyStringToClipboard` |
+| `string` | `capitalizeString`, `camelCase`, `upperFirst`, `kebabCase`, `snakeCase`, `md5`, `isEmptyOrSpaces`, `isUrl`, `isValidIp`, `isValidCidr` |
+| `types` | `isObject`, `isPlainObject`, `isEmpty`, `isRegExp`, `isArray`, `isFunction`, `isDate`, `isString`, `isBoolean`, `isEqual`, `isNumber`, `isUndefined` |
+| `fileReader` | `readAsArrayBuffer`, `readAsDataURL`, `readAsText`, `getNameAndExtensionFromFile`, `getNameAndExtensionFromUrl` |
+| `sort` | `afterSort` (sorts by the after-id property chain) |
+| `array` | `flattenDeep`, `remove`, `slice`, `uniqBy`, `chunk`, `intersectionBy` |
 
-Groups as exported in 6.7.13.0:
-
-- `object`: `deepCopyObject`, `hasOwnProperty`, `getObjectDiff` (simple recursive diff, no entity schema logic), `getArrayChanges`, `cloneDeep`, `merge`, `mergeWith`, `deepMergeObject`, `get`, `set`, `pick`, `unset`, `has`
-- `debug`: `warn` (unified dev-console logging, development mode), `error` (same, via `console.error`)
-- `format`: `currency`, `date` (localized via `Intl.DateTimeFormat`), `dateWithUserTimezone`, `fileSize`, `md5`, `toISODate`
-- `dom`: `getScrollbarHeight`, `getScrollbarWidth`, `copyStringToClipboard`
-- `string`: `capitalizeString`, `camelCase`, `upperFirst`, `kebabCase`, `snakeCase`, `md5`, `isEmptyOrSpaces`, `isUrl`, `isValidIp`, `isValidCidr`
-- `types`: `isObject`, `isPlainObject`, `isEmpty`, `isRegExp`, `isArray`, `isFunction`, `isDate`, `isString`, `isBoolean`, `isEqual`, `isNumber`, `isUndefined`
-- `fileReader`: `readAsArrayBuffer`, `readAsDataURL`, `readAsText`, `getNameAndExtensionFromFile`, `getNameAndExtensionFromUrl`
-- `sort`: `afterSort` (sorts by the after-id property chain)
-- `array`: `flattenDeep`, `remove`, `slice`, `uniqBy`, `chunk`, `intersectionBy`
-
-Also exported: `VueHelper`, `EventBus`; `genericRuleCondition`, `unitConversion` and `extension` are marked `@private`.
+`throttle`, `debounce`, `flow`, `flattenDeep`, `remove`, `slice`, `uniqBy`, `chunk` and `intersectionBy` are imported from `lodash-es`.
 
 ## Essential identifiers
 
-- `Shopware.Utils`, `createId`, `debounce`, `throttle`, `flow`, `get`
-- `object`, `debug`, `format`, `dom`, `string`, `types`, `fileReader`, `sort`, `array`
+- `Shopware.Utils`
+- `Shopware.Utils.createId`, `Shopware.Utils.debounce`, `Shopware.Utils.throttle`
+- `Shopware.Utils.object`, `.format`, `.dom`, `.string`, `.types`, `.fileReader`, `.sort`, `.array`, `.debug`
 
 ## Gotchas
 
-- The docs list a `debug.debug` function; the installed code exports `debug.error` instead (logs with `console.error`).
-- The docs list `dom.copyToClipboard`; the installed name is `dom.copyStringToClipboard` (async).
-- The docs say `createId` uses the `uuid` package; 6.7 generates it with `uuidv7`.
-- The docs link to v6.3.4.1 `util.service.js`; in 6.7 the file is TypeScript and exports additional helpers (`dateWithUserTimezone`, `toISODate`, `upperFirst`, `isValidCidr`, `unset`, `has`, `chunk`, `intersectionBy`, `moveItem`).
+- The docs list `copyToClipboard` under Dom; the installed name is `dom.copyStringToClipboard` (async).
+- The docs list `debug` as the second Debug function; the installed name is `debug.error`.
+- The docs say `createId` is generated with the `uuid` package; 6.7 uses `uuidv7` and strips the dashes.
+- The docs link to the v6.3.4.1 `util.service.js`; in 6.7 the file is TypeScript (`util.service.ts`).
+- `genericRuleCondition`, `unitConversion` and `extension` are also exported but marked `@private`.
 
-## Code check (6.7.13.0)
-- confirmed `Utils` — bound on the global Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:210
-- corrected `createId` — docs: generated with uuid — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:191
-- corrected `error` — docs: `debug.debug` — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:66
-- confirmed `warn` — debug group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:65
-- corrected `copyStringToClipboard` — docs: `copyToClipboard` — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:83
-- confirmed `getObjectDiff` — object group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:50
-- confirmed `currency` — format group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:71
-- confirmed `isValidIp` — string group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:96
-- confirmed `readAsDataURL` — fileReader group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:119
-- confirmed `afterSort` — sort group member — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:127
+## Code check (6.7.15.1)
+- confirmed `Shopware.Utils` — global binding of the util service — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:223
+- corrected `createId` — docs: generated with the uuid package; code uses `uuidv7` — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:191
+- corrected `copyStringToClipboard` — docs: `copyToClipboard` — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:84
+- corrected `debug.error` — docs: `debug` — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:66
+- confirmed `error` — uses `console.error` — vendor/shopware/administration/Resources/app/administration/src/core/service/utils/debug.utils.ts:29
+- confirmed `format.dateWithUserTimezone` — added to `format` beyond the docs — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:73
+- confirmed `isValidCidr` — added to `string` beyond the docs — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:98
+- confirmed `chunk` — added to `array` beyond the docs — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:138
+- confirmed `moveItem` — top-level export not in docs — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:178
+- confirmed `afterSort` — sort namespace — vendor/shopware/administration/Resources/app/administration/src/core/service/util.service.ts:128

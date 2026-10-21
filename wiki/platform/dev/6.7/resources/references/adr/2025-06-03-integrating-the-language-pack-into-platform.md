@@ -6,58 +6,67 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2025-06-03-integrating-the-language-pack-into-platform.html
 sourceHash: b1a12a2592cb2827d00b8e9f649246eb845a0ef0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["translation:install", "translation:update", "translation:list", "SwagLanguagePack", "shopware/translations", "InstallTranslationCommand", "language pack", "translations", "crowdin", "snippets", "install languages", "locales"]
-summary: "ADR: platform downloads Crowdin translations from the shopware/translations GitHub repo via translation:* console commands, replacing the Language Pack plugin."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["language pack", "SwagLanguagePack", "shopware/translations", "translation:install", "translation:update", "translation:list", "translation:download", "InstallTranslationCommand", "crowdin", "translations", "snippets", "install languages"]
+summary: "ADR: translations download from the shopware/translations GitHub repo via translation:* commands, replacing SwagLanguagePack."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2025-06-03, area discovery) moving translation distribution from the `SwagLanguagePack` plugin into the Shopware platform: a core service downloads translation JSON files directly from the `shopware/translations` GitHub repository and stores them on the local file system like other platform snippet files.
+Architecture decision record (area: discovery, 2025-06-03) that moves translation distribution from the Shopware Language Pack plugin (`shopware/SwagLanguagePack`) into the platform itself. A platform service downloads translations as JSON files directly from the `shopware/translations` GitHub repository and stores them on the local file system like other platform snippet files, without any extension.
 
 ## When to use
 
-- Installing or updating storefront/administration languages without the Language Pack plugin, e.g. when building a deployment image.
-- Understanding why translation updates no longer depend on plugin release cycles.
+- Installing or updating storefront/administration translations on an installation without the Language Pack plugin.
+- Preparing languages at image build time for a deployment.
+- Understanding why the Language Pack plugin is phased out and how translations flow from Crowdin.
 
 ## Key steps / config
 
-Old workflow (steps 3–5 replaced): Crowdin → `shopware/translations` → `shopware/SwagLanguagePack` (JSON distribution) → store release → plugin update (OnPrem) or docker image dependency update (Cloud).
+Previous flow, in place for about six years and shaped by the former GitLab-based workflow:
 
-New workflow: Crowdin remains the single source of truth; `shopware/translations` stays the intermediary layer; translations are downloaded on demand by admin interaction or console command. In the administration, available translations are listed and installed with a single click.
+1. Translations are updated in Crowdin (single source of truth; the Shopware team and community contribute there).
+2. Crowdin changes are merged into `shopware/translations` (automated, manually reviewed). This repository stays as an intermediary layer decoupling core repositories from Crowdin.
+3. Changes are merged into `shopware/SwagLanguagePack`, which mainly distributes JSON files.
+4. Language Pack releases are published to the store.
+5. The installation is updated: OnPrem by updating the plugin manually, Cloud by updating the docker image dependency.
 
-Installed console commands (6.7.13):
+The decision replaces steps 3–5 with a single step in `shopware/shopware`: translations are downloaded via admin user interaction or a console command. The installed code (6.7.15.1) registers these commands:
 
 ```bash
-bin/console translation:install --locales=de-DE,en-US   # or --all; --skip-activation
-bin/console translation:update                          # update all installed translations
+bin/console translation:install --locales=es-ES,en-US   # or --all; also --skip-activation, --offline
+bin/console translation:update                           # update all installed translations
 bin/console translation:list
+bin/console translation:download
+bin/console translation:validate
+bin/console translation:lint-filenames
 ```
 
-- `translation:install` downloads and installs translations for the given or all configured locales; re-installing overwrites existing translations. Without `--all`/`--locales` it prompts interactively, and fails in non-interactive mode. Created languages are activated unless `--skip-activation` is set.
-- `translation:update` only reloads locales whose metadata indicates an update.
+`translation:install` without `--all`/`--locales` asks interactively and fails in non-interactive mode. Languages are activated on install unless `--skip-activation` is set; `--offline` installs from files already on the file system without contacting the repository.
 
 ## Essential identifiers
 
-- `translation:install`, `translation:update`, `translation:list`
-- `Shopware\Core\System\Snippet\Command\InstallTranslationCommand`
-- `shopware/translations` (GitHub repository), `SwagLanguagePack`
+- `translation:install` (`Shopware\Core\System\Snippet\Command\InstallTranslationCommand`)
+- `translation:update` (`UpdateTranslationCommand`), `translation:list` (`ListTranslationsCommand`), `translation:download` (`DownloadTranslationCommand`)
+- `shopware/translations`, `shopware/SwagLanguagePack`, Crowdin
 
 ## Gotchas
 
-- The ADR's proposed command set (`install [translation] [--all, --locales]`, `activate`, `deactivate`, `uninstall`, `list`) is not what ships: no `translation:activate`, `translation:deactivate` or `translation:uninstall` command exists in the installed core; activation is controlled via `--skip-activation` on install.
-- No impact on other extensions and their snippet files; the general translations workflow stays the same.
-- Translation versions are mapped to platform version ranges.
+- The ADR sketches a `translation` command namespace with `install`, `activate`, `deactivate`, `uninstall` and `list`. The installed code has no activate/deactivate/uninstall translation commands; activation happens as part of `translation:install`, and updating is a separate `translation:update` command.
+- The general translation workflow does not change for extensions; their own snippet files are unaffected.
+- Translation versions are mapped to platform version ranges, so translations can be installed or updated on demand, independent of platform or plugin release cycles.
 
 ## Version notes
 
-- The Language Pack plugin is maintained only for Shopware versions below v6.8.0.
+- The Language Pack plugin is maintained only for Shopware versions below 6.8.0.
+- In the Administration, available translations are listed and can be installed with a single click.
 
-## Code check (6.7.13.0)
-- corrected `translation:install` — docs: install [translation] [--all, --locales]; code has --all, --locales, --skip-activation — vendor/shopware/core/System/Snippet/Command/InstallTranslationCommand.php:24
-- confirmed `skip-activation` — install option to skip activating created languages — vendor/shopware/core/System/Snippet/Command/InstallTranslationCommand.php:42
-- confirmed `translation:update` — updates installed translations from GitHub repo — vendor/shopware/core/System/Snippet/Command/UpdateTranslationCommand.php:19
-- confirmed `translation:list` — list command — vendor/shopware/core/System/Snippet/Command/ListTranslationsCommand.php:22
-- absent `translation:activate` — no console command with this name in installed code
-- absent `translation:deactivate` — no console command with this name in installed code
-- absent `translation:uninstall` — no console command with this name in installed code
+## Code check (6.7.15.1)
+- confirmed `translation:install` — options `--all`, `--locales`, `--skip-activation`, `--offline` — vendor/shopware/core/System/Snippet/Command/InstallTranslationCommand.php:26
+- confirmed `InstallTranslationCommand` — downloads from the translations GitHub repository — vendor/shopware/core/System/Snippet/Command/InstallTranslationCommand.php:29
+- confirmed `translation:update` — updates all installed translations — vendor/shopware/core/System/Snippet/Command/UpdateTranslationCommand.php:20
+- confirmed `translation:list` — lists translations — vendor/shopware/core/System/Snippet/Command/ListTranslationsCommand.php:23
+- confirmed `translation:download` — download command — vendor/shopware/core/System/Snippet/Command/DownloadTranslationCommand.php:19
+- confirmed `translation:validate` — snippet validation command — vendor/shopware/core/System/Snippet/Command/ValidateSnippetsCommand.php:26
+- confirmed `translation:lint-filenames` — file name lint command — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:22
+- unverified `translation:activate` — no such command name found in the installed console commands; ADR sketch only

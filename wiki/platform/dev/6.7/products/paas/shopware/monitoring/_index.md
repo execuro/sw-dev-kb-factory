@@ -5,38 +5,37 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/monitoring/
-sourceHash: 14bfd29ec5ac60411cb138f167767d147933b408
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["paas native", "monitoring", "sw-paas open grafana", "grafana", "logs", "traces", "events", "blackfire", "tideways", "apm", "profiling", "load testing", "observability"]
-summary: "PaaS Native monitoring overview: logs, traces, events; Grafana credentials via sw-paas open grafana; Blackfire supported, Tideways and load testing not."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/paas/shopware/monitoring/blackfire.md"]
+sourceHash: 75fda51806cc58b45b0c7e5ec2cf6768aeb2c425
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["monitoring", "sw-paas open grafana", "grafana", "logs", "traces", "events", "blackfire", "tideways", "profiler", "apm", "observability", "load testing"]
+summary: "Shopware PaaS Native monitoring overview: logs, traces, events in Grafana via sw-paas open grafana; Blackfire or Tideways profiling, one at a time."
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/paas/shopware/monitoring/blackfire.md", "platform/dev/6.7/products/paas/shopware/monitoring/tideways.md"]
 ---
 ## What it is
 
-The entry page for monitoring on Shopware PaaS Native. It introduces three monitoring components — Logs, Traces and Events — and states which observability tools are and are not available on the platform.
+Entry page for the monitoring capabilities of Shopware PaaS Native: built-in tools to observe application health and performance and to troubleshoot issues. Monitoring is built on three components: Logs, Traces and Events.
 
 ## When to use
 
-When you need to track health or performance of a PaaS Native application, troubleshoot issues, or decide which profiling/APM tool you can use.
+When you need to look at logs, traces or events of a PaaS Native application, get into Grafana, or choose a PHP profiler.
 
 ## Key steps / config
 
-- Get Grafana access: run `sw-paas open grafana`; the CLI returns the credentials.
-- Profile PHP requests with Blackfire, see [Blackfire](platform/dev/6.7/products/paas/shopware/monitoring/blackfire.md).
+- **Grafana**: access uses credentials returned by the CLI with `sw-paas open grafana`. Single sign-on for Grafana and similar tools is not available.
+- **Profilers** for PHP requests: [Blackfire](platform/dev/6.7/products/paas/shopware/monitoring/blackfire.md) or [Tideways](platform/dev/6.7/products/paas/shopware/monitoring/tideways.md). Enable only one at a time; each needs your own account with that vendor.
 
 ## Essential identifiers
 
 - `sw-paas open grafana`
-- Monitoring components: Logs, Traces, Events
+- Profilers: Blackfire, Tideways
 
 ## Gotchas
 
-- Single sign-on for Grafana and similar tools is not available; use the CLI-issued credentials.
-- Other APM tools such as Tideways are not supported as part of the platform (even though Shopware core ships a Tideways profiler integration).
-- Managed load testing is not provided.
+- Other application performance monitoring tools are not supported on the platform.
+- Managed load testing is not provided as part of the platform.
 
-## Code check (6.7.13.0)
-- unverified `sw-paas open grafana` — PaaS CLI command, not part of vendor/shopware
-- confirmed `Tideways` — core profiler integration class exists; platform support is a PaaS statement — vendor/shopware/core/Profiling/Integration/Tideways.php:12
-- confirmed `shopware.profiler.integrations` — core profiler integrations default to an empty list — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:175
+## Code check (6.7.15.1)
+- confirmed `Tideways` — Shopware core ships a Tideways profiler integration tagged shopware.profiler — vendor/shopware/core/Profiling/DependencyInjection/services.php:27
+- unverified `sw-paas open grafana` — PaaS CLI command, outside vendor/shopware
+- unverified `Blackfire` — no Blackfire integration class in vendor/shopware core; profiler setup is platform-side

@@ -1,54 +1,71 @@
 ---
-id: platform/dev/6.7/resources/guidelines/documentation-guidelines/01-general.md
-title: General
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/01-general.html
+id: platform/dev/6.7/resources/guidelines/documentation-guidelines/01-general.md
 sourceHash: 0573926afbf3d7ee4befbf04ea24c8f3bc051f5f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["documentation guidelines", "style guide", "audience", "word list", "terminology", "markdown rules", "vitepress", ".rumdl.toml", "third-party sources", "contributing docs"]
-summary: "Shopware documentation style guide: audiences and roles, docs covered by the guide, word lists, third-party source rules, Markdown and Vitepress rules."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/01-general.html
+title: General
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["documentation guidelines", "style guide", "audience", "word list", "shopware terminology", "markdown rules", "vitepress", ".rumdl.toml", "third-party sources", "contributing docs", "editorial standards", "tech writing"]
+summary: "Shopware docs style guide intro: audiences, covered doc sets, word lists, third-party sources, Markdown and Vitepress rules."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The entry page of the Shopware documentation guidelines: the editorial standards contributors follow to keep the docs uniform, covering audience, scope, terminology, sources and Markdown usage.
+The opening page of the Shopware documentation guidelines (style guide). It sets the editorial standard every contributor to Shopware documentation should follow so that the docs stay uniform in style, wording, and tone, and points to the later sections (conceptual structure, language and grammar, fonts and formats).
 
 ## When to use
 
-When contributing to or writing Shopware documentation and you need the audience definitions, the list of covered doc sets, or the Markdown conventions.
+When contributing to or reviewing Shopware documentation and you need to know who the readers are, which documentation sets the style guide applies to, where approved terminology lives, and which Markdown conventions govern the files.
 
 ## Key steps / config
 
-Audiences and the topics they care about:
+### Know the audience
 
-| Audience | Topics |
+Adapt the writing to the background of the reader. The guide lists these audiences and their typical topics:
+
+| Audience | Typical roles/topics |
 |---|---|
-| Fullstack developer | plugin development, templates, routes/controllers |
+| Fullstack developer | Plugin development, templates, routes and controllers |
 | Frontend developer | Admin, themes, PWA |
-| Backend developer | DI/service architecture, message queues, DAL, action event system, ElasticSearch |
-| API developer | consuming/extending the API, product/category import, API paradigm and references, request collection |
-| DevOps | hosting setup, deployment, performance tests |
-| Project/solution architect | hosting, architecture, extension system, paradigms/patterns, app vs. plugin system commonalities |
-| Designer | component library, design system |
-| Product owner/manager | product life cycle responsibilities |
-| Tech writers | documenting all product details |
+| Backend developer | DI and service architecture, message queues, DAL, action event system, Elasticsearch |
+| API developer | Consuming the API, product or category import, extending the API, API paradigm, API references, request collection |
+| DevOps | Hosting setup, deployment, performance tests |
+| Project or solution architect | Hosting, architecture, modules and extension system, paradigms and patterns, commonalities of app and plugin system |
+| Designer | Component library, design system |
+| Product owner or manager | Product life-cycle responsibilities |
+| Tech writers | Documenting all product details |
 
-Covered by the style guide: the Developer docs (`https://developer.shopware.com/docs/`), the API Reference Guide (Stoplight), the Composable Frontends docs, and the component library.
+### Documents covered by the style guide
 
-Rules:
+- Developer docs (`https://developer.shopware.com/docs/`)
+- API Reference Guide (Stoplight)
+- Composable Frontends docs
+- Component library
 
-- Choose ecommerce and technical terms from the Shopware terminology list and the general terms/abbreviations list (internal resources, visible to Shopware employees only).
-- Reference third-party sources (websites, books, blogs, videos, images) only if trustworthy; never copy content directly from websites, encyclopedias or Wikipedia.
-- Follow the Markdown Guide cheat sheet; use Vitepress syntax for hint blocks, emoji, API blocks.
-- Pick one pattern for multi-purpose Markdown symbols (e.g. `*` or `-` for bullets) and use it throughout.
-- Content-quality rules (trailing spaces, code fence style, ...) are defined in the Markdown style file of the Shopware docs repository: `https://github.com/shopware/docs/blob/main/.rumdl.toml`.
+### Word list
+
+Pick ecommerce and technical terms from the predefined Shopware terminology list and the list of general terms and abbreviations. Both are internal Confluence resources visible only to Shopware employees.
+
+### Third-party sources
+
+Reference external sources (websites, books, blogs, videos, images) only when they are trustworthy. Do not copy content directly from websites, encyclopedias, or Wikipedia.
+
+### Markdown rules
+
+- Follow the Markdown Guide cheat sheet for basic syntax.
+- Use Vitepress Markdown syntax for hint blocks, emoji, API blocks and similar features.
+- Where Markdown allows alternatives (for example `*` or `-` for bullets), use one pattern consistently.
+- Content-quality rules such as trailing-space removal and code fence style are defined in the docs repository lint config: `https://github.com/shopware/docs/blob/main/.rumdl.toml`.
 
 ## Gotchas
 
-- The word lists are internal Shopware resources; external contributors cannot open them.
+- The terminology lists are not publicly accessible; external contributors cannot open them.
+- Lint rules live in the docs repository (`.rumdl.toml`), not in the Shopware platform code.
 
-## Code check (6.7.13.0)
-- unverified `.rumdl.toml` — Markdown lint config of the shopware/docs repository, outside the installed vendor code
-- unverified `Vitepress` — documentation toolchain, not part of vendor/shopware code
+## Code check (6.7.15.1)
+- unverified `.rumdl.toml` — Markdown lint config of the shopware/docs repository, outside the vendor/shopware code roots
+- unverified `Vitepress` — documentation site tooling, not part of the installed Shopware code
+- unverified `documentation guidelines` — editorial page with no platform identifiers or normative code claims to check

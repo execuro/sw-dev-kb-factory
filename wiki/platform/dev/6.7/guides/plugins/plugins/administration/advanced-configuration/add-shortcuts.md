@@ -6,65 +6,65 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/advanced-configuration/add-shortcuts.html
 sourceHash: c5049f86b015fb5350305d77ac09e1556dcfad70
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shortcuts", "keyboard shortcuts", "hotkeys", "SYSTEMKEY", "SYSTEMKEY+S", "ESCAPE", "Component.register", "shortcut.plugin.js", "acl.can", "getSystemKey", "administration component", "key combination"]
-summary: Register Administration keyboard shortcuts per component via the `shortcuts` option (SYSTEMKEY+S, ESCAPE), mapping keys to methods with optional ACL guard.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shortcuts", "SYSTEMKEY", "SYSTEMKEY+S", "ESCAPE", "Component.register", "keyboard shortcut", "hotkey", "key binding", "acl.can", "getSystemKey", "administration component option", "shortcut.plugin"]
+summary: Register keyboard shortcuts on an Administration component via the shortcuts option; SYSTEMKEY maps to CTRL on macOS and ALT elsewhere.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/permissions-error-handling/add-acl-rules.md", "platform/dev/6.7/guides/plugins/plugins/administration/templates-styling/writing-templates.md", "platform/dev/6.7/guides/plugins/plugins/administration/templates-styling/add-custom-styles.md"]
 ---
 ## What it is
 
-Keyboard shortcuts in the Shopware 6 Administration are defined per component through a `shortcuts` option on the component config. A global Vue mixin (the shortcut plugin) collects them on `created`, listens to `keydown` on the document, and calls the named component method.
+Keyboard shortcuts in the Shopware 6 Administration are defined per component through a `shortcuts` option in the component configuration. Each entry maps a key (or key combination) to a component method.
 
 ## When to use
 
-You have a custom Administration module/component (e.g. a detail page) and want a key combination such as save (`SYSTEMKEY+S`) or cancel (`ESCAPE`) to invoke one of its methods, optionally only when the user holds an ACL privilege.
+A custom Administration module or component should react to keys such as save (`SYSTEMKEY+S`) or cancel (`ESCAPE`).
 
 ## Key steps / config
 
-Add a `shortcuts` object next to `methods` in the component registered in `<plugin root>/src/Resources/app/administration/src/module/swag-example/index.js`:
+Add `shortcuts` next to `methods` in `Component.register` (or an override):
 
 ```javascript
+// <plugin root>/src/Resources/app/administration/src/module/swag-example/index.js
 const { Component } = Shopware;
+
 Component.register('swag-basic-example', {
     shortcuts: {
         'SYSTEMKEY+S': {
             active() { return this.acl.can('product.editor'); },
-            method: 'myEditProductFunction'
+            method: 'myEditProductFunction',
         },
-        ESCAPE: 'myCancelEditProductFunction'
+        ESCAPE: 'myCancelEditProductFunction',
     },
-    methods: { myEditProductFunction() {}, myCancelEditProductFunction() {} }
+    methods: { myEditProductFunction() {}, myCancelEditProductFunction() {} },
 });
 ```
 
-- Key = key name, optionally prefixed with `SYSTEMKEY+`. Value is either a method name string (always active) or an object `{ active, method }`.
-- `active` may be a function (bound to the component instance) or a boolean.
-- The first shortcut above fires only if the user has the privilege `product.editor`; the core `sw-product-detail` page uses exactly this pattern with `onSave`/`onCancel`.
+- String value: name of the component method to call; always active.
+- Object value: `method` (method name) and `active` (a function evaluated with the component as `this`, or a boolean). Here `SYSTEMKEY+S` only fires if the user has the `product.editor` privilege (see [ACL rules](platform/dev/6.7/guides/plugins/plugins/administration/permissions-error-handling/add-acl-rules.md)).
+- Key names are matched against the upper-cased `KeyboardEvent.key`, prefixed with `SYSTEMKEY+` when the system key is held.
 
 ## Essential identifiers
 
-- `shortcuts` component option; keys `SYSTEMKEY+S`, `ESCAPE`
-- `active()` / `method` object form, or a plain method-name string
-- `this.acl.can('product.editor')` for privilege-gated shortcuts
-- `$device.getSystemKey()` — returns `CTRL` on macOS, `ALT` elsewhere
+- `shortcuts` (component option), `method`, `active`
+- `SYSTEMKEY`, `SYSTEMKEY+S`, `ESCAPE`
+- `this.acl.can('product.editor')`
+- `$device.getSystemKey()`
 
 ## Gotchas
 
-- `SYSTEMKEY` is `CTRL` on macOS and `ALT` on Windows; other system keys (`CTRL` on Windows, the option key on macOS) are not supported.
-- Keys are compared upper-cased, so `SYSTEMKEY+c` and `SYSTEMKEY+C` match the same press.
-- Shortcuts without `SYSTEMKEY` are ignored while focus is in an `INPUT`, `TEXTAREA`, `SELECT` or a contenteditable `DIV`; `SYSTEMKEY+S` blurs such a field before calling the method so pending edits are applied.
-- No shortcut fires when the key event originates inside a `.sw-modal` / `.sw-modal__dialog`.
-- Non-system keys may form multi-key sequences; the sequence buffer resets after 1000 ms.
-- Shortcuts are removed on `beforeUnmount` of the component that declared them.
+- `SYSTEMKEY` is `CTRL` on macOS and `ALT` on all other platforms; other modifiers (`CTRL` on Windows, the option key on macOS) are not supported as the system key.
+- Shortcuts without `SYSTEMKEY` do not fire while focus is in `INPUT`, `TEXTAREA`, `SELECT` or a contenteditable element; no shortcut fires for keydown events inside a modal (`.sw-modal`, `.mt-modal`) or for auto-repeated keys.
+- Shortcuts are removed when the component unmounts; non-system keys can form multi-key sequences with a 1000 ms delay between keystrokes.
 
-## Code check (6.7.13.0)
-- confirmed `shortcuts` — mixin reads `this.$options.shortcuts` on created — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:166
-- confirmed `method` — object form maps `value.method` to the function name, `active` may be boolean or function — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:186
-- confirmed `SYSTEMKEY+` — combined key built from system key state plus upper-cased key — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:122
-- confirmed `getSystemKey()` — `CTRL` on Mac platform, otherwise `ALT` — vendor/shopware/administration/Resources/app/administration/src/core/helper/device.helper.js:151
-- confirmed `SYSTEMKEY+S` — core product detail uses `active()` with `acl.can('product.editor')` and `ESCAPE: 'onCancel'` — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/page/sw-product-detail/index.js:44
-- confirmed `isRestrictedSource` — non-system shortcuts skipped in INPUT/TEXTAREA/SELECT/contenteditable — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:41
-- confirmed `isFromModal` — events from `.sw-modal` are ignored — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:108
-- confirmed `componentShortcutKeystrokeDelay` — sequence buffer reset delay 1000 ms — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:5
-- confirmed `beforeUnmount` — component shortcuts removed on unmount — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:213
+## Code check (6.7.15.1)
+- confirmed `shortcuts` — read from `this.$options.shortcuts` in a global mixin on created — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:175
+- confirmed `method` — object entry uses value.method as function name and value.active (function or boolean) — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:191
+- confirmed `functionName` — string entry is the method name, active always true — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:194
+- confirmed `SYSTEMKEY+` — combined key prefix plus upper-cased event key — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:129
+- confirmed `getSystemKey()` — returns CTRL on Mac platforms, otherwise ALT — vendor/shopware/administration/Resources/app/administration/src/core/helper/device.helper.js:161
+- confirmed `restrictedTags` — INPUT/TEXTAREA/SELECT block non-system shortcuts — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:43
+- confirmed `isFromModal` — keydown inside modals is ignored — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:115
+- confirmed `componentShortcutKeystrokeDelay` — 1000 ms sequence reset — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:5
+- confirmed `beforeUnmount()` — component shortcuts removed on unmount — vendor/shopware/administration/Resources/app/administration/src/app/plugin/shortcut.plugin.js:215
+- confirmed `Component.register` — exposed on the global Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:135

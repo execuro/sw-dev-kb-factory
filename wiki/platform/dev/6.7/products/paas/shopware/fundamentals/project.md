@@ -6,10 +6,10 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/fundamentals/project.html
 sourceHash: fd5a85eb76196cd42ec6f3220b00e0858f3113bf
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw-paas project create", "sw-paas project list", "sw-paas", "paas project", "shopware paas native", "repository", "github", "gitlab", "bitbucket", "applications", "codebase", "organization"]
-summary: "Shopware PaaS Native projects: a Git repository codebase holding many applications; create with sw-paas project create, list with sw-paas project list."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-paas project create", "sw-paas project list", "project", "paas native", "repository", "github", "bitbucket", "gitlab", "applications", "codebase", "sw-paas cli"]
+summary: Shopware PaaS Native projects map a GitHub/Bitbucket/GitLab repo to deployable apps; create with sw-paas project create, list with sw-paas project list.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/paas/shopware/guides/setting-up-repository-access.md"]
 ---
 ## What it is
@@ -18,17 +18,17 @@ In Shopware PaaS Native, a project represents a codebase in a GitHub, Bitbucket,
 
 ## When to use
 
-When onboarding a repository to Shopware PaaS Native before creating applications from it, or when looking up which projects exist in your user's or organization's scope.
+When onboarding a new codebase into an organization on Shopware PaaS Native, or when looking up which projects (with their type and repository) exist for your user or organization.
 
 ## Key steps / config
 
-1. Grant Shopware PaaS Native access to the repository first, following [Setting up repository access](platform/dev/6.7/products/paas/shopware/guides/setting-up-repository-access.md).
-2. Create the project in your organization; the command asks for its name, repository, and type:
+1. Create a project in your organization by specifying its name, repository, and type:
 
    ```sh
    sw-paas project create
    ```
 
+2. Make sure Shopware PaaS Native can access the repository — see [Setting up repository access](platform/dev/6.7/products/paas/shopware/guides/setting-up-repository-access.md).
 3. List all projects associated with your user or organization, including project name, type, and repository:
 
    ```sh
@@ -37,13 +37,13 @@ When onboarding a repository to Shopware PaaS Native before creating application
 
 ## Essential identifiers
 
-- `sw-paas project create`
-- `sw-paas project list`
+- `sw-paas project create` — initialize a new project (name, repository, type)
+- `sw-paas project list` — show all projects with key metadata
 
 ## Gotchas
 
-- Project creation needs repository access to be set up; without it the platform cannot read the codebase.
+- Creating the project does not by itself grant repository access; the repository access setup is a separate step.
 
-## Code check (6.7.13.0)
-- unverified `sw-paas project create` — external PaaS CLI command, no match in vendor/shopware core or storefront, out of scope
-- unverified `sw-paas project list` — external PaaS CLI command, not part of the installed Shopware code
+## Code check (6.7.15.1)
+- unverified `sw-paas project create` — Shopware PaaS CLI command, not part of the installed Shopware packages
+- unverified `sw-paas project list` — Shopware PaaS CLI command, not part of the installed Shopware packages

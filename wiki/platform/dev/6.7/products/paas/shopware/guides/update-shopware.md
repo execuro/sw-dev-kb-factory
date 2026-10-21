@@ -6,57 +6,51 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/guides/update-shopware.html
 sourceHash: fff6cd6a57549d177e2a4c7b45042f63f1d432dc
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["system:update:prepare", "system:update:finish", "sw-paas application update", "sw-paas app deploy list", "sw-paas snapshot create", "sw-paas exec --new", "composer recipes:update", "shopware/core", "DEPLOYING_STORE_SUCCESS", "update shopware", "upgrade", "paas native"]
-summary: "Update Shopware on PaaS Native: composer update shopware/core, recipes:update, system:update:prepare, sw-paas application update, system:update:finish."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["system:update:prepare", "system:update:finish", "sw-paas app deploy list", "sw-paas application update", "sw-paas snapshot create", "sw-paas exec --new", "DEPLOYING_STORE_SUCCESS", "composer recipes:update", "shopware/core", "upgrade", "version update", "paas native"]
+summary: "Upgrade Shopware on PaaS Native: check deploy state, snapshot, bump shopware/core, system:update:prepare, sw-paas application update, finish."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The procedure for updating the Shopware version of a Shopware PaaS Native application: check the last deployment, snapshot, bump `shopware/core` in the code base, prepare, redeploy, and finish the update.
+The procedure for upgrading the Shopware version of an application running on Shopware PaaS Native: verify the last deployment, snapshot the data, update the code base with Composer, then run the Shopware update commands around the PaaS application update.
 
 ## When to use
 
-When moving a PaaS Native shop to a newer Shopware release.
+When moving a PaaS Native shop to a newer `shopware/core` version.
 
 ## Key steps / config
 
-1. Pre-check: `sw-paas app deploy list` — the latest deployment must be in state `DEPLOYING_STORE_SUCCESS`. If it is `DEPLOYING_STORE_FAILED`, do not start the update; fix the deployment first.
-2. Back up database and filesystem: `sw-paas snapshot create`, and wait until the snapshot is done.
-3. Update the code base:
+1. **Pre-check** — run `sw-paas app deploy list`. Only start if the latest deployment has status `DEPLOYING_STORE_SUCCESS`.
+2. **Snapshot** — back up database and Shopware filesystem with `sw-paas snapshot create` and wait until it is done.
+3. **Update the code base**:
    - `git checkout -b my-new-branch`
-   - in `composer.json`, set `shopware/core` to the new version
+   - in `composer.json` raise `shopware/core` to the new version
    - `composer update --no-scripts`
    - `composer recipes:update`
    - `git add . && git commit -m "Updating Shopware to version X.Y.Z"` (note the commit SHA)
    - `git push -u origin my-new-branch`
-4. Prepare: `sw-paas exec --new`, then in the session `bin/console system:update:prepare`.
-5. Deploy: `sw-paas application update`; track with `sw-paas app deploy list` and/or `sw-paas app deploy get`.
-6. Finish: once the application is updated, open `sw-paas exec --new` again and run `bin/console system:update:finish`.
+4. **Prepare** — open an exec session with `sw-paas exec --new` and run `bin/console system:update:prepare`.
+5. **Deploy** — run `sw-paas application update`; track it with `sw-paas app deploy list` and/or `sw-paas app deploy get`.
+6. **Finish** — after a successful update, open a new session (`sw-paas exec --new`) and run `bin/console system:update:finish`. In the installed code this runs core migrations (`database:migrate`, then `database:migrate-destructive` with `--version-selection-mode`, default `safe`) and `assets:install`; options `--skip-migrations` and `--skip-asset-build` skip those steps.
 
 ## Essential identifiers
 
-- `sw-paas app deploy list`, `sw-paas app deploy get`
-- `sw-paas snapshot create`
-- `sw-paas exec --new`
-- `sw-paas application update`
-- `bin/console system:update:prepare`, `bin/console system:update:finish`
-- `DEPLOYING_STORE_SUCCESS`, `DEPLOYING_STORE_FAILED`
+- PaaS CLI: `sw-paas app deploy list`, `sw-paas app deploy get`, `sw-paas snapshot create`, `sw-paas exec --new`, `sw-paas application update`
+- Shopware console: `system:update:prepare`, `system:update:finish`
+- Deployment states: `DEPLOYING_STORE_SUCCESS`, `DEPLOYING_STORE_FAILED`
 
 ## Gotchas
 
-- Never start an update on top of a failed deployment.
-- Installed code: both `system:update:prepare` and `system:update:finish` print a note and exit successfully without doing anything when `DATABASE_URL` is empty — run them inside the exec session where the application environment is set.
-- Installed code: `system:update:finish` accepts `--skip-migrations`, `--skip-asset-build` and `--version-selection-mode` (not mentioned in the source).
+- If the latest deployment state is `DEPLOYING_STORE_FAILED`, do not start a Shopware update — fix the deployment first.
+- Both `system:update:prepare` and `system:update:finish` silently skip (print a note and exit successfully) when `DATABASE_URL` is not defined, so run them inside the exec session where the app environment is present.
 
-## Code check (6.7.13.0)
-- confirmed `system:update:prepare` — console command in core — vendor/shopware/core/Maintenance/System/Command/SystemUpdatePrepareCommand.php:21
-- confirmed `DATABASE_URL` — prepare skips when empty — vendor/shopware/core/Maintenance/System/Command/SystemUpdatePrepareCommand.php:36
-- confirmed `system:update:finish` — console command in core — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:29
+## Code check (6.7.15.1)
+- confirmed `system:update:prepare` — console command dispatching UpdatePrePrepareEvent/UpdatePostPrepareEvent — vendor/shopware/core/Maintenance/System/Command/SystemUpdatePrepareCommand.php:22
+- confirmed `system:update:finish` — console command running migrations and asset install — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:30
 - confirmed `skip-migrations` — option of system:update:finish — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:47
 - confirmed `skip-asset-build` — option of system:update:finish — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:53
-- confirmed `version-selection-mode` — option of system:update:finish, default safe mode — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:59
-- confirmed `DATABASE_URL` — finish skips when empty — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:74
-- unverified `composer recipes:update` — Symfony Flex, outside vendor/shopware
-- unverified `DEPLOYING_STORE_SUCCESS` — PaaS deployment state, outside vendor/shopware
+- confirmed `version-selection-mode` — destructive-migration mode option, default safe — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:59
+- confirmed `DATABASE_URL` — both commands skip when it is empty — vendor/shopware/core/Maintenance/System/Command/SystemUpdatePrepareCommand.php:36
 - unverified `sw-paas application update` — PaaS CLI, outside vendor/shopware
+- unverified `DEPLOYING_STORE_SUCCESS` — PaaS deployment state, not in vendor/shopware code

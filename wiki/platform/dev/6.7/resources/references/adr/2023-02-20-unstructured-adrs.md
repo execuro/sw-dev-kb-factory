@@ -6,42 +6,52 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-02-20-unstructured-adrs.html
 sourceHash: 5f3c1892ece817bdcebf6f54611943ce827257c0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["adr", "architecture decision record", "front matter", "yaml front matter", "file structure", "flat directory", "title", "date", "area", "tags", "workflow"]
-summary: "ADR: Shopware ADR files live in one flat directory with YAML front matter (title, date, area, tags) instead of per-area subfolders."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["adr", "architecture decision record", "front matter", "frontmatter", "flat file structure", "adr folder", "area", "tags", "title", "date", "workflow", "file-structure"]
+summary: "ADR (2023): Shopware ADRs drop area subfolders for a flat directory and carry YAML front matter (title, date, area, tags) like changelog files."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record changing how Shopware's own ADRs are stored: the per-area folder structure is removed and every ADR carries front matter metadata, as changelog files already do.
+An architecture decision record (dated 2023-02-23, area `core`, tags `adr`, `file-structure`, `workflow`) that removes the per-area folder structure of Shopware's ADR directory and instead puts metadata into YAML front matter at the top of each ADR file, the same way Shopware changelog files already do. It is mirrored from the `adr/` folder of the Shopware 6 repository (`adr/2023-02-20-unstructured-adrs.md`).
 
 ## When to use
 
-When adding a new ADR to the Shopware repository, or when searching ADRs by title, recency or area.
+Read it when writing or submitting a new ADR to the Shopware repository, or when parsing ADR files (for example to list them by date or area).
 
 ## Key steps / config
 
-1. Place the ADR file in the flat ADR directory — no area subfolder.
-2. Start the file with front matter:
+The ADR lists the ways people search for ADRs: (1) they know the headline, (2) they want the latest ADRs, (3) they want the ADRs of a specific area. Area folders only helped case 3; for case 1 a directory search returned duplicate matches and could get long, and for case 2 the reader had to go through git history via shell or IDE.
+
+Decision:
+
+- Remove the area structure at directory level — all ADRs sit in one flat directory.
+- Add front matter to every ADR so metadata can be extracted from content. This is also groundwork for publishing ADRs in other front-ends (handbook, developer docs) and using their search.
+
+Front matter shape given for this ADR itself:
 
 ```markdown
 ---
 title: Unstructured ADRs
 date: 2023-02-23
-area: ...
+area: Product Operation #I added prod-ops because this is a workflow topic
 tags: [ADR, file structure, workflow]
 ---
 ```
 
-Rationale given in the ADR: area folders only help when browsing by area. Searching by headline returns duplicate matches, and finding the latest ADRs required git history (shell or IDE). Front matter plus a flat structure covers all three search cases, allows metadata extraction, prepares publishing ADRs in other front-ends (handbook, dev docs) with their search, and removes confusion about which folder a new ADR belongs in.
+Keys: `title`, `date`, `area`, `tags`. With front matter plus the flat structure, all three search cases are covered.
 
 ## Essential identifiers
 
-- Front matter keys: `title`, `date`, `area`, `tags`
+- Front matter keys `title`, `date`, `area`, `tags`
+- ADR file naming `YYYY-MM-DD-<slug>.md` as seen in the mirrored path
 
 ## Gotchas
 
-- The ADR's own example puts an inline YAML comment after the `area` value; the mirrored ADR in the docs uses `area: core` in its actual front matter, so area values are not consistent across examples.
+- The example `area` value in the ADR text (`Product Operation`) differs from the value in the mirrored file's own front matter (`core`) — the example is illustrative.
+- The ADR also aims to reduce confusion about which folder a new ADR belongs in: there is no folder choice any more.
 
-## Code check (6.7.13.0)
-- unverified `title`/`date`/`area`/`tags` — ADR front matter is a repository documentation convention; no ADR directory ships in vendor/shopware/core
+## Code check (6.7.15.1)
+- unverified `title` — ADR front matter lives in the repository `adr/` folder, outside the checked package roots
+- unverified `area` — ADR metadata key, not part of the shipped core/storefront/administration code
+- unverified `tags` — ADR metadata key, not part of the shipped core/storefront/administration code

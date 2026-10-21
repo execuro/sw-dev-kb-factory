@@ -6,22 +6,20 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/
 sourceHash: 40337717df72a08bee7966f816030fc8b0a4f454
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["commerce", "ecommerce", "e-commerce platform", "concepts", "commerce concepts", "catalog", "guides", "tutorials", "overview"]
-summary: Entry page of the Commerce concepts section - explains ecommerce-related ideas of Shopware without code examples; guides hold step-by-step tutorials.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["commerce", "ecommerce", "commerce concepts", "concepts", "catalog", "product", "category", "sales_channel", "ProductDefinition", "CategoryDefinition", "SalesChannelDefinition", "shopware architecture"]
+summary: Entry page for Shopware 6.7 commerce concepts (catalog, products, categories, sales channels); conceptual only, no code examples.
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Landing page for the **Commerce** part of Shopware's Concepts documentation. Shopware is at its core an ecommerce platform; this section collects the commerce-related concepts (e.g. the catalog).
+Section landing page for the commerce-related concepts of Shopware, which at its core is an ecommerce platform. The pages below it explain ideas and data structures (catalog, products, categories, sales channels) rather than step-by-step tasks.
 
 ## When to use
 
-When you need the ideas behind Shopware's commerce features rather than implementation steps.
+Read the pages in this section to understand how Shopware models commerce data before implementing against it. The Concepts section deliberately contains no code examples; for guided, step-by-step tutorials use the Guides section instead.
 
-## Gotchas
-
-- The Concepts section contains no code examples; for guided step-by-step tutorials use the Guides section (installation guides are the suggested starting point).
-
-## Code check (6.7.13.0)
-- unverified `Commerce` — navigation page only, source names no code identifiers to check
+## Code check (6.7.15.1)
+- confirmed `ProductDefinition::ENTITY_NAME` — core commerce entity `product` exists — vendor/shopware/core/Content/Product/ProductDefinition.php:85
+- confirmed `CategoryDefinition::ENTITY_NAME` — core commerce entity `category` exists — vendor/shopware/core/Content/Category/CategoryDefinition.php:55
+- confirmed `SalesChannelDefinition::ENTITY_NAME` — core commerce entity `sales_channel` exists — vendor/shopware/core/System/SalesChannel/SalesChannelDefinition.php:75

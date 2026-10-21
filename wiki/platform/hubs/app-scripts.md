@@ -1,47 +1,52 @@
 ---
 id: platform/hubs/app-scripts.md
 title: app scripts
-summary: "Overview of the Shopware app system and App Scripts: manifest apps, Twig script hooks, custom endpoints, rule conditions, and cart/data services."
-keywords: ["apps", "app scripts", "manifest.xml", "webhooks", "twig hooks", "custom endpoints", "rule conditions", "cart manipulation", "data loading", "script services", "adr", "extendability", "rule builder", "system config", "cache invalidation"]
-members: ["platform/dev/6.6/concepts/extensions/apps-concept.md", "platform/dev/6.6/guides/plugins/apps/_index.md", "platform/dev/6.6/guides/plugins/apps/app-scripts/_index.md", "platform/dev/6.6/guides/plugins/apps/app-scripts/custom-endpoints.md", "platform/dev/6.6/guides/plugins/apps/configuration.md", "platform/dev/6.6/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md", "platform/dev/6.6/guides/plugins/apps/starter/_index.md", "platform/dev/6.6/guides/plugins/apps/starter/add-api-endpoint.md", "platform/dev/6.6/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md", "platform/dev/6.6/resources/guidelines/code/core/extendability.md", "platform/dev/6.6/resources/references/adr/2021-10-21-app-scripting.md", "platform/dev/6.6/resources/references/adr/2022-01-06-custom-app-api-endpoints.md", "platform/dev/6.7/concepts/extensions/apps-concept.md", "platform/dev/6.7/guides/plugins/apps/_index.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/add-api-endpoint.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/cart-manipulation.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/data-loading.md", "platform/dev/6.7/resources/references/_index.md", "platform/dev/6.7/resources/references/adr/2021-10-21-app-scripting.md", "platform/dev/6.7/resources/references/adr/2022-01-06-custom-app-api-endpoints.md", "platform/dev/6.7/resources/references/adr/2022-02-21-rule-scripting-in-apps.md", "platform/dev/6.7/resources/references/app-reference/script-reference/_index.md", "platform/dev/6.7/resources/references/app-reference/script-reference/cart-manipulation-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/custom-endpoint-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/data-loading-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/miscellaneous-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md"]
-lastBuilt: "2026-09-15"
+summary: Navigation hub for App Scripts, sandboxed Twig hooks, custom endpoints, rule conditions, script services and ADRs, in 6.6 and 6.7.
+keywords: ["app scripts", "twig hooks", "script hooks", "custom endpoints", "api/script", "store-api/script", "storefront/script", "script services", "rule conditions", "cart manipulation", "product pricing", "app system"]
+members: ["platform/dev/6.6/concepts/extensions/apps-concept.md", "platform/dev/6.6/guides/plugins/apps/_index.md", "platform/dev/6.6/guides/plugins/apps/app-scripts/_index.md", "platform/dev/6.6/guides/plugins/apps/app-scripts/custom-endpoints.md", "platform/dev/6.6/guides/plugins/apps/configuration.md", "platform/dev/6.6/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md", "platform/dev/6.6/guides/plugins/apps/starter/_index.md", "platform/dev/6.6/guides/plugins/apps/starter/add-api-endpoint.md", "platform/dev/6.6/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md", "platform/dev/6.6/resources/guidelines/code/core/extendability.md", "platform/dev/6.6/resources/references/adr/2021-10-21-app-scripting.md", "platform/dev/6.6/resources/references/adr/2022-01-06-custom-app-api-endpoints.md", "platform/dev/6.7/concepts/extensions/apps-concept.md", "platform/dev/6.7/guides/plugins/apps/_index.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/add-api-endpoint.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/cart-manipulation.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/data-loading.md", "platform/dev/6.7/resources/references/_index.md", "platform/dev/6.7/resources/references/adr/2021-10-21-app-scripting.md", "platform/dev/6.7/resources/references/adr/2022-01-06-custom-app-api-endpoints.md", "platform/dev/6.7/resources/references/adr/2022-02-21-rule-scripting-in-apps.md", "platform/dev/6.7/resources/references/adr/2023-02-01-app-script-product-pricing.md", "platform/dev/6.7/resources/references/app-reference/script-reference/_index.md", "platform/dev/6.7/resources/references/app-reference/script-reference/data-loading-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/miscellaneous-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/product-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md"]
+lastBuilt: 2026-10-21
 ---
 
-This hub covers Shopware's app system and, within it, App Scripts: the decoupled manifest-based extension model (manifest.xml, webhooks, registration handshake, Admin API access) and the sandboxed Twig scripting layer that runs on registered hooks to read/manipulate data, add custom API endpoints, and define custom rule conditions. Come here instead of grepping directly when deciding whether a task belongs in a plugin, an app, or an app script, or when looking for a specific script service/hook/facade name without opening every guide and reference page individually.
+# App scripts
 
-## 6.6 (App SDK / classic app system)
+App Scripts are sandboxed Twig files shipped with an app (under `Resources/scripts`) that run on named script hooks inside Shopware's execution stack. They get hook data and a set of services (`services.repository`, `services.cart`, `services.response` and others), and can also expose custom endpoints under `/api/script`, `/store-api/script` and `/storefront/script`. Come here when you need to know what a script can hook into, which services it can call, or how scripts relate to the wider app system. The 6.6 docs cover the basics and endpoints. The 6.7 docs add cart manipulation, data loading and a full script reference.
 
-- [Apps](platform/dev/6.6/concepts/extensions/apps-concept.md) — concept: manifest, webhooks, Admin API, decoupled extension model.
-- [Apps](platform/dev/6.6/guides/plugins/apps/_index.md) — guide entry point for building apps via App SDK, plugin system, or App scripts.
-- [App Scripts](platform/dev/6.6/guides/plugins/apps/app-scripts/_index.md) — how App Scripts run Twig files on registered hooks with access to hook data and services.
-- [Custom endpoints](platform/dev/6.6/guides/plugins/apps/app-scripts/custom-endpoints.md) — api/store-api/storefront custom endpoints, response headers, cache config/invalidation hooks.
-- [Configuration](platform/dev/6.6/guides/plugins/apps/configuration.md) — config.xml plus the system-config API, `{appName}.config.{fieldName}` keys, readable via Twig/app scripts.
-- [Add custom rule conditions](platform/dev/6.6/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md) — defining app rule conditions in manifest.xml with Twig logic scripts and the `compare()` helper.
-- [App Starter Guides](platform/dev/6.6/guides/plugins/apps/starter/_index.md) — index of starter tutorials (custom API endpoints, data exchange, admin extensions).
-- [Starter Guide - Add an API endpoint](platform/dev/6.6/guides/plugins/apps/starter/add-api-endpoint.md) — tutorial: Store API endpoint via an App Script aggregating order data.
-- [How to add a new approval condition](platform/dev/6.6/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md) — B2B order-approval condition via a plugin Rule class or an app's rule-conditions manifest/script.
-- [Extendability](platform/dev/6.6/resources/guidelines/code/core/extendability.md) — where apps/app scripts fit among Shopware's extendability patterns (decoration, factory, visitor, mediator, adapter).
-- [App scripts](platform/dev/6.6/resources/references/adr/2021-10-21-app-scripting.md) — ADR introducing Twig-based App Scripting (sandboxed hooks for rules, cart, page loading, shipping).
-- [Allow apps to define custom api endpoints](platform/dev/6.6/resources/references/adr/2022-01-06-custom-app-api-endpoints.md) — ADR adding `/api/script/{hook}`, `/store-api/script/{hook}`, `/storefront/script/{hook}`.
+## Dev 6.6
 
-## 6.7 (Cloud-oriented app system)
+- [Apps](platform/dev/6.6/concepts/extensions/apps-concept.md) — app system concept: manifest, webhooks, Admin API.
+- [Apps](platform/dev/6.6/guides/plugins/apps/_index.md) — overview of app extension routes (App SDK, plugin system, App scripts).
+- [App Scripts](platform/dev/6.6/guides/plugins/apps/app-scripts/_index.md) — running Twig files on registered hooks, with hook data and services.
+- [Custom endpoints](platform/dev/6.6/guides/plugins/apps/app-scripts/custom-endpoints.md) — api/store-api/storefront scoped endpoints, response headers, cache invalidation.
+- [Configuration](platform/dev/6.6/guides/plugins/apps/configuration.md) — config.xml and system-config values, readable from app scripts.
+- [Add custom rule conditions](platform/dev/6.6/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md) — rule conditions in manifest.xml with Twig logic scripts and `compare()`.
+- [App Starter Guides](platform/dev/6.6/guides/plugins/apps/starter/_index.md) — index of starter guides for endpoints and data exchange.
+- [Starter Guide - Add an API endpoint](platform/dev/6.6/guides/plugins/apps/starter/add-api-endpoint.md) — Store API endpoint tutorial aggregating order data.
+- [How to add a new approval condition](platform/dev/6.6/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md) — B2B order-approval condition via plugin Rule class or app rule-conditions manifest and script.
+- [Extendability](platform/dev/6.6/resources/guidelines/code/core/extendability.md) — extendability patterns; app scripts are one of the mechanisms.
+- [App scripts](platform/dev/6.6/resources/references/adr/2021-10-21-app-scripting.md) — ADR introducing Twig-based App Scripting.
+- [Allow apps to define custom api endpoints](platform/dev/6.6/resources/references/adr/2022-01-06-custom-app-api-endpoints.md) — ADR for the script endpoint routes.
 
-- [Apps](platform/dev/6.7/concepts/extensions/apps-concept.md) — concept: manifest, HTTP/webhook communication, registration handshake, storefront assets, payments, rule conditions.
-- [Apps](platform/dev/6.7/guides/plugins/apps/_index.md) — entry point for 6.7 apps as remote, event-driven Cloud extensions; base setup (`custom/apps`, manifest.xml) and guide paths.
-- [App Scripts](platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md) — sandboxed Twig files in `Resources/scripts/<hook>/`, includes, interface hook blocks, services, debugging.
-- [Add an API endpoint](platform/dev/6.7/guides/plugins/apps/app-scripts/add-api-endpoint.md) — Store API endpoint from an app script in `Resources/scripts/store-api-<name>/`.
-- [Cart Manipulation](platform/dev/6.7/guides/plugins/apps/app-scripts/cart-manipulation.md) — cart hook `services.cart` API for products/discounts, price definitions, split items, errors, states, rules.
-- [Custom Endpoints](platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md) — api/store-api/storefront custom endpoints, response service, cache config and cache-invalidation scripts.
-- [Data Loading](platform/dev/6.7/guides/plugins/apps/app-scripts/data-loading.md) — page-loaded hooks, `services.repository` vs `services.store`, `addExtension`/`addArrayExtension`.
-- [References](platform/dev/6.7/resources/references/_index.md) — index of technical references including app manifest/cms/entities/flow XML and app scripts.
-- [App scripts](platform/dev/6.7/resources/references/adr/2021-10-21-app-scripting.md) — ADR: sandboxed Twig stored in the DB and bound to hooks, data wrapped in facades, compiled-script cache.
-- [Allow apps to define custom api endpoints](platform/dev/6.7/resources/references/adr/2022-01-06-custom-app-api-endpoints.md) — ADR: `/script/{hook}` routes for Admin API, Store API and Storefront, with response/cache helpers.
-- [Rule Scripting in apps](platform/dev/6.7/resources/references/adr/2022-02-21-rule-scripting-in-apps.md) — ADR: custom rule conditions as Twig scripts stored in `app_script_condition`, evaluated by `ScriptRule`.
-- [Script Reference](platform/dev/6.7/resources/references/app-reference/script-reference/_index.md) — entry page for all script services, methods, arguments and return values.
-- [Cart Manipulation script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/cart-manipulation-script-services-reference.md) — `services.cart` (`CartFacade`) and `services.price`, plus item/product/price/error/state facades.
-- [Custom Endpoint script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/custom-endpoint-script-services-reference.md) — `services.cache`, `services.writer`, `services.response` facades.
-- [Data Loading script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/data-loading-script-services-reference.md) — `services.repository` (admin data) and `services.store` (Store API data), search/ids/aggregate.
-- [Miscellaneous script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/miscellaneous-script-services-reference.md) — `services.request`, `services.acl`, `services.config`, and the `ArrayFacade`.
-- [Script hooks reference](platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md) — full list of hook names/classes and the services available on each.
+## Dev 6.7
 
-Note: the "Apps" concept page, the "App Scripts" guide index, the "Custom endpoints" guide, and both ADRs (`2021-10-21-app-scripting.md`, `2022-01-06-custom-app-api-endpoints.md`) exist as near-duplicate pairs in 6.6 and 6.7 — the 6.7 versions add Cloud-oriented details (e.g. `custom/apps`, `Resources/mcp.xml`, checkout gateway) not present in the 6.6 pages, so both are kept rather than merged.
+Concepts and guides:
+
+- [Apps](platform/dev/6.7/concepts/extensions/apps-concept.md) — 6.7 app system concept (updated counterpart of the 6.6 page).
+- [Apps](platform/dev/6.7/guides/plugins/apps/_index.md) — overview of apps and which guide fits which use case.
+- [App Scripts](platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md) — script hooks, includes, interface hooks, services, debugging.
+- [Add an API endpoint](platform/dev/6.7/guides/plugins/apps/app-scripts/add-api-endpoint.md) — `store-api-swag-topseller` tutorial, deployed with shopware-cli.
+- [Cart Manipulation](platform/dev/6.7/guides/plugins/apps/app-scripts/cart-manipulation.md) — line items, discounts, price definitions on the cart hook.
+- [Custom Endpoints](platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md) — folder naming, responses, caching, invalidation.
+- [Data Loading](platform/dev/6.7/guides/plugins/apps/app-scripts/data-loading.md) — loading extra Storefront data via repository/store services.
+
+References and ADRs:
+
+- [References](platform/dev/6.7/resources/references/_index.md) — reference section overview, including app scripts and ADRs.
+- [Script Reference](platform/dev/6.7/resources/references/app-reference/script-reference/_index.md) — entry page for script services.
+- [Script hooks reference](platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md) — all hook names with classes, data and services.
+- [Data Loading script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/data-loading-script-services-reference.md) — `services.repository` and `services.store`.
+- [Miscellaneous script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/miscellaneous-script-services-reference.md) — `services.request`, `services.acl`, `services.config`, ArrayFacade.
+- [Product script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/product-script-services-reference.md) — price facades for product pricing.
+- [App scripts](platform/dev/6.7/resources/references/adr/2021-10-21-app-scripting.md) — ADR of the scripting model; near-duplicate of the 6.6 ADR.
+- [Allow apps to define custom api endpoints](platform/dev/6.7/resources/references/adr/2022-01-06-custom-app-api-endpoints.md) — ADR for script endpoints; near-duplicate of the 6.6 ADR.
+- [Rule Scripting in apps](platform/dev/6.7/resources/references/adr/2022-02-21-rule-scripting-in-apps.md) — ADR for rule conditions stored in `app_script_condition`, evaluated by `ScriptRule`.
+- [App script product pricing](platform/dev/6.7/resources/references/adr/2023-02-01-app-script-product-pricing.md) — ADR for the product-pricing hook and price facades.

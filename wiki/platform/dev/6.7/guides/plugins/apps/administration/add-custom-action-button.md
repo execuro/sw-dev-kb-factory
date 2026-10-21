@@ -6,23 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/administration/add-custom-action-button.html
 sourceHash: f6549d443690fe1c4f936da6a60da1819bd63dd2
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["action-button", "manifest.xml", "actionType", "openNewTab", "openModal", "notification", "reload", "shopware-app-signature", "shopware-shop-signature", "ActionButtonResponse", "smartbar button", "app action", "custom endpoint"]
-summary: App manifest smartbar action buttons for Administration detail/list views; request payload and signed responses (notification, modal, tab, reload).
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/resources/references/app-reference/manifest-reference.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md", "platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["action-button", "manifest.xml", "smartbar button", "openNewTab", "openModal", "notification", "reload", "shopware-shop-signature", "shopware-app-signature", "ActionButtonResponse", "/api/script/{hook}", "app action button", "admin button"]
+summary: Define app action buttons in manifest.xml for detail/list smartbars, the request Shopware sends, and the signed response types the Admin acts on.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md", "platform/dev/6.7/resources/references/app-reference/manifest-reference.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md", "platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md"]
 ---
 ## What it is
 
-Declaring custom action buttons in the smartbar of Administration detail and list views through the `<admin>` section of an app's `manifest.xml`, the request Shopware sends when a button is clicked, and the response format that triggers feedback in the Administration. For advanced cases the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) is recommended.
+Apps can add custom buttons to the Administration smartbar of entity detail and list views by declaring `<action-button>` elements in the `<admin>` section of `manifest.xml`. Clicking one sends a signed request to the app; the app may answer with a signed JSON body that tells the Administration to open a tab, show a notification, reload, or open a modal. For advanced use the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) is recommended.
 
 ## When to use
 
-An app needs a simple button on a product/order/promotion etc. list or detail page that calls the app backend (or an app script custom endpoint) and optionally shows a notification, opens a tab or modal, or reloads the page.
+A simple app needs a smartbar button on a product, order, category, promotion, customer or CMS page view that triggers a call to the app backend (or an app-script custom endpoint) and gives feedback to the user.
 
 ## Key steps / config
 
-1. Manifest (schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Manifest/Schema/manifest-3.0.xsd`):
+1. Declare buttons in `manifest.xml` (schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Manifest/Schema/manifest-3.0.xsd`):
 
 ```xml
 <admin>
@@ -32,50 +32,62 @@ An app needs a simple button on a product/order/promotion etc. list or detail pa
 </admin>
 ```
 
-Required attributes: `action` (free identifier), `entity`, `view` (`detail` or `list`), `url`. The schema restricts `entity` to `product`, `order`, `category`, `promotion`, `customer`, `cms_page`. See [Manifest reference](platform/dev/6.7/resources/references/app-reference/manifest-reference.md).
+All four attributes are required: `action` (free unique id), `entity` (one of `product`, `order`, `category`, `promotion`, `customer`, `cms_page`), `view` (`detail` or `list`), `url`. At least one `<label>` is required. See the [Manifest reference](platform/dev/6.7/resources/references/app-reference/manifest-reference.md).
 
-2. On click the app receives a POST similar to a [webhook](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md): `source` (`url`, `appVersion`, `shopId`), `data` (`ids` array, `entity`, `action`), `meta` (`timestamp`, `reference`, `language`). The `sw-version` header carries the Shopware version. Verify `shopware-shop-signature` (SHA256 HMAC of the body with the shop secret from [registration](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md)).
-3. To trigger feedback, respond with a body and header `shopware-app-signature` (HMAC of the body with the app secret). An empty body is always valid.
+2. Handle the request. It resembles a [webhook](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md) payload but carries the entity and selected ids (a single id on detail pages):
 
 ```json
-{ "actionType": "openModal", "payload": { "iframeUrl": "...", "size": "medium", "expand": true } }
+{
+  "source": { "url": "...", "appVersion": "...", "shopId": "..." },
+  "data": { "ids": ["..."], "entity": "product", "action": "restockProduct" },
+  "meta": { "timestamp": 0, "reference": "...", "language": "..." }
+}
 ```
 
-- `notification`: `status` (`success`, `error`, `info`, `warning`), `message`
-- `openNewTab`: `redirectUrl`
-- `reload`: empty `payload`
-- `openModal`: `iframeUrl` and `size` (`small`, `medium`, `large`, `fullscreen`) both required; `expand` defaults to `false`
+Verify it via the `shopware-shop-signature` header (SHA256 HMAC of the body, signed with the shop secret from [registration](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md)). The Shopware version is sent as the `sw-version` header.
 
-4. Custom endpoint target: set a relative `url`, e.g. `url="/api/script/action-button"`, and add the app script `Resources/scripts/api-action-button/action-button-script.twig` that reads `hook.request.ids` and calls `hook.setResponse(services.response.json({...}))` with the same `actionType`/`payload` shape. See [custom endpoints](platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md).
+3. Optionally respond with a body plus header `shopware-app-signature` (SHA256 HMAC of the whole body, signed with the app secret). An empty body is always valid.
 
-App PHP SDK helpers: `ContextResolver::assembleActionButton()`, `ActionButtonResponse::notification()`, `::openNewTab()`, `::reload()`, `::modal()`.
+```json
+{ "actionType": "openModal", "payload": { "iframeUrl": "https://...", "size": "medium", "expand": true } }
+```
+
+- `openNewTab` — `payload.redirectUrl`
+- `notification` — `payload.status` (`success`, `error`, `info`, `warning`), `payload.message`
+- `reload` — empty `payload`
+- `openModal` — `payload.iframeUrl`, `size` (`small`, `medium`, `large`, `fullscreen`), `expand` (bool, default `false`)
+
+URLs opened by `openNewTab`/`openModal` get the query parameters `shop-id`, `shop-url`, `timestamp`, `sw-context-language`, `sw-user-language` and `shopware-shop-signature` (hash of the query part) — verify it.
+
+4. App PHP SDK helpers: `ContextResolver::assembleActionButton()`, `ActionButtonResponse::openNewTab()`, `::notification()`, `::reload()`, `::modal()`; Symfony bundle injects `Shopware\App\SDK\Context\ActionButton\ActionButtonAction`.
+
+5. Custom endpoint target: set a relative `url="/api/script/action-button"` and add `Resources/scripts/api-action-button/action-button-script.twig` which builds `services.response.json({...})` and calls `hook.setResponse(response)`; ids are in `hook.request.ids`. See [custom endpoints](platform/dev/6.7/guides/plugins/apps/app-scripts/custom-endpoints.md).
 
 ## Essential identifiers
 
-- `<action-button>` attributes `action`, `entity`, `view`, `url`
-- `actionType` values `notification`, `reload`, `openNewTab`, `openModal`
+- `<action-button>` attributes `action`, `entity`, `view`, `url`; child `<label>`
+- Action types `openNewTab`, `notification`, `reload`, `openModal`
 - Headers `shopware-shop-signature`, `shopware-app-signature`, `sw-version`
-- Modal/tab query params: `shop-id`, `shop-url`, `timestamp`, `sw-context-language`, `sw-user-language`, `shopware-shop-signature`
+- Route `/api/script/{hook}`
 
 ## Gotchas
 
-- Docs describe modal `size` as defaulting to `medium`; the installed code rejects an `openModal` response without a valid `size` ("The app provided an invalid size").
-- A response body without both `actionType` and `payload` fails with "Invalid app response".
-- Relative URLs (and apps without an app secret) are executed as an internal sub-request instead of an HTTP call.
-- Tab and modal URLs are signed with query parameters; always verify `shopware-shop-signature`.
+- Buttons are only available in the smartbar of detail and list views.
+- `openModal` fails with "The app provided an invalid iframeUrl" and `openNewTab` with "invalid redirectUrl" when the URL is empty.
+- Signing of the opened URLs means the app must verify `shopware-shop-signature` on those requests too.
 
 ## Version notes
 
-- 6.4.1.0: `sw-version` header sent. 6.4.3.0: response content evaluated. 6.4.8.0: extra signed query params on tab/modal URLs. 6.4.10.0: relative target URLs for custom endpoints.
+- 6.4.1.0: `sw-version` header added. 6.4.3.0: response content handled (older versions ignore it). 6.4.8.0: signed query parameters on tab/modal URLs. 6.4.10.0: relative URLs (custom endpoints) supported.
 
-## Code check (6.7.13.0)
-- corrected `action-button` — docs list only action/entity/view as required; XSD also requires `url` — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:251
-- confirmed `entity` — enumeration product, order, category, promotion, customer, cms_page — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:406
-- confirmed `view` — enumeration detail, list — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:427
-- confirmed `asPayload()` — payload has source and data.ids/entity/action — vendor/shopware/core/Framework/App/ActionButton/AppAction.php:75
-- corrected `VALID_MODAL_SIZES` — docs: size defaults to medium; code rejects a missing or invalid size — vendor/shopware/core/Framework/App/ActionButton/Response/OpenModalResponseFactory.php:57
-- confirmed `$expand` — modal expand defaults to false — vendor/shopware/core/Framework/App/ActionButton/Response/OpenModalResponse.php:28
-- confirmed `getTargetUrl()` — relative URL or missing app secret runs a sub-request; actionType and payload required — vendor/shopware/core/Framework/App/ActionButton/Executor.php:61
-- confirmed `SHOPWARE_APP_SIGNATURE` — header `shopware-app-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:13
-- confirmed `sw-version` — header added to app requests — vendor/shopware/core/Framework/App/Hmac/Guzzle/AuthMiddleware.php:110
-- confirmed `ACTION_TYPE` — NotificationResponse value `notification` — vendor/shopware/core/Framework/App/ActionButton/Response/NotificationResponse.php:13
+## Code check (6.7.15.1)
+- confirmed `action-button` — attributes action/entity/view/url all `use="required"` — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:34
+- confirmed `entity` — enum product, order, category, promotion, customer, cms_page — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:415
+- confirmed `view` — enum detail, list — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:436
+- confirmed `OpenNewTabResponse::ACTION_TYPE` — value `openNewTab` — vendor/shopware/core/Framework/App/ActionButton/Response/OpenNewTabResponse.php:13
+- confirmed `NotificationResponse::ACTION_TYPE` — value `notification` — vendor/shopware/core/Framework/App/ActionButton/Response/NotificationResponse.php:13
+- confirmed `ReloadDataResponse::ACTION_TYPE` — value `reload` — vendor/shopware/core/Framework/App/ActionButton/Response/ReloadDataResponse.php:13
+- confirmed `OpenModalResponse::$expand` — defaults to false — vendor/shopware/core/Framework/App/ActionButton/Response/OpenModalResponse.php:28
+- confirmed `RequestSigner::SHOPWARE_APP_SIGNATURE` — header `shopware-app-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:13
+- confirmed `shopware-shop-signature` — appended to signed tab/modal URLs with shop-id, shop-url, timestamp — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:55
+- confirmed `/api/script/{hook}` — custom endpoint route — vendor/shopware/core/Framework/Script/Api/ScriptApiRoute.php:34

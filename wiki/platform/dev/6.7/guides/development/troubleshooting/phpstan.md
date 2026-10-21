@@ -6,22 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/troubleshooting/phpstan.html
 sourceHash: fdcd6694fc737a3173c4dbf190fd2e657d8476e5
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["phpstan", "EntityRepository", "EntityCollection", "EntitySearchResult", "getEntities", "@extends", "generics", "static analysis", "null safety", "ProductCollection", "getExpectedClass", "template type"]
-summary: "PHPStan fixes for DAL code - EntityRepository<ProductCollection> generics, @extends EntityCollection<FooEntity>, null-safe first() and associations."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["phpstan", "static analysis", "generics", "EntityRepository", "EntityCollection", "ProductCollection", "EntitySearchResult", "getEntities", "@extends", "null safety", "addAssociation", "getExpectedClass"]
+summary: Fixing common PHPStan errors in Shopware DAL code - generic repository/collection docblocks and null checks for single results and associations.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Fixes for common PHPStan issues in Shopware extensions: typing DAL repositories and collections with generics, and handling nullable results and associations.
+Fixes for the most common PHPStan errors in Shopware plugin code: missing generic types on DAL repositories and collections, and missing null handling for single results and associations.
 
 ## When to use
 
-When PHPStan reports "Call to an undefined method ...Entity::getName()" on repository results, "Cannot call method ... on ...|null", or loses the element type of a custom `EntityCollection`.
+When PHPStan reports errors such as `Call to an undefined method Shopware\Core\Framework\DataAbstractionLayer\Entity::getName()` or `Cannot call method getManufacturer() on Shopware\Core\Content\Product\ProductEntity|null`.
 
 ## Key steps / config
 
-1. Type the repository with the collection class (not the entity class). `EntityRepository` is declared `@template TEntityCollection of EntityCollection`:
+1. Type the injected repository with the **collection** class as generic parameter:
 
 ```php
 /**
@@ -31,24 +31,22 @@ public function __construct(
     private readonly EntityRepository $productRepository,
 ) {
 }
-// $this->productRepository->search($criteria, $context)->getEntities() is ProductCollection
 ```
 
-2. Load associations explicitly and null-check results and associations:
+`search($criteria, $context)->getEntities()` then returns a `ProductCollection`, and iterating it yields `ProductEntity`.
+
+2. Load associations explicitly and null-check every nullable result:
 
 ```php
-$criteria = new Criteria([$productId]);
+$criteria = new Criteria();
 $criteria->addAssociation('manufacturer');
-
 $product = $this->productRepository->search($criteria, $context)->getEntities()->first();
-if ($product === null) {
-    throw new ProductNotFoundException($productId);
-}
-$manufacturer = $product->getManufacturer(); // ?ProductManufacturerEntity
-if ($manufacturer === null) { /* not loaded or not set */ }
+if ($product === null) { throw new ProductNotFoundException(); }
+$manufacturer = $product->getManufacturer();
+if ($manufacturer === null) { throw new ManufacturerNotLoadedException(); }
 ```
 
-Or null-safe: `$product?->getManufacturer()?->getName() ?? 'Unknown'`.
+Alternative: `$product?->getManufacturer()?->getName() ?? 'Unknown'`.
 
 3. Give custom collections a generic type:
 
@@ -67,33 +65,26 @@ class FooCollection extends EntityCollection
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository` (`@template TEntityCollection of EntityCollection`)
-- `Shopware\Core\Framework\DataAbstractionLayer\EntityCollection` (`@template TElement of Entity`)
-- `EntitySearchResult::getEntities()`
-- `EntityCollection::getExpectedClass()`
-- `ProductCollection`, `ProductEntity::getManufacturer()`
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository` — `@template TEntityCollection of EntityCollection`
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityCollection` — `@template TElement of Entity`
+- `EntitySearchResult::getEntities()` — returns `TEntityCollection`
 - `Criteria::addAssociation()`
+- `ProductEntity::getManufacturer()` — returns `?ProductManufacturerEntity`
 
 ## Gotchas
 
-- The generic parameter of `EntityRepository` is the collection (`EntityRepository<ProductCollection>`), unlike other repository libraries that use the entity class; this is how PHPStan learns the type returned by `search()`.
-- Without `@extends EntityCollection<FooEntity>`, `first()` is typed as the base `Shopware\Core\Framework\DataAbstractionLayer\Entity`; the default `getExpectedClass()` also falls back to `Entity::class`.
-- Associations are `null` when not added to the criteria, so getters like `getManufacturer()` are nullable.
-- The docs call `first()` directly on the search result; `EntitySearchResult::first()` is deprecated for 6.8 — call `getEntities()->first()`.
-- The docs throw `new ProductNotFoundException()` without arguments; the installed constructor requires the product id string. `ManufacturerNotLoadedException` in the docs is an example class, not a core class.
+- `EntityRepository` is generic over the collection class (`EntityRepository<ProductCollection>`), not over the entity class as many other repository libraries are.
+- Associations are `null` unless added to the criteria, and a collection's `first()` returns `null` when empty — PHPStan is right to complain.
+- The source calls `first()` directly on the search result; `EntitySearchResult::first()` is deprecated for v6.8.0 — use `getEntities()->first()`.
 
-## Version notes
-
-- 6.8 (announced in 6.7 code): `EntitySearchResult` will no longer extend `EntityCollection` (it keeps extending `Struct`), and its collection methods such as `first()` are deprecated in favour of `getEntities()`.
-
-## Code check (6.7.13.0)
-- confirmed `EntityRepository` — @template TEntityCollection of EntityCollection — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:33
-- confirmed `EntityRepository::search()` — returns EntitySearchResult<TEntityCollection> — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:62
-- confirmed `EntitySearchResult::getEntities()` — returns TEntityCollection — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:109
-- deprecated `EntitySearchResult::first()` — tag v6.8.0, use getEntities()->first() — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:374
-- confirmed `EntityCollection` — @template TElement of Entity — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCollection.php:14
-- confirmed `EntityCollection::getExpectedClass()` — defaults to Entity::class — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCollection.php:252
-- confirmed `ProductCollection` — @extends EntityCollection<TElement>, TElement of ProductEntity — vendor/shopware/core/Content/Product/ProductCollection.php:11
-- confirmed `ProductEntity::getManufacturer()` — returns ?ProductManufacturerEntity — vendor/shopware/core/Content/Product/ProductEntity.php:653
-- corrected `ProductNotFoundException` — docs: constructed without arguments; constructor requires string $productId — vendor/shopware/core/Content/Product/Exception/ProductNotFoundException.php:16
-- unverified `ManufacturerNotLoadedException` — docs example class, not found in vendor/shopware/core
+## Code check (6.7.15.1)
+- confirmed `EntityRepository` — generic `@template TEntityCollection of EntityCollection` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:37
+- confirmed `EntityCollection` — generic `@template TElement of Entity` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCollection.php:14
+- confirmed `EntityCollection::getExpectedClass()` — protected, overridable — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCollection.php:252
+- confirmed `EntitySearchResult::getEntities()` — `@return TEntityCollection` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:97
+- deprecated `EntitySearchResult::first()` — removed in v6.8.0, use `getEntities()->first()` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:357
+- confirmed `Collection::first()` — `@return TElement|null` — vendor/shopware/core/Framework/Struct/Collection.php:207
+- confirmed `ProductCollection` — `@extends EntityCollection<TElement>` of ProductEntity — vendor/shopware/core/Content/Product/ProductCollection.php:16
+- confirmed `ProductEntity::getManufacturer()` — returns `?ProductManufacturerEntity` — vendor/shopware/core/Content/Product/ProductEntity.php:677
+- confirmed `Criteria::addAssociation()` — takes a string path — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:333
+- unverified `ProductNotFoundException` — example exception from the docs, not checked

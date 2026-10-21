@@ -6,66 +6,78 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-06-18-extended-event-system.html
 sourceHash: c6abc0e031fdfd2abaca6a41b9647ae0025a9e99
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Extension", "ResolveListingExtension", "ExtensionDispatcher", "listing-loader.resolve", "listing-loader.resolve.pre", "stopPropagation", "EventSubscriberInterface", "extension point", "event-based extension", "decoration alternative", "adr", "product listing"]
-summary: "ADR: Shopware replaces decoration/adapter/factory extensibility with Extension events (name.pre/.post/.error), e.g. ResolveListingExtension for listings."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["Shopware\\Core\\Framework\\Extensions\\Extension", "ExtensionDispatcher", "ResolveListingExtension", "listing-loader.resolve.pre", "stopPropagation", "EventSubscriberInterface", "extension point", "event-based extension", "decoration alternative", "replace core logic", "product listing", "adr"]
+summary: "ADR: extension points as Extension events (NAME.pre/.post/.error) replace decoration, adapter and factory patterns; example ResolveListingExtension."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2024-06-18, area core) stating that Shopware moves from PHP decoration, Adapter and Factory patterns to an event-based extension system as the primary way for third parties to extend and customize processes. Extension points are classes extending `Shopware\Core\Framework\Extensions\Extension`, dispatched as events that subscribers can hook into, mutate, or short-circuit.
+Architecture decision record (2024-06-18): Shopware moves from PHP decoration, Adapter and Factory patterns to an event-based extension system as the primary way for third parties to extend and customize core processes. Core operations are wrapped in `Extension` event objects that subscribers can inspect, modify or replace.
 
 ## When to use
 
-- You want to replace or augment a core subprocess (e.g. product listing resolution) without decorating a service.
-- You are deciding between decoration and subscribing to an `Extension` event for a customization.
-- You need to understand why new core extension points are event classes rather than interfaces/abstract classes.
+- You need to change or replace a core subprocess (e.g. product listing loading) that is published as an `Extension`, instead of decorating a service.
+- You design a new extension point in core-style code.
 
 ## Key steps / config
 
-Rationale from the ADR: simpler backward/forward compatibility, more granular extension points, fewer interfaces/abstract classes, one unified mechanism. Consequences: refactoring effort and a learning curve.
+Rationale given by the ADR: decoration/adapter/factory make backward and forward compatibility costly, cannot extend subprocesses without extracting them into new classes/interfaces, and cause interface/abstract-class proliferation. Events give granular extension points, simpler compatibility (as long as the event structure stays consistent) and one uniform mechanism. Costs: initial refactoring of existing extension points and a learning curve. Implementation plan: audit key extension points, define a standard event structure (naming, payload, handling), refactor gradually with backward compatibility, document.
 
-1. An extension point is a `final` class extending `Shopware\Core\Framework\Extensions\Extension` with a `public const NAME` and public readonly constructor properties (constructor is `@internal`, properties are public API). Example in core: `Shopware\Core\Content\Product\Extension\ResolveListingExtension` (`NAME = 'listing-loader.resolve'`, properties `criteria` and `context`).
-2. Core publishes it via `ExtensionDispatcher::publish()`; event names are derived as `<NAME>.pre`, `<NAME>.post` and `<NAME>.error`. The base class offers `onPre()`, `onPost()`, `onError()` helpers returning these names.
-3. Subscribe with a Symfony `EventSubscriberInterface`:
+An extension point is a final subclass of `Shopware\Core\Framework\Extensions\Extension` with a `NAME` constant and public readonly constructor properties (constructor is owned by Shopware, properties are public API):
+
+```php
+#[Package('inventory')]
+final class ResolveListingExtension extends Extension
+{
+    public const NAME = 'listing-loader.resolve';
+    public function __construct(
+        public readonly Criteria $criteria,
+        public readonly SalesChannelContext $context
+    ) {}
+}
+```
+
+Core publishes it through `ExtensionDispatcher::publish($name, $extension, $function)`, which dispatches three events:
+
+1. `<NAME>.pre` — before the core operation. A subscriber may set `$event->result` and call `$event->stopPropagation()`, so the core function is not executed.
+2. `<NAME>.error` — if the operation threw; `$event->exception` holds the throwable. Setting a `result` swallows it, otherwise it is rethrown.
+3. `<NAME>.post` — after a result exists, to inspect or mutate `$event->result`.
+
+Subscribing (Symfony `EventSubscriberInterface`) to replace the listing:
 
 ```php
 public static function getSubscribedEvents(): array
 {
-    return ['listing-loader.resolve.pre' => 'replace']; // or ResolveListingExtension::onPre()
+    return [ResolveListingExtension::onPre() => 'replace']; // 'listing-loader.resolve.pre'
 }
-
 public function replace(ResolveListingExtension $event): void
 {
-    $criteria = $event->criteria;          // mutate or read
-    $event->result = $this->repository->search($newCriteria, $event->context->getContext());
-    $event->stopPropagation();             // skip core implementation
+    // build Criteria from your own source, then:
+    $event->result = $this->repository->search($criteria, $event->context->getContext());
+    $event->stopPropagation();
 }
 ```
 
-4. Setting `$event->result` and calling `stopPropagation()` in the `.pre` listener replaces the core logic; `.post` listeners can inspect or mutate `$extension->result`; `.error` listeners see `$extension->exception` and may assign a fallback result.
-
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Extensions\Extension` (`$result`, `$exception`, `stopPropagation()`, `onPre()`, `onPost()`, `onError()`)
-- `Shopware\Core\Framework\Extensions\ExtensionDispatcher`
-- `Shopware\Core\Content\Product\Extension\ResolveListingExtension` / `listing-loader.resolve`
-- `listing-loader.resolve.pre`
+- `Shopware\Core\Framework\Extensions\Extension` — `$result`, `$exception`, `onPre()`, `onPost()`, `onError()`, `stopPropagation()`
+- `Shopware\Core\Framework\Extensions\ExtensionDispatcher::publish()`
+- `Shopware\Core\Content\Product\Extension\ResolveListingExtension` (`NAME = 'listing-loader.resolve'`)
+- Event names: `listing-loader.resolve.pre` / `.post` / `.error`
 
 ## Gotchas
 
-- Without `stopPropagation()` the core function still runs after your `.pre` listener.
-- The Extension's constructor is owned by Shopware (`@internal`); only its public properties are API — do not instantiate or subclass-construct it yourself.
-- The ADR's `.post`/`.error` hooks and `onPre()` helpers come from the installed code, not the ADR text.
+- Without `stopPropagation()` in a `.pre` subscriber, the core function still runs and overwrites `result`.
+- Propagation is reset before `.error` and `.post` are dispatched, so stopping in `.pre` does not suppress `.post`.
 
-## Code check (6.7.13.0)
-- confirmed `Extension` — abstract class implementing StoppableEventInterface — vendor/shopware/core/Framework/Extensions/Extension.php:13
-- confirmed `Extension::$result` — public mixed result, null by default — vendor/shopware/core/Framework/Extensions/Extension.php:20
-- confirmed `Extension::onPre()` — returns the `.pre` event name via late static NAME — vendor/shopware/core/Framework/Extensions/Extension.php:38
-- confirmed `Extension::stopPropagation()` — short-circuits further listeners — vendor/shopware/core/Framework/Extensions/Extension.php:98
-- confirmed `ExtensionDispatcher::pre()` — appends `.pre` to the name — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:23
-- confirmed `ExtensionDispatcher::publish()` — runs the core callable when no result was set — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:53
+## Code check (6.7.15.1)
+- confirmed `Shopware\Core\Framework\Extensions\Extension` — abstract class implementing `StoppableEventInterface` — vendor/shopware/core/Framework/Extensions/Extension.php:13
+- confirmed `Extension::$result` — public result property, null by default — vendor/shopware/core/Framework/Extensions/Extension.php:20
+- confirmed `Extension::onPre()` — returns `NAME . '.pre'` via late static binding — vendor/shopware/core/Framework/Extensions/Extension.php:38
+- confirmed `Extension::stopPropagation()` — short-circuits the core operation — vendor/shopware/core/Framework/Extensions/Extension.php:98
+- confirmed `ExtensionDispatcher::publish()` — dispatches pre, runs function unless stopped, error on throw, then post — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:53
+- confirmed `ExtensionDispatcher::error()` — `.error` suffix; rethrows unless a result is set — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:41
 - confirmed `ResolveListingExtension` — final class extending Extension — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:18
-- confirmed `ResolveListingExtension::NAME` — value `listing-loader.resolve` — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:20
-- confirmed `ResolveListingExtension::$criteria` — public readonly Criteria — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:31
-- confirmed `ResolveListingExtension::NAME` — published by ProductListingLoader — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingLoader.php:133
+- confirmed `ResolveListingExtension::NAME` — `listing-loader.resolve` — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:20
+- unverified `EventSubscriberInterface` — vendor/symfony, out of scope

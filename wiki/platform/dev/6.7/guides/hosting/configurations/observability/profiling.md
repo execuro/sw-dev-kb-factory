@@ -1,29 +1,30 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/hosting/configurations/observability/profiling.md
-sourceHash: 26cbec96bc55b8e756f592eb5ca13821ffed0fd8
-sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/observability/profiling.html
 title: Profiling / Tracing
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["Shopware\\Core\\Profiling\\Profiler", "Profiler::trace", "ProfilerInterface", "shopware.profiler", "shopware.profiler.integrations", "Stopwatch", "Datadog", "Tideways", "OpenTelemetry", "profiling", "tracing", "custom spans", "profiler backend"]
-summary: "Shopware profiler: enable backends in shopware.profiler.integrations, add spans via Profiler::trace, custom backends via ProfilerInterface."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/observability/profiling.html
+sourceHash: 26cbec96bc55b8e756f592eb5ca13821ffed0fd8
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["profiler", "profiling", "tracing", "custom spans", "Shopware\\Core\\Profiling\\Profiler", "Profiler::trace", "ProfilerInterface", "shopware.profiler", "shopware.profiler.integrations", "datadog", "tideways", "opentelemetry", "stopwatch", "symfony profiler"]
+summary: "Shopware profiler backends (Symfony, Datadog, Tideways, OpenTelemetry), custom spans via Profiler::trace and custom ProfilerInterface backends."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/hosting/configurations/observability/opentelemetry.md"]
 ---
 ## What it is
 
-Shopware has a built-in profiler abstraction (`Shopware\Core\Profiling\Profiler`) that measures code sections and forwards start/stop events to every enabled profiler backend (Symfony Stopwatch, Datadog, Tideways, OpenTelemetry, ServerTiming, or custom ones).
+Shopware ships a profiler abstraction (`Shopware\Core\Profiling\Profiler`) that measures the duration of code sections and publishes them to one or more profiler backends ("integrations"), such as the Symfony profiler bar, Datadog, Tideways or OpenTelemetry.
 
 ## When to use
 
-When you want Shopware spans to show up in an APM/profiler, need custom spans around your own code, or want to plug in a new profiler backend.
+- Enabling an APM/profiler backend for a Shopware installation.
+- Wrapping your own code in custom spans so it shows up in the configured backends.
+- Writing a new backend that receives Shopware's spans.
 
 ## Key steps / config
 
-1. Enable backends in `config/packages/shopware.yaml`:
+**Enable backends** in `config/packages/shopware.yaml`:
 
 ```yaml
 shopware:
@@ -32,12 +33,12 @@ shopware:
             - Symfony
             - Datadog        # requires the dd-trace PHP extension
             - Tideways       # requires the tideways PHP extension
-            - OpenTelemetry  # requires the opentelemetry PHP extension + shopware/opentelemetry
+            - OpenTelemetry  # requires the opentelemetry extension + shopware/opentelemetry
 ```
 
-Core also registers a `ServerTiming` backend. The OpenTelemetry backend is not installed by default, see [OpenTelemetry](platform/dev/6.7/guides/hosting/configurations/observability/opentelemetry.md).
+Only integrations named in this list are activated; the names match the `integration` attribute of services tagged `shopware.profiler`. Core registers `Symfony`, `Datadog`, `Tideways` and `ServerTiming`. The OpenTelemetry profiler is not installed by default (see [OpenTelemetry](platform/dev/6.7/guides/hosting/configurations/observability/opentelemetry.md)).
 
-2. Add a custom span:
+**Add a custom span** with the static `Profiler::trace(string $name, \Closure $closure, string $category = 'shopware', array $tags = [])`, which returns the closure's result:
 
 ```php
 use Shopware\Core\Profiling\Profiler;
@@ -47,9 +48,9 @@ $value = Profiler::trace('my-example-trace', function () {
 });
 ```
 
-Full signature: `Profiler::trace(string $name, \Closure $closure, string $category = 'shopware', array $tags = [])`. `Profiler::start()`/`Profiler::stop()` exist for non-closure use.
+`Profiler::start()` / `Profiler::stop()` are also available for spans that cannot be wrapped in a closure.
 
-3. Add a custom backend: implement `Shopware\Core\Profiling\Integration\ProfilerInterface` and tag the service `shopware.profiler` with an `integration` attribute:
+**Add a custom backend**: implement `Shopware\Core\Profiling\Integration\ProfilerInterface` and tag the service `shopware.profiler` with an `integration` attribute:
 
 ```php
 namespace App\Profiler;
@@ -69,31 +70,32 @@ $services->set(App\Profiler\ConsoleProfiler::class)
     ->tag('shopware.profiler', ['integration' => 'Console']);
 ```
 
-The `integration` attribute value is the name you list under `shopware.profiler.integrations`.
+Then add `Console` to `shopware.profiler.integrations`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Profiling\Profiler` (`trace`, `start`, `stop`, `addTag`, `removeTag`)
-- `Shopware\Core\Profiling\Integration\ProfilerInterface` (`start`, `stop`)
+- `Shopware\Core\Profiling\Profiler` — `trace()`, `start()`, `stop()`
+- `Shopware\Core\Profiling\Integration\ProfilerInterface` — `start(string $title, string $category, array $tags): void`, `stop(string $title): void`
 - Service tag `shopware.profiler`, attribute `integration`
-- Config `shopware.profiler.integrations`
-- Core backends: `Symfony` (Stopwatch), `Tideways`, `Datadog`, `ServerTiming`
+- Config key `shopware.profiler.integrations`
+- Integration names: `Symfony`, `Datadog`, `Tideways`, `ServerTiming`, `OpenTelemetry` (external)
 
 ## Gotchas
 
-- The docs say only the Stopwatch (Symfony) profiler is enabled by default; in code the default `integrations` list is empty, and only the `dev` environment config enables `['Symfony']`.
-- The docs' example uses an undefined `$name` inside the methods and registers `App\Profiler::class`; use `$title` and the concrete class name.
-- `Profiler` and `ProfilerInterface` are marked `@internal experimental atm`.
-- `integrations` uses no deep merging: a project list replaces the default, it is not appended.
+- The docs say only the Stopwatch (Symfony profiler bar) backend is enabled by default. In 6.7.15.1 the core default for `shopware.profiler.integrations` is an empty list; only the `dev` environment config sets `['Symfony']`. In prod, nothing is traced until you list integrations.
+- `integrations` is configured with no deep merging: a later config file replaces the whole list rather than appending to it.
+- The source's example registers `App\Profiler::class` and echoes an undefined `$name`; use the fully qualified class (`App\Profiler\ConsoleProfiler`) and the `$title` parameter.
+- The `Datadog` and `Tideways` integrations silently do nothing if their PHP extension classes are missing.
+- `Profiler` and `ProfilerInterface` are marked `@internal experimental atm` in core.
 
-## Code check (6.7.13.0)
-- confirmed `ProfilerInterface::start()` — `start(string $title, string $category, array $tags): void` — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:13
-- confirmed `ProfilerInterface::stop()` — `stop(string $title): void` — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:15
-- confirmed `Profiler::trace()` — static, with optional category/tags — vendor/shopware/core/Profiling/Profiler.php:58
-- confirmed `shopware.profiler` — tagged_iterator indexed by `integration` — vendor/shopware/core/Profiling/DependencyInjection/services.xml:32
-- corrected `shopware.profiler.integrations` — docs: Stopwatch enabled by default; core default is `[]` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:175
-- confirmed `integrations` — dev env enables `['Symfony']` — vendor/shopware/core/Framework/Resources/config/packages/dev/shopware.yaml:16
-- confirmed `Stopwatch` — registered as integration `Symfony` — vendor/shopware/core/Profiling/DependencyInjection/services.xml:7
-- confirmed `ServerTiming` — additional core backend not named in docs — vendor/shopware/core/Profiling/DependencyInjection/services.xml:27
-- confirmed `integrations` — performNoDeepMerging — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1131
-- unverified `OpenTelemetry` — backend shipped by shopware/opentelemetry, outside checked roots
+## Code check (6.7.15.1)
+- confirmed `Profiler::trace()` — static, signature `(string $name, \Closure $closure, string $category = 'shopware', array $tags = [])` — vendor/shopware/core/Profiling/Profiler.php:58
+- confirmed `ProfilerInterface::start()` — `(string $title, string $category, array $tags): void` — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:13
+- confirmed `ProfilerInterface::stop()` — `(string $title): void` — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:15
+- confirmed `shopware.profiler` — tagged iterator keyed by `integration` attribute — vendor/shopware/core/Profiling/DependencyInjection/services.php:45
+- corrected `profiler.integrations` — docs: Stopwatch enabled by default; core default is `[]` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:186
+- confirmed `integrations` — dev environment sets `['Symfony']` — vendor/shopware/core/Framework/Resources/config/packages/dev/shopware.yaml:19
+- confirmed `integrations` — array node with performNoDeepMerging — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1167
+- confirmed `ServerTiming` — additional core integration not named in the docs — vendor/shopware/core/Profiling/DependencyInjection/services.php:39
+- confirmed `Tideways` — no-op unless `Tideways\Profiler` class exists — vendor/shopware/core/Profiling/Integration/Tideways.php:18
+- unverified `OpenTelemetry` — integration provided by the external shopware/opentelemetry bundle, out of scope

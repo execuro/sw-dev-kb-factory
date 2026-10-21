@@ -1,64 +1,66 @@
 ---
-id: platform/dev/6.7/guides/plugins/apps/_index.md
-title: Apps
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/
+id: platform/dev/6.7/guides/plugins/apps/_index.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/apps/app-base-guide.md
+  - platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md
+  - platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md
+  - platform/dev/6.7/guides/plugins/apps/gateways/_index.md
 sourceHash: 90929db230880ae3e7297a8bdda0b7031c36095d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["apps", "app system", "manifest.xml", "custom/apps", "app:refresh", "app:install", "app:activate", "Resources/mcp.xml", "gateway", "checkout gateway", "webhooks", "app scripts", "cloud extension"]
-summary: Entry point for Shopware 6.7 apps - remote, event-driven extensions for Cloud; base setup (custom/apps, manifest.xml) and guide paths by use case.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/apps/app-base-guide.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md", "platform/dev/6.7/guides/plugins/apps/create-admin-extension.md", "platform/dev/6.7/resources/references/app-reference/_index.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/
+title: Apps
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["apps", "app system", "cloud extension", "custom/apps", "manifest.xml", "app:refresh", "app:install", "Resources/mcp.xml", "webhooks", "gateway pattern", "app scripts", "app sdk", "meteor admin sdk"]
+summary: Overview of Shopware apps - external, API/webhook-based extensions for Cloud and self-hosted - and which guide to follow per use case.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page for Shopware apps: the extension mechanism designed for the [Cloud environment](platform/dev/6.7/products/saas.md). Unlike [plugins](platform/dev/6.7/guides/plugins/plugins/_index.md), apps do not run code inside the shop; they follow an event-driven, remote-extension model and talk to external services through APIs. Apps also support themes, so anything a theme plugin can do is possible in an app — the preferred option for design in Cloud shops.
+The overview of Shopware apps: the extension mechanism designed for the [Cloud environment](platform/dev/6.7/products/saas.md). Unlike [plugins](platform/dev/6.7/guides/plugins/plugins/_index.md), apps do not run code inside the shop; they follow an event-driven, remote-extension model and talk to external services through APIs. Apps also support themes, so anything a theme plugin can do is possible in an app — the preferred route for design customization in Cloud shops.
 
 ## When to use
 
-- Integrations with third-party services (ERP, CRM, marketing), payment methods forwarding to external providers.
-- Storefront/Administration customization, themes, custom CMS blocks.
-- Processes outside the shop (product sync, advanced shipping logic, analytics), or extending checkout, pricing/discounts, payment flows, catalog and search behavior.
-
-For the plugin/app comparison see the [Extensions overview](platform/dev/6.7/guides/plugins/_index.md).
+When starting an app or choosing the next guide. Typical app use cases named by the source: third-party integrations (ERP, CRM, marketing), payment methods forwarding to external providers, storefront customizations and themes, processes outside the shop (product sync, shipping logic, analytics), extending checkout, pricing, discount, catalog or search behavior, and customizing Storefront or Administration. For how apps compare with plugins, see the [extensions overview](platform/dev/6.7/guides/plugins/_index.md).
 
 ## Key steps / config
 
-Base setup ([App Base Guide](platform/dev/6.7/guides/plugins/apps/app-base-guide.md)):
+Start with the [App Base Guide](platform/dev/6.7/guides/plugins/apps/app-base-guide.md), which covers:
 
-1. Create the app folder in `custom/apps`.
-2. Add a valid `manifest.xml` at the app root.
-3. Refresh the app registry (`bin/console app:refresh`).
-4. Install and activate the app (`app:install`, `app:activate`).
-
-Tooling: [App SDKs](platform/dev/6.7/guides/plugins/apps/app-sdks/_index.md), [App Scripts](platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md) (synchronous, sandboxed logic inside the app system, with caveats), and the [app reference](platform/dev/6.7/resources/references/app-reference/_index.md).
-
-Some extension points use a [gateway pattern](platform/dev/6.7/guides/plugins/apps/gateways/_index.md): Shopware delegates a task to the app service and continues based on the result, e.g. the [checkout gateway](platform/dev/6.7/guides/plugins/apps/gateways/checkout/checkout-gateway.md).
+1. Creating the app folder in `custom/apps`.
+2. Adding a valid `manifest.xml` at the app root.
+3. Refreshing the app registry (`bin/console app:refresh`).
+4. Installing and activating the app (`app:install`, `app:activate`).
 
 Build path by use case:
 
-- Admin UI module without a backend: [Build an Admin UI App Locally](platform/dev/6.7/guides/plugins/apps/create-admin-extension.md) with the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) and Vite.
-- Backend (registration, server-to-server auth, webhooks, signing, Admin API credentials, payments, tax providers): [App Registration & Backend Setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md).
-- Request signing: [Signing & Verification](platform/dev/6.7/guides/plugins/apps/lifecycle/app-signature-verification.md).
-- Async events: [Webhook](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md).
-- Features: [Payment](platform/dev/6.7/guides/plugins/apps/checkout/payment.md), [Shipping methods](platform/dev/6.7/guides/plugins/apps/checkout/shipping-methods.md), [Tax provider](platform/dev/6.7/guides/plugins/apps/checkout/tax-provider.md), [Configuration](platform/dev/6.7/guides/plugins/apps/lifecycle/configuration.md).
-- MCP tools, prompts, resources: [MCP Server extension](platform/dev/6.7/guides/plugins/apps/mcp-server.md) via `Resources/mcp.xml` and HMAC-signed webhooks.
+- **Admin UI without backend:** [Build an Admin UI App Locally](platform/dev/6.7/guides/plugins/apps/create-admin-extension.md) with the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) and Vite.
+- **App with a backend** (registration, server-to-server auth, webhooks, signing, Admin API credentials, payment, tax): [App Registration & Backend Setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md).
+- **Request signing/verification:** [Signing & Verification](platform/dev/6.7/guides/plugins/apps/lifecycle/app-signature-verification.md).
+- **Async event integration:** [Webhook](platform/dev/6.7/guides/plugins/apps/lifecycle/webhook.md).
+- **Feature-specific:** [Payment](platform/dev/6.7/guides/plugins/apps/checkout/payment.md), [Shipping methods](platform/dev/6.7/guides/plugins/apps/checkout/shipping-methods.md), [Tax provider](platform/dev/6.7/guides/plugins/apps/checkout/tax-provider.md), [Configuration](platform/dev/6.7/guides/plugins/apps/lifecycle/configuration.md).
+- **MCP tools, prompts, resources:** [MCP Server extension](platform/dev/6.7/guides/plugins/apps/mcp-server.md), declared in `Resources/mcp.xml` and served via HMAC-signed webhooks.
+
+Development tooling: [App SDKs](platform/dev/6.7/guides/plugins/apps/app-sdks/_index.md), [App Scripts](platform/dev/6.7/guides/plugins/apps/app-scripts/_index.md), and the [app reference](platform/dev/6.7/resources/references/app-reference/_index.md).
 
 ## Essential identifiers
 
-- `custom/apps`, `manifest.xml`, `Resources/mcp.xml`
+- `custom/apps`
+- `manifest.xml`
+- `Resources/mcp.xml`
 - `app:refresh`, `app:install`, `app:activate`
 
-## Code check (6.7.13.0)
-- confirmed `custom/apps` — `shopware.app_dir` parameter — vendor/shopware/core/Framework/DependencyInjection/app.php:182
-- confirmed `manifest.xml` — app loader discovers apps by this file name — vendor/shopware/core/Framework/App/Lifecycle/AppLoader.php:66
-- confirmed `app:refresh` — command refreshing apps, alias `app:update` — vendor/shopware/core/Framework/App/Command/RefreshAppCommand.php:26
-- confirmed `app:install` — install command — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:28
-- confirmed `app:activate` — activate command — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:15
-- confirmed `Resources/mcp.xml` — read by the MCP lifecycle handler — vendor/shopware/core/Framework/App/Lifecycle/Handler/McpLifecycleHandler.php:47
-- confirmed `gateways` — manifest element for gateway extension points — vendor/shopware/core/Framework/App/Manifest/Manifest.php:318
-- confirmed `checkout` — checkout gateway mapped to `CheckoutGateway` — vendor/shopware/core/Framework/App/Manifest/Xml/Gateway/Gateways.php:18
-- confirmed `webhooks` — manifest webhooks element — vendor/shopware/core/Framework/App/Manifest/Manifest.php:304
-- confirmed `shipping-methods` — manifest shipping methods element — vendor/shopware/core/Framework/App/Manifest/Manifest.php:316
+## Gotchas
+
+- Some extension points use a [gateway pattern](platform/dev/6.7/guides/plugins/apps/gateways/_index.md): Shopware delegates a task to the app service and continues with the returned result, e.g. the [checkout gateway](platform/dev/6.7/guides/plugins/apps/gateways/checkout/checkout-gateway.md).
+- App Scripts run synchronous, sandboxed logic inside the app system but come with caveats.
+
+## Code check (6.7.15.1)
+- confirmed `custom/apps` — `shopware.app_dir` default — vendor/shopware/core/Framework/DependencyInjection/app.php:192
+- confirmed `manifest.xml` — app loader finds apps by this file name — vendor/shopware/core/Framework/App/Lifecycle/AppLoader.php:66
+- confirmed `app:refresh` — console command, alias `app:update` — vendor/shopware/core/Framework/App/Command/RefreshAppCommand.php:27
+- confirmed `app:install` — console command — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:29
+- confirmed `app:activate` — console command — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:16
+- confirmed `Resources/mcp.xml` — read by the MCP lifecycle handler when present — vendor/shopware/core/Framework/App/Lifecycle/Handler/McpLifecycleHandler.php:57

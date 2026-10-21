@@ -6,38 +6,41 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/sales-agent/customization/component.html
 sourceHash: e1e454e1b9961cc2fa64f0f42ea3ef7bd182215b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sales agent", "component customization", "override component", "nuxt layer", "login.vue", "layers/sales-agent", "pages/auth", "custom layer", "vue component", "example layer"]
-summary: "Override a Sales Agent component (e.g. sales-agent/pages/auth/login.vue) by copying it into your custom Nuxt layer and editing the copy."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sales agent", "component customization", "login.vue", "sales-agent/pages/auth", "~/layers/sales-agent", "nuxt layer", "override component", "custom layer", "example layer", "vue component", "login page"]
+summary: Override a Sales Agent frontend component (e.g. login.vue) by copying it from the default sales-agent layer into your custom Nuxt layer and editing it.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to customize a Sales Agent frontend component, using the login page as the example, via the Nuxt layer concept — without altering the core files of the default layer. All changes happen in your customization layer folder.
+Describes how to customize a single component of the Sales Agent frontend, using the login page as the example, through the Nuxt layer concept. The default component is shadowed by a copy in your custom layer, so core files are never modified.
 
 ## When to use
 
-When you need to change the style, template or behavior of an existing Sales Agent page or component.
+When you need to change the style, template or behaviour of an existing Sales Agent page or component without editing the default layer.
 
 ## Key steps / config
 
-1. Inspect the default layer in `~/layers/sales-agent` to find the component; for the login page this is `login.vue` in `sales-agent/pages/auth`.
-2. Copy the file into your custom layer at the matching location, so the custom layer holds the same default component.
-3. Modify the copy (style, new functionality, template).
-4. The app now ignores `login.vue` from the default layer and uses only the one from the custom layer.
+1. Inspect the default layer: browse `~/layers/sales-agent` to see all available components.
+2. Find the component to change, here `login.vue` inside `sales-agent/pages/auth`.
+3. Copy that file into your custom layer, giving you an identical component in the custom-layer directory.
+4. Modify the copied file: change the style, add new functionality or update the template.
+5. From then on the frontend ignores the `login.vue` of the default layer and uses only the one from your custom layer.
 
-A worked example is in the `example` layer of the frontend source code.
+A worked example is provided in the `example` layer of the Sales Agent source code.
 
 ## Essential identifiers
 
-- `~/layers/sales-agent`
-- `sales-agent/pages/auth/login.vue`
-- `example` layer
+- `~/layers/sales-agent` — default layer directory holding all components
+- `sales-agent/pages/auth/login.vue` — login page component used as the example
+- `example` — sample customization layer in the source code
 
 ## Gotchas
 
-- The custom-layer copy fully replaces the default file: the default layer's `login.vue` is ignored once the override exists.
+- All paths in the instructions refer to your customization layer folder; changes are never made in the default layer.
+- The copy in your layer replaces the default component entirely rather than merging with it — the default `login.vue` is ignored once your copy exists.
 
-## Code check (6.7.13.0)
-- unverified `login.vue` — component of the separate Sales Agent frontend repository; not in vendor/shopware
-- unverified `layers/sales-agent` — Sales Agent default layer path; out of scope of the installed Shopware packages
+## Code check (6.7.15.1)
+- unverified `login.vue` — component of the separate Sales Agent Nuxt frontend, not in the installed core, storefront or administration packages
+- unverified `~/layers/sales-agent` — Sales Agent frontend directory, out of scope
+- unverified `example` — sample layer in the Sales Agent source, out of scope

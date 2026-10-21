@@ -1,31 +1,30 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/plugins/plugins/checkout/cart/add-cart-discounts.md
-sourceHash: a138175e85ba3349386b8e98c01d0ddf27526ed9
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/checkout/cart/add-cart-discounts.html
 title: Add Cart Discounts
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["cart discount", "CartProcessorInterface", "PercentagePriceCalculator", "PercentagePriceDefinition", "LineItemRule", "LineItem", "shopware.cart.processor", "discount line item", "percentage discount", "cart processor", "price definition", "surcharge"]
-summary: Percentage cart discount via a CartProcessorInterface processor with PercentagePriceDefinition, LineItemRule, PercentagePriceCalculator.
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/checkout/cart/add-cart-discounts.html
+sourceHash: a138175e85ba3349386b8e98c01d0ddf27526ed9
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cart discount", "CartProcessorInterface", "PercentagePriceCalculator", "PercentagePriceDefinition", "LineItemRule", "shopware.cart.processor", "cart processor", "percentage discount", "LineItem", "rebate", "priority 4500", "ExampleProcessor"]
+summary: Add a percentage cart discount via a CartProcessorInterface processor using PercentagePriceDefinition, tagged shopware.cart.processor priority 4500.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md"]
 ---
 ## What it is
 
-A guide for adding a discount to the cart from a plugin using the cart processor pattern: a custom processor finds matching product line items (here: products with "example" in their label) and adds a non-removable percentage discount line item to the cart being calculated.
+Guide to adding a discount to the cart with the processor pattern: a custom cart processor (example: `ExampleProcessor`) adds a 10 % discount line item for all product line items whose label contains "example".
 
 ## When to use
 
-When a plugin needs to reduce (or surcharge) the cart total for certain line items by adding a separate discount line item, rather than overwriting item prices. Service registration basics are in [Add custom service](platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md).
+When a plugin must add a calculated discount (or surcharge) line item to the cart that the core can recalculate on its own.
 
 ## Key steps / config
 
-1. Create `<plugin root>/src/Core/Checkout/ExampleProcessor.php` implementing `Shopware\Core\Checkout\Cart\CartProcessorInterface`; inject `Shopware\Core\Checkout\Cart\Price\PercentagePriceCalculator` via the constructor.
-2. In `process()`, filter `$toCalculate->getLineItems()` to items of type `LineItem::PRODUCT_LINE_ITEM_TYPE` that match your condition; return early if none match.
-3. Create the discount `LineItem` and configure it:
+1. Create `<plugin root>/src/Core/Checkout/ExampleProcessor.php` implementing `Shopware\Core\Checkout\Cart\CartProcessorInterface`, injecting `Shopware\Core\Checkout\Cart\Price\PercentagePriceCalculator`.
+2. In `process()`, filter `$toCalculate->getLineItems()` for `LineItem::PRODUCT_LINE_ITEM_TYPE` items matching your condition; return early if none.
+3. Create the discount line item and attach a price definition plus calculated price, then add it to `$toCalculate`:
 
 ```php
 class ExampleProcessor implements CartProcessorInterface
@@ -34,45 +33,43 @@ class ExampleProcessor implements CartProcessorInterface
 
     public function process(CartDataCollection $data, Cart $original, Cart $toCalculate, SalesChannelContext $context, CartBehavior $behavior): void
     {
-        $item = new LineItem('EXAMPLE_DISCOUNT', 'example_discount', null, 1);
-        $item->setLabel('Our example discount!');
-        $item->setGood(false); $item->setStackable(false); $item->setRemovable(false);
+        // $products = filtered product line items; return if empty
+        $discount = new LineItem('EXAMPLE_DISCOUNT', 'example_discount', null, 1);
+        $discount->setLabel('Our example discount!');
+        $discount->setGood(false); $discount->setStackable(false); $discount->setRemovable(false);
         $definition = new PercentagePriceDefinition(-10, new LineItemRule(LineItemRule::OPERATOR_EQ, $products->getKeys()));
-        $item->setPriceDefinition($definition);
-        $item->setPrice($this->calculator->calculate($definition->getPercentage(), $products->getPrices(), $context));
-        $toCalculate->add($item);
+        $discount->setPriceDefinition($definition);
+        $discount->setPrice($this->calculator->calculate($definition->getPercentage(), $products->getPrices(), $context));
+        $toCalculate->add($discount);
     }
 }
 ```
 
-4. `PercentagePriceDefinition` takes the percentage (`float`) and an optional filter `Rule`. The price definition lets the core recalculate the price even if the plugin is uninstalled.
-5. `LineItemRule` takes an operator (`LineItemRule::OPERATOR_EQ` / `LineItemRule::OPERATOR_NEQ`) and the line item identifiers the discount applies to.
-6. Register the service with tag `shopware.cart.processor` and priority `4500` in `services.php`, so it runs after the core product processor (priority `5000`).
+4. Register the service in `services.php` with tag `shopware.cart.processor` and priority `4500` - lower than the core `ProductCartProcessor` (`5000`), so it runs after products are processed. See [Add custom service](platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md).
 
 ## Essential identifiers
 
-- `Shopware\Core\Checkout\Cart\CartProcessorInterface` (`process`)
-- `Shopware\Core\Checkout\Cart\Price\PercentagePriceCalculator`
-- `Shopware\Core\Checkout\Cart\Price\Struct\PercentagePriceDefinition`
-- `Shopware\Core\Checkout\Cart\Rule\LineItemRule`
-- `Shopware\Core\Checkout\Cart\LineItem\LineItem`, `LineItem::PRODUCT_LINE_ITEM_TYPE`
-- DI tag `shopware.cart.processor`, priority `4500`
+- `Shopware\Core\Checkout\Cart\CartProcessorInterface::process()`
+- `Shopware\Core\Checkout\Cart\Price\PercentagePriceCalculator::calculate()`
+- `Shopware\Core\Checkout\Cart\Price\Struct\PercentagePriceDefinition` - percentage plus optional filter rule
+- `Shopware\Core\Checkout\Cart\Rule\LineItemRule` with `LineItemRule::OPERATOR_EQ` / `LineItemRule::OPERATOR_NEQ` and a list of line item identifiers
+- `Shopware\Core\Checkout\Cart\LineItem\LineItem`
+- tag `shopware.cart.processor`, priority `4500`
 
 ## Gotchas
 
-- Always modify `Cart $toCalculate`, not `$original`.
-- Filter by `LineItem::PRODUCT_LINE_ITEM_TYPE` so custom and promotion line items are not discounted.
-- The docs describe `PercentagePriceDefinition` as also taking a currency precision; the installed constructor has only percentage and filter rule.
-- Processors run in descending priority: core product processor `5000`, promotion processor `4900`, core custom line item processor `4000`. A priority below `5000` is needed for product prices to exist.
+- The price definition is what lets the core recalculate the discount even if the plugin is uninstalled - always set it, not only the price.
+- `PercentagePriceDefinition` takes only the percentage and an optional filter `Rule`; the docs' mention of a currency precision argument does not match 6.7.15.1.
+- `LineItemRule`'s constructor is marked `@internal` in core.
+- Mark the discount non-stackable and non-removable as in the example; `setGood(false)` keeps it from counting as a product.
 
-## Code check (6.7.13.0)
-- confirmed `CartProcessorInterface::process()` — signature (CartDataCollection, Cart $original, Cart $toCalculate, SalesChannelContext, CartBehavior): void — vendor/shopware/core/Checkout/Cart/CartProcessorInterface.php:12
-- confirmed `PercentagePriceCalculator::calculate()` — (float $percentage, PriceCollection $prices, SalesChannelContext) — vendor/shopware/core/Checkout/Cart/Price/PercentagePriceCalculator.php:33
-- corrected `PercentagePriceDefinition::__construct()` — docs: value, currency precision and rules; code: percentage and optional `?Rule $filter` — vendor/shopware/core/Checkout/Cart/Price/Struct/PercentagePriceDefinition.php:23
-- confirmed `LineItemRule::__construct()` — operator (default `OPERATOR_EQ`) and identifiers array — vendor/shopware/core/Checkout/Cart/Rule/LineItemRule.php:25
-- confirmed `OPERATOR_NEQ` — inherited from Rule base class — vendor/shopware/core/Framework/Rule/Rule.php:24
-- confirmed `PRODUCT_LINE_ITEM_TYPE` — value `product` — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:24
-- confirmed `LineItem::setStackable()` — exists alongside setGood/setRemovable — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:448
-- confirmed `shopware.cart.processor` — product processor registered with priority 5000, so 4500 runs after it — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:355
-- corrected `shopware.cart.processor` — docs: product processor defined in cart.php; installed core defines it in cart.xml — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:355
-- confirmed `LineItemCollection::getPrices()` — returns PriceCollection used by the calculator — vendor/shopware/core/Checkout/Cart/LineItem/LineItemCollection.php:144
+## Code check (6.7.15.1)
+- confirmed `CartProcessorInterface::process()` — signature matches the snippet — vendor/shopware/core/Checkout/Cart/CartProcessorInterface.php:12
+- confirmed `PercentagePriceCalculator::calculate()` — `(float $percentage, PriceCollection $prices, SalesChannelContext $context)` — vendor/shopware/core/Checkout/Cart/Price/PercentagePriceCalculator.php:33
+- corrected `PercentagePriceDefinition` — docs: value, currency precision and rules; code: `$percentage` and optional `?Rule $filter` — vendor/shopware/core/Checkout/Cart/Price/Struct/PercentagePriceDefinition.php:23
+- confirmed `LineItemRule` — constructor `($operator, ?array $identifiers)`, `@internal` — vendor/shopware/core/Checkout/Cart/Rule/LineItemRule.php:16
+- confirmed `Rule::OPERATOR_EQ` — `'='`, inherited by `LineItemRule` — vendor/shopware/core/Framework/Rule/Rule.php:22
+- confirmed `Rule::OPERATOR_NEQ` — `'!='` — vendor/shopware/core/Framework/Rule/Rule.php:24
+- confirmed `LineItem::PRODUCT_LINE_ITEM_TYPE` — `'product'` — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:24
+- confirmed `LineItem::setStackable()` — exists — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:443
+- confirmed `shopware.cart.processor` — `ProductCartProcessor` priority 5000, so 4500 runs after it — vendor/shopware/core/Checkout/DependencyInjection/cart.php:527

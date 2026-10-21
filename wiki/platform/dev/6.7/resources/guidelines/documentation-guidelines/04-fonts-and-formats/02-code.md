@@ -1,89 +1,67 @@
 ---
-id: platform/dev/6.7/resources/guidelines/documentation-guidelines/04-fonts-and-formats/02-code.md
-title: Code
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/04-fonts-and-formats/02-code.html
+id: platform/dev/6.7/resources/guidelines/documentation-guidelines/04-fonts-and-formats/02-code.md
 sourceHash: ff45c56f6af71dac923af60a43dfa9c5312cccc6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["code formatting", "inline code", "code blocks", "code fence", "language identifier", "http status codes", "placeholders", "PLACEHOLDER_NAME", "command prompt", "blockquote", "api reference", "deprecations", "documentation guidelines"]
-summary: "Shopware docs code formatting rules: inline code, fenced blocks with language ids, status codes, CLI prompts, placeholders, API reference and deprecations."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/04-fonts-and-formats/02-code.html
+title: Code
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["inline code", "code block", "code fence", "backticks", "language identifier", "placeholder", "PLACEHOLDER_NAME", "command prompt", "http status codes", "blockquote", "api reference", "deprecation notice", "documentation style guide", "code font"]
+summary: Shopware docs style rules for inline code, fenced code blocks, placeholders, CLI prompts, HTTP status codes, API reference, methods and deprecations.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The code part of the Shopware documentation guidelines on fonts and formats: how to format inline code, code blocks, blockquotes, API reference text, class and method descriptions and deprecation notices in Markdown documentation.
+The Shopware documentation guideline for formatting code-related content: inline code, fenced code blocks, blockquotes, items that stay in ordinary font, API reference text, classes and methods, and deprecation notices.
 
 ## When to use
 
-When writing or reviewing Shopware developer documentation that contains code, commands, identifiers or API descriptions.
+When writing or reviewing a Shopware developer documentation article and deciding whether something goes in code font, how to format a code block, or how to describe an API, method or deprecation.
 
 ## Key steps / config
 
-### Inline code (backticks)
+**Inline code** — wrap single-line code in backticks. Use code font for: attribute names and values, CLI utility names, class/method/function names, enum names, command output, data types, environment variable names, file names and paths, folders and directories, HTTP methods and status codes, alias names, parameter values.
 
-Put in code font: attribute names and values, CLI utility names, class/method/function names, enum names, command output, data types, environment variable names, file names and paths, folders, HTTP methods and status codes, alias names, parameter values.
+- HTTP status codes: put number and name in code font, e.g. HTTP `400 Bad Request` status code. A range: `HTTP 2xx` or `200` status code; an exact range: HTTP status code in the `400-499` range.
+- Command prompt: start each line of CLI input with the `$` prompt symbol; never show the current directory path before the prompt, even when the instruction changes directories.
+- Placeholders: explain each placeholder in sample output the first time it appears; write it in all capitals, italic code font. In markdown: `(*`PLACEHOLDER_NAME`*)` — backticks wrapped in asterisks. Do not use *X* as a placeholder; use an informative name.
 
-- HTTP status codes: number and name in code font, e.g. HTTP `400 Bad Request` status code.
-- A class of codes: `HTTP 2xx` or `200` status code; an exact range: status code in the `400-499` range.
+**Code blocks**
 
-### Command prompt
-
-- Start each input line of CLI instructions with the `$` prompt symbol.
-- Never show the current directory before the prompt, even when the instruction changes directories.
-
-### Placeholders
-
-- Explain every placeholder the first time it appears in sample output.
-- Write placeholders in capitals, italic code font; in Markdown wrap them in asterisks and backticks: `(*`PLACEHOLDER_NAME`*)`.
-- Do not use *X*; choose an informative name.
-
-### Code blocks
-
-- Use a code fence for multi-line snippets or commands with sample output, and always add a language identifier for syntax highlighting.
-- Inside lists, indent the fenced block to the list item so the list does not break.
+- Use for snippets longer than one line, or terminal commands with sample output.
+- Use a code fence (three backticks) and always give a language identifier for syntax highlighting (e.g. `markdown`, `jsx`, `text`).
+- Inside lists, indent the fence to the list item's level, otherwise the list breaks.
 - Indent with two spaces, never tabs.
-- Mark omitted output with `...` on its own line.
+- Mark omitted output lines with three dots (`...`) on a separate line.
 
-### Blockquotes
+**Blockquote** — `>` for a quote, `>>` for a quote nested within a blockquote.
 
-`>` for a blockquote, `>>` for a nested one.
+**Ordinary (non-code) font** — email addresses, domain names, URLs, and names of products, services and organizations.
 
-### Not in code font
+**API reference**
 
-Email addresses, domain names, URLs, and names of products, services and organizations.
+- Describe every class, interface, struct, constant, field, enum and method, with a description of each parameter and the status codes.
+- Write API method names capitalized: `GET`, `PUT`, `PATCH`.
+- Give meaningful information on request parameters and link to further explanations.
+- End a parameter description with valid and default values, e.g. *Valid values are `true` and `false`. The default is `false`.*
+- In detailed documentation, cover how to invoke/instantiate the API, key features, best practices and pitfalls.
 
-### API reference
+**Classes and methods**
 
-- Describe every class, interface, struct, constant, field, enum and method, with a description per parameter and the status codes.
-- Capitalize HTTP method names (`GET`, `PUT`, `PATCH`).
-- Give meaningful parameter information, link to related docs, and end the parameter description with valid and default values (*Valid values are `true` and `false`. The default is `false`.*).
-- Detailed docs cover invocation or instantiation, key features, best practices and pitfalls.
-
-### Classes and methods
-
-- Describe the class briefly, adding only what cannot be deduced from its name and signature.
-- Describe what a method does, its prerequisites, why and how to use it, possible exceptions and related APIs.
+- Describe a class briefly, stating its intended function beyond what the name and signature show.
+- Describe what a method does, then prerequisites before calling it, why and how to use it, possible exceptions, and related APIs.
 - Follow method names with `()`.
-- Cross-linking parameters, classes and methods is allowed.
+- Cross-link parameters, classes and methods where useful.
 
-### Deprecations
-
-State the replacement or the change needed, in a warning container:
-
-```markdown
-::: warning
-**Deprecated** - Access it using this getProd() method instead.
-:::
-```
+**Deprecations** — always tell the reader what to use instead or what to change, e.g. a warning container reading "**Deprecated** - Access it using this getProd() method instead."
 
 ## Gotchas
 
-- A code block inside a list that is not indented breaks the list; the source shows this as the "danger" example.
-- `getProd()` in the deprecation example is illustrative only, not a Shopware API.
+- A fenced block inside a list item that is not indented to the item level breaks the list (the source contrasts a correctly indented example with a broken one).
+- The `getProd()` method in the deprecation example is illustrative only, not a Shopware API.
 
-## Code check (6.7.13.0)
-- unverified `getProd()` — illustrative method name in a docs style example, not a Shopware API claim
-- unverified `PLACEHOLDER_NAME` — documentation placeholder convention, no installed-code counterpart
-- unverified `400 Bad Request` — status-code formatting example, no normative code claim
+## Code check (6.7.15.1)
+- unverified `PLACEHOLDER_NAME` — documentation formatting convention, not a Shopware code identifier
+- unverified `getProd()` — illustrative example in a style guide, not checked against the Shopware code roots

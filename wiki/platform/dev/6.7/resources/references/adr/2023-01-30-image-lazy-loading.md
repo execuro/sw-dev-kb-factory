@@ -6,24 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-01-30-image-lazy-loading.html
 sourceHash: fe67bf81124a88890b36ee403760557dca1f206d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw_thumbnails", "thumbnail.html.twig", "loading", "loading lazy", "loading eager", "lazy loading", "native lazy loading", "image performance", "thumbnail component", "above-the-fold", "fetchpriority", "storefront images"]
-summary: "ADR 2023-01-30: sw_thumbnails accepts a loading attribute for image lazy loading; default eager; lazy in flyout, product boxes, CMS images, line items."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["loading lazy", "loading eager", "sw_thumbnails", "thumbnail.html.twig", "lazy loading", "native lazy loading", "image performance", "storefront images", "thumbnail component", "above the fold", "lazysizes", "adr"]
+summary: "ADR: storefront thumbnail component accepts a loading attribute (default eager); product boxes, flyouts, CMS images and line items pass lazy."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2023-01-30, area storefront) adding browser-native image lazy loading (`loading="lazy"`) to the Storefront thumbnail component instead of a JavaScript solution such as lazysizes.
+An architecture decision record (2023-01-30) adding native browser lazy loading (`loading="lazy"`) to storefront images, without extra JavaScript. Previously storefront images and thumbnails had no lazy loading at all unless a third-party extension added something like "lazysizes".
 
 ## When to use
 
-When rendering images with `sw_thumbnails` in a theme or plugin and deciding whether they should load lazily, or when checking why some Storefront images load late.
+- You render images through the storefront thumbnail component and want them to load only when they enter the viewport.
+- You wonder why some storefront images are lazy and others are not, or you ship a JavaScript lazy-loading extension that uses the thumbnail component.
 
 ## Key steps / config
 
-The thumbnail component `Resources/views/storefront/utilities/thumbnail.html.twig` sets `loading: 'eager'` if the `attributes` passed in contain no `loading` key. Eager is the browser default (same as omitting the attribute); it stays the default so extensions that use a JavaScript lazy-loading solution are not affected.
-
-To activate lazy loading, pass `loading` with value `lazy` in `attributes`:
+The thumbnail component `Resources/views/storefront/utilities/thumbnail.html.twig` (used via the `sw_thumbnails` Twig tag) sets `loading: 'eager'` when the caller passes no `loading` attribute — the browser default, same as omitting the attribute. To lazy-load, pass `loading` with value `lazy` in `attributes`:
 
 ```twig
 {% sw_thumbnails 'my-thumbnail' with {
@@ -35,34 +34,30 @@ To activate lazy loading, pass `loading` with value `lazy` in `attributes`:
 } %}
 ```
 
-Core templates that pass `loading: 'lazy'`:
+Areas where core passes `loading: 'lazy'` to reduce initial network load:
 
-- Main menu flyout: category preview images load when the flyout opens.
-- Product boxes: images load when they enter the viewport; also affects horizontally scrolling product sliders (e.g. cross-selling).
-- CMS image element: images load when scrolled into view (in 6.7 only if the element's `fetchPriorityHigh` config is not set; otherwise `fetchpriority: 'high'`).
-- Line item images (e.g. cart page).
+- Main menu flyout — category preview images load only when the flyout opens (`layout/navbar/content.html.twig`).
+- Product boxes — product images in listings and horizontally scrolling product sliders such as cross-selling (`component/product/card/box-standard.html.twig`).
+- CMS image elements — only images that enter the viewport while scrolling (`element/cms-element-image.html.twig`).
+- Line item images, e.g. on the cart page (`component/line-item/element/image.html.twig`).
 
 ## Essential identifiers
 
-- `sw_thumbnails` (Twig tag)
+- `sw_thumbnails` — Twig tag rendering the thumbnail component
 - `Resources/views/storefront/utilities/thumbnail.html.twig`
-- `attributes.loading` with `'lazy'` / `'eager'`
+- `attributes.loading` — `'lazy'` or `'eager'` (default)
 
 ## Gotchas
 
-- Do not set `loading="lazy"` on everything: images likely above the fold should not be lazy. Storefront content is dynamic, so positions cannot be predicted; heuristics like "lazy after the 8th product" break on portrait or mobile viewports. Shopware accepts that some product boxes above the fold are lazy.
-- A JavaScript solution would contradict native lazy loading.
-- ADR-listed exclusions: product detail image gallery (above the fold, already uses JavaScript lazy loading for zoom) and CMS image sliders (images can appear too late when sliding).
+- The default is deliberately not `lazy`, to avoid unexpected behaviour for extensions that already combine the thumbnail component with a JavaScript lazy-loading solution.
+- Core does not add `loading="lazy"` everywhere: images likely "above the fold" should not be lazy-loaded, and in dynamic CMS content the position of a generic image component cannot be known. Heuristics like "lazy after the 8th product" break with portrait monitors or mobile viewports. As a trade-off, all product boxes are lazy, including some that render above the fold.
+- The ADR excludes the product detail image gallery (likely above the fold; already uses JavaScript lazy loading for zoom) and CMS image sliders (the next image could appear too late). In 6.7 the image gallery template does lazy-load every slide except the first one — see Code check.
 
-## Version notes
-
-- In 6.7.13.0 the CMS image gallery slider does pass `loading: 'lazy'` to every slide except the first, and can set `fetchpriority: 'high'` on the first; the ADR listed the gallery as excluded.
-
-## Code check (6.7.13.0)
-- confirmed `sw_thumbnails` — Twig tag name of the thumbnail token parser — vendor/shopware/storefront/Framework/Twig/TokenParser/ThumbnailTokenParser.php:41
-- confirmed `attributes.loading` — defaults to eager when not defined — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:34
-- confirmed `loading: 'lazy'` — main menu flyout category images — vendor/shopware/storefront/Resources/views/storefront/layout/navbar/content.html.twig:78
-- confirmed `loading: 'lazy'` — product box images — vendor/shopware/storefront/Resources/views/storefront/component/product/card/box-standard.html.twig:67
-- confirmed `loading: 'lazy'` — line item images — vendor/shopware/storefront/Resources/views/storefront/component/line-item/element/image.html.twig:19
-- corrected `'loading': 'lazy'` — docs: CMS image elements always lazy; code: only without fetchPriorityHigh — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image.html.twig:53
-- corrected `loading: 'lazy'` — docs: gallery has no lazy loading; code: lazy on all slides except the first — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image-gallery.html.twig:342
+## Code check (6.7.15.1)
+- confirmed `loading` — thumbnail component merges loading 'eager' when none is passed — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:35
+- confirmed `sw_thumbnails` — Twig tag name returned by ThumbnailTokenParser — vendor/shopware/storefront/Framework/Twig/TokenParser/ThumbnailTokenParser.php:41
+- confirmed `loading` — navbar flyout category images lazy — vendor/shopware/storefront/Resources/views/storefront/layout/navbar/content.html.twig:78
+- confirmed `loading` — product box images lazy — vendor/shopware/storefront/Resources/views/storefront/component/product/card/box-standard.html.twig:67
+- confirmed `loading` — CMS image element lazy — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image.html.twig:53
+- confirmed `loading` — line item images lazy — vendor/shopware/storefront/Resources/views/storefront/component/line-item/element/image.html.twig:19
+- corrected `loading` — docs: gallery/sliders without lazy; code lazy-loads all gallery slides except the first — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image-gallery.html.twig:342

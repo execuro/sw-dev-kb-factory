@@ -6,63 +6,68 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/concept/dataselection-and-dataset.html
 sourceHash: 136658f6e07caedbc21202753ffed3d093fc0721
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["DataSelection", "DataSet", "DataSelectionInterface", "DataSelectionStruct", "ProductDataSelection", "ProductDataSet", "ProductReviewDataSelection", "getDataSetsRequiredForCount", "getEntity", "SwagMigrationAssistant", "migration assistant", "migration order", "data to migrate"]
-summary: "Migration Assistant DataSelection groups ordered DataSets; position sets migration order, getDataSetsRequiredForCount drives the Admin count."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["DataSelection", "DataSet", "DataSelectionInterface", "DataSelectionStruct", "ProductDataSelection", "ProductDataSet", "ProductReviewDataSelection", "MediaDataSelection", "getDataSets", "getDataSetsRequiredForCount", "shopware.migration.data_selection", "migration assistant", "migration order", "what to migrate"]
+summary: Migration Assistant DataSelection (ordered group of DataSets, with position) and DataSet (one entity) - interfaces, ordering rules, registration.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-In the Shopware Migration Assistant (`SwagMigrationAssistant`), a `DataSelection` is the unit a user selects for migration; each one consists of one or more `DataSets`, and each `DataSet` stands for one entity type to migrate. Example from the docs:
+`DataSelection` and `DataSet` are the Migration Assistant structures that define what gets migrated. A `DataSet` represents one entity (e.g. a database table); a `DataSelection` is an ordered group of one or more `DataSets` that the user selects in the Administration.
 
-- `ProductDataSelection` (position 100): `MediaFolderDataSet`, `ProductAttributeDataSet`, `ProductPriceAttributeDataSet`, `ManufacturerAttributeDataSet`, `ProductDataSet`, `PropertyGroupOptionDataSet`, `ProductOptionRelationDataSet`, `ProductPropertyRelationDataSet`, `TranslationDataSet`, `CrossSellingDataSet`
+Examples from the Shopware profile:
+
+- `ProductDataSelection` (position 100): `MediaFolderDataSet`, `ProductAttributeDataSet`, `ProductPriceAttributeDataSet`, `ManufacturerAttributeDataSet`, `ProductDataSet`, `PropertyGroupOptionDataSet`, `ProductOptionRelationDataSet`, `ProductPropertyRelationDataSet`, `TranslationDataSet`, `CrossSellingDataSet` (the code example also adds `MainVariantRelationDataSet`)
 - `MediaDataSelection` (position 300): `MediaFolderDataSet`, `MediaDataSet`
 
 ## When to use
 
-When adding a new migratable data group to a Migration Assistant profile, or when you need to understand in which order entities are migrated.
+- Adding migration support for your plugin's data (extend a profile with a new `DataSelection`).
+- Controlling the order in which entities are migrated, or the counts shown in the Administration.
 
 ## Key steps / config
 
-1. Implement `DataSelectionInterface` (docs example: `SwagMigrationAssistant\Profile\Shopware\DataSelection\ProductDataSelection`):
-   - `supports(MigrationContextInterface $migrationContext): bool`: e.g. checks `$migrationContext->getProfile() instanceof ShopwareProfileInterface`.
-   - `getData(): DataSelectionStruct`: returns `new DataSelectionStruct(IDENTIFIER, getDataSets(), getDataSetsRequiredForCount(), snippetName, position, processMediaNeeded, DataSelectionStruct::BASIC_DATA_TYPE, requiredForEveryMigration)`.
-   - `getDataSets(): array`: the `DataSet` instances. **The array order is the processing order.**
-   - `getDataSetsRequiredForCount(): array`: the `DataSets` whose count is shown in the Administration (for products: only `ProductDataSet`).
-2. Give the class a `public const IDENTIFIER` (e.g. `'products'`, `'productReviews'`) and a snippet name such as `'swag-migration.index.selectDataCard.dataSelection.products'`.
-3. Implement each `DataSet` by extending `DataSet`:
+1. Implement `DataSelectionInterface` (e.g. `SwagMigrationAssistant\Profile\Shopware\DataSelection\ProductDataSelection`) with an `IDENTIFIER` constant and:
+   - `supports(MigrationContextInterface $migrationContext): bool` — e.g. profile `instanceof ShopwareProfileInterface`
+   - `getData(): DataSelectionStruct`
+   - `getDataSets(): array` — the `DataSets`, in processing order
+   - `getDataSetsRequiredForCount(): array` — `DataSets` whose count is displayed in the Administration
+2. Build the `DataSelectionStruct` argument list:
 
 ```php
-class ProductDataSet extends DataSet
-{
-    public static function getEntity(): string { return DefaultEntities::PRODUCT; }
-    public function supports(MigrationContextInterface $migrationContext): bool { /* ... */ }
-}
+return new DataSelectionStruct(
+    self::IDENTIFIER,
+    $this->getDataSets(),
+    $this->getDataSetsRequiredForCount(),
+    'swag-migration.index.selectDataCard.dataSelection.products', // snippet
+    100,   // position (lower = migrated earlier)
+    true,  // process-media needed
+    DataSelectionStruct::BASIC_DATA_TYPE, // core data vs plugin data
+    false  // required for every migration (user cannot unselect)
+);
 ```
 
-4. Register the `DataSelection` class as a tagged service in the plugin's service configuration. See Gotchas for the tag name.
+3. Implement each `DataSet` by extending `DataSet` (e.g. `SwagMigrationAssistant\Profile\Shopware\DataSelection\DataSet\ProductDataSet`): `public static function getEntity(): string` (e.g. `DefaultEntities::PRODUCT`) and `supports(MigrationContextInterface $migrationContext): bool`.
+4. Register the `DataSelection` as a service and tag it with the Migration Assistant's DataSelection service tag (tag name as given by the docs — see Gotchas and Code check).
 
 ## Essential identifiers
 
 - `DataSelectionInterface`, `DataSelectionStruct`, `DataSelectionStruct::BASIC_DATA_TYPE`
-- `DataSet`, `DataSet::getEntity()`, `DefaultEntities::PRODUCT`
-- `getDataSets()`, `getDataSetsRequiredForCount()`
-- `SwagMigrationAssistant\Profile\Shopware\DataSelection\ProductDataSelection`
-- `SwagMigrationAssistant\Profile\Shopware\DataSelection\DataSet\ProductDataSet`
-- `SwagMigrationAssistant\Profile\Shopware\DataSelection\ProductReviewDataSelection`
+- `DataSet`, `getEntity()`, `supports()`
+- `getData()`, `getDataSets()`, `getDataSetsRequiredForCount()`
+- `ProductDataSelection` (`IDENTIFIER = 'products'`), `ProductReviewDataSelection` (`IDENTIFIER = 'productReviews'`), `MediaDataSelection`
+- `ProductDataSet`, `MediaFolderDataSet`, `CustomerDataSet`, `ProductReviewDataSet`
 
 ## Gotchas
 
-- `DataSelection` position: lower numbers are migrated earlier.
-- The same `DataSet` may appear in several `DataSelections` (only if no other option exists). `ProductReviewDataSelection` repeats the product `DataSets` plus `CustomerAttributeDataSet`, `CustomerDataSet` and `ProductReviewDataSet`, so reviews still work when products are not selected. If both are selected, each `DataSet` is migrated once, at its first occurrence.
-- The docs register selections with the tag `shopware.migration.data_selection`. The Migration Assistant plugin is not part of the installed code index, so this tag could not be checked. Confirm it against the installed plugin version.
-- The prose list for `ProductDataSelection` leaves out `MainVariantRelationDataSet`, but the code example lists it last in `getDataSets()`.
+- The order of `DataSets` returned by `getDataSets()` is the processing order — it matters.
+- The docs register selections with `$services->set(ProductDataSelection::class)->tag('shopware.migration.data_selection');`. That tag is defined by the SwagMigrationAssistant plugin, not by Shopware core.
+- The same `DataSet` may appear in several `DataSelections` (only if no other option exists). `ProductReviewDataSelection` repeats the product `DataSets` plus `CustomerAttributeDataSet`, `CustomerDataSet` and `ProductReviewDataSet`, because they are needed even when the product selection is not chosen. If both are selected, each `DataSet` is migrated only once, at its first occurrence.
 
-## Code check (6.7.13.0)
-- absent `shopware.migration.data_selection` — not found in the installed code index; SwagMigrationAssistant is not installed under vendor/shopware
-- confirmed `SwagMigrationAssistant` — core only refers to the plugin by name (first-run wizard data import) — vendor/shopware/administration/Resources/app/administration/src/module/sw-first-run-wizard/view/sw-first-run-wizard-data-import/index.js:38
-- unverified `DataSelectionInterface` — plugin class, plugin not installed in vendor/shopware
-- unverified `DataSelectionStruct` — plugin class, plugin not installed in vendor/shopware
-- unverified `DataSet` — plugin base class, plugin not installed in vendor/shopware
-- unverified `getDataSetsRequiredForCount` — plugin method, plugin not installed in vendor/shopware
-- unverified `DefaultEntities::PRODUCT` — plugin constant, plugin not installed in vendor/shopware
+## Code check (6.7.15.1)
+- absent `shopware.migration.data_selection` — tag not found anywhere in the installed core/storefront/administration code; it belongs to the SwagMigrationAssistant plugin
+- confirmed `SwagMigrationAssistant` — plugin offered by the admin first-run wizard data import — vendor/shopware/administration/Resources/app/administration/src/module/sw-first-run-wizard/view/sw-first-run-wizard-data-import/index.js:31
+- unverified `DataSelectionInterface` — defined in the separate SwagMigrationAssistant plugin, out of scope
+- unverified `DataSelectionStruct` — plugin class, out of scope
+- unverified `DataSet` — plugin base class, out of scope
+- unverified `ProductDataSelection` — plugin class, out of scope

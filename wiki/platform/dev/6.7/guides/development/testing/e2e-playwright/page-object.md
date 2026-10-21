@@ -6,68 +6,73 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/e2e-playwright/page-object.html
 sourceHash: 1c0568177d5927e414882d02d73efcaaaf76ee46
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["StorefrontCheckoutCart", "AdministrationPageTypes", "AdminPageObjects", "AdministrationPages.ts", "StorefrontPages.ts", "getCustomFieldCardLocators", "getSelectFieldListitem", "page objects", "page object model", "pom", "acceptance test suite", "ats", "locators"]
-summary: ATS Playwright page objects - using them as fixtures, the modules folder for shared Page helpers, and registering a new page in AdministrationPages.ts.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["page objects", "page object model", "StorefrontPage", "StorefrontCheckoutCart", "AdministrationPages.ts", "StorefrontPages.ts", "AdministrationPageTypes", "AdminPageObjects", "getCustomFieldCardLocators", "getSelectFieldListitem", "modules folder", "acceptance test suite", "playwright locators"]
+summary: ATS page objects - fixture usage in Playwright tests, the modules folder for shared locator helpers, and registering new pages in AdministrationPages.ts.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Page objects in the Shopware Acceptance Test Suite (ATS) are simple collections of element locators, plus small helper methods, for Administration and Storefront pages. They are available as fixtures in Playwright tests.
+Page objects in the Shopware Acceptance Test Suite (ATS) bundle page-specific element locators and small helper methods for Administration and Storefront pages. They are kept deliberately simple — mostly collections of locators — and are consumed like any other Playwright fixture.
 
 ## When to use
 
-Writing acceptance tests that interact with Administration/Storefront pages through reusable locators, or contributing a new page object or shared helper to the ATS.
+- Writing acceptance tests that navigate Administration or Storefront pages and need reusable selectors.
+- Adding a new page object or shared locator helper to the ATS.
 
 ## Key steps / config
 
-Use a page object like any fixture:
+### Use a page object in a test
+
+Request page objects as fixtures:
 
 ```TypeScript
-import { test, expect } from './../BaseTestFile';
-
 test('Storefront cart test scenario', async ({ StorefrontPage, StorefrontCheckoutCart }) => {
     await StorefrontPage.goto(StorefrontCheckoutCart.url());
     await expect(StorefrontCheckoutCart.grandTotalPrice).toHaveText('€100.00*');
 });
 ```
 
-The full list of page objects is in the ATS repository under `src/page-objects`.
+`StorefrontCheckoutCart.url()` targets the Storefront cart page. The full list of page objects is in the ATS repository under `src/page-objects` (https://github.com/shopware/acceptance-test-suite/tree/trunk/src/page-objects).
 
-Modules: the `modules` folder holds reusable utility functions operating on a Playwright `Page` passed as `page` parameter, e.g. `getCustomFieldCardLocators` (defined in `src/page-objects/administration/modules/CustomFieldCard.ts`, used in `ProductDetail.ts`) or `getSelectFieldListitem`. Add a module when it removes logic repeated across page objects.
+### Shared helpers: the `modules` folder
 
-Adding a page object: place it in the `administration` or `storefront` subfolder and register it in `AdministrationPages.ts` or `StorefrontPages.ts`:
+`modules` holds reusable utility functions that take a Playwright `Page` and operate on it, e.g. `getCustomFieldCardLocators` (defined in `src/page-objects/administration/modules/CustomFieldCard.ts`, used by `ProductDetail.ts`) or `getSelectFieldListitem`. Add a module class when it removes repeated logic across page objects.
+
+### Add a new page object
+
+Place it in the Administration or Storefront subfolder and register it in `AdministrationPages.ts` or `StorefrontPages.ts` — both in the type interface and the exported object:
 
 ```TypeScript
 import { MyNewPage } from './administration/MyNewPage';
 
 export interface AdministrationPageTypes {
     AdminProductDetail: ProductDetail;
+    // [...]
     AdminMyNewPage: MyNewPage;
 }
 
 export const AdminPageObjects = {
     ProductDetail,
+    // [...]
     MyNewPage,
 }
 ```
 
 ## Essential identifiers
 
-- `StorefrontPage`, `StorefrontCheckoutCart` (`url()`, `grandTotalPrice`)
-- `AdministrationPageTypes`, `AdminPageObjects`, `FixtureTypes`
 - `AdministrationPages.ts`, `StorefrontPages.ts`
-- `getCustomFieldCardLocators`, `getSelectFieldListitem`, `modules` folder
+- `AdministrationPageTypes`, `AdminPageObjects` (fixture names prefixed `Admin`, e.g. `AdminProductDetail`)
+- `StorefrontPage`, `StorefrontCheckoutCart`, `ProductDetail`, `OrderDetail`, `CustomerListing`
+- `getCustomFieldCardLocators`, `getSelectFieldListitem`, `modules`
+- `FixtureTypes`
 
 ## Gotchas
 
-- Keep page objects minimal: locators and small helpers, not test logic.
-- Administration page object fixtures are named with an `Admin` prefix (`AdminProductDetail`) in `AdministrationPageTypes`, while `AdminPageObjects` uses the class name.
+- Keep logic out of page objects; they should mainly expose locators plus small helpers.
 
-## Code check (6.7.13.0)
-- confirmed `frontend.checkout.cart.page` — Storefront cart page route behind the cart page object — vendor/shopware/storefront/Controller/CheckoutController.php:76
-- unverified `StorefrontCheckoutCart` — ATS npm package, outside vendor/shopware
-- unverified `AdministrationPageTypes` — ATS npm package, outside vendor/shopware
-- unverified `AdminPageObjects` — ATS npm package, outside vendor/shopware
-- unverified `getCustomFieldCardLocators` — not present in vendor/shopware; ATS package code
-- unverified `getSelectFieldListitem` — not present in vendor/shopware; ATS package code
+## Code check (6.7.15.1)
+- unverified `AdminPageObjects` — ATS export, external npm package outside vendor/shopware
+- unverified `getCustomFieldCardLocators` — ATS helper, out of scope
+- unverified `StorefrontCheckoutCart` — ATS page object, out of scope
+- confirmed `frontend.checkout.cart.page` — Storefront cart route `/checkout/cart` that the cart page object targets — vendor/shopware/storefront/Controller/CheckoutController.php:76

@@ -6,22 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/employee-management/guides/api-route-restriction-for-employees.html
 sourceHash: a95deaf1ab3239d33f5c5af09e5ac9f2e5cf423e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["employee_route_access.xml", "EmployeeRouteAccessLoader", "AbstractEmployeeRouteAccessLoader", "B2bRouteBlocker", "store-api.account.change-profile", "store-api.account.change-email", "denylist", "route restriction", "b2b employee", "decoration", "store api account routes", "blocked routes"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["employee_route_access.xml", "EmployeeRouteAccessLoader", "AbstractEmployeeRouteAccessLoader", "B2bRouteBlocker", "denylist", "route restriction", "b2b employee", "store-api.account.change-profile", "store-api.account.change-email", "decoration", "denied routes", "blocked account routes"]
 summary: B2B employees are blocked from customer account routes via a denylist in employee_route_access.xml; extend it by decorating EmployeeRouteAccessLoader.
-lastBuilt: 2026-09-15
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-B2B employees and their business partner share one customer account. To keep that account consistent, the Employee Management component blocks most customer account routes (Storefront and Store API) for employees using a denylist; all non-account routes stay available.
+B2B employees and the business partner share one customer account. To stop employees changing account data/settings outside the B2B permission system (via Storefront and Store API), the B2B Employee Management component blocks most customer account routes with a denylist. Non-account routes remain available to employees.
 
 ## When to use
 
-When an employee gets an exception on an account route, when you add new account routes that employees must not use, or when you need to change which routes are denied.
+When an employee request to an account route throws an access exception, or when you need to deny additional routes for employees.
 
 ## Key steps / config
 
-1. The denylist lives in the employee management config `Resources\config\employee_route_access.xml` (schema `../Schema/Xml/employee-route-access-1.0.xsd`). Denied route names go in `<denied>` tags; `<allowed>` entries only serve internal integration tests and are irrelevant for third-party developers.
+1. The denylist lives in the employee management config at `Resources\config\employee_route_access.xml`. Routes in `<denied>` are blocked; `<allowed>` entries are only used by internal integration tests (reminder to extend the list when new Store API account routes appear) and do not matter to third-party developers. The root `<routes>` element points `xsi:noNamespaceSchemaLocation` at `../Schema/Xml/employee-route-access-1.0.xsd` (plus the standard XMLSchema-instance `xmlns:xsi` declaration):
 
 ```xml
 <routes xsi:noNamespaceSchemaLocation="../Schema/Xml/employee-route-access-1.0.xsd">
@@ -32,9 +32,9 @@ When an employee gets an exception on an account route, when you add new account
 </routes>
 ```
 
-2. `Shopware\Commercial\B2b\Domain\RouteAccess\EmployeeRouteAccessLoader::load()` reads the file and returns an associative array with the `allowed` and `denied` route arrays.
-3. `Shopware\Commercial\B2b\Subscriber\B2bRouteBlocker` listens to each controller event, validates route access before the controller runs, and throws an exception on illegal access.
-4. To extend: create your own `employee_route_access.xml` with extra `<denied>` routes, then decorate the loader (standard Shopware decoration pattern) and return merged or replacement config:
+2. `Shopware\Commercial\B2b\Domain\RouteAccess\EmployeeRouteAccessLoader::load()` returns an associative array with arrays of all `allowed` and `denied` routes.
+3. `Shopware\Commercial\B2b\Subscriber\B2bRouteBlocker` listens to every controller event and validates route access before the request reaches the controller; illegal attempts throw an exception.
+4. To add denied routes: create your own `employee_route_access.xml`, then decorate the loader (standard Shopware decoration pattern) and return your config from `load()`:
 
 ```php
 class DecoratedEmployeeRouteAccessLoader extends AbstractEmployeeRouteAccessLoader
@@ -49,27 +49,26 @@ class DecoratedEmployeeRouteAccessLoader extends AbstractEmployeeRouteAccessLoad
 }
 ```
 
-Return only `$customConfig` to replace the original list entirely.
+Return only `$customConfig` to replace the original list entirely instead of merging.
 
 ## Essential identifiers
 
-- `Resources\config\employee_route_access.xml`
-- `Shopware\Commercial\B2b\Domain\RouteAccess\EmployeeRouteAccessLoader` (`load()`)
-- `AbstractEmployeeRouteAccessLoader` (`getDecorated()`, `load()`)
+- `Resources\config\employee_route_access.xml`, schema `employee-route-access-1.0.xsd`
+- `Shopware\Commercial\B2b\Domain\RouteAccess\EmployeeRouteAccessLoader`, `AbstractEmployeeRouteAccessLoader`
 - `Shopware\Commercial\B2b\Subscriber\B2bRouteBlocker`
-- Route names: `store-api.account.change-profile`, `store-api.account.change-email`, `store-api.account.login`, `store-api.account.logout`
+- Route names such as `store-api.account.change-profile`, `store-api.account.change-email`
 
 ## Gotchas
 
-- The source writes the namespace as `Shopware\Commercial\B2b\...` in prose but `Shopware\Commercial\B2B\Domain\RouteAccess` in the example; PHP namespaces are case-insensitive, but match the actual package for autoloading of your own classes.
-- The design is a denylist, not a replication of customer features for employees - new account routes are not blocked until added to `<denied>`.
+- The denylist matches route names (e.g. `store-api.account.change-profile`), not URL paths.
+- The source example declares namespace `Shopware\Commercial\B2B\...` (uppercase `B2B`) while the class FQCNs use `B2b`; use the casing of the installed Commercial extension.
 
-## Code check (6.7.13.0)
-- confirmed `store-api.account.change-profile` — core Store API route name exists — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangeCustomerProfileRoute.php:69
-- confirmed `store-api.account.change-email` — core Store API route name exists — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangeEmailRoute.php:65
-- confirmed `store-api.account.login` — core Store API route name exists — vendor/shopware/core/Checkout/Customer/SalesChannel/LoginRoute.php:38
-- confirmed `store-api.account.logout` — core Store API route name exists — vendor/shopware/core/Checkout/Customer/SalesChannel/LogoutRoute.php:47
-- unverified `EmployeeRouteAccessLoader` — Shopware Commercial B2B class, not in the installed vendor/shopware roots
-- unverified `AbstractEmployeeRouteAccessLoader` — Shopware Commercial B2B class, out of scope; required members taken from the docs
-- unverified `B2bRouteBlocker` — Shopware Commercial B2B subscriber, out of scope
-- unverified `employee_route_access.xml` — Shopware Commercial B2B config file, out of scope
+## Code check (6.7.15.1)
+- unverified `EmployeeRouteAccessLoader::load()` — Shopware Commercial B2B extension, not in core/storefront/administration; out of scope
+- unverified `AbstractEmployeeRouteAccessLoader` — Commercial B2B extension; out of scope
+- unverified `B2bRouteBlocker` — Commercial B2B extension; out of scope
+- unverified `employee_route_access.xml` — Commercial B2B extension config; out of scope
+- confirmed `store-api.account.change-profile` — route name of ChangeCustomerProfileRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangeCustomerProfileRoute.php:71
+- confirmed `store-api.account.change-email` — route name of ChangeEmailRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangeEmailRoute.php:65
+- confirmed `store-api.account.login` — route name of LoginRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/LoginRoute.php:38
+- confirmed `store-api.account.logout` — route name of LogoutRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/LogoutRoute.php:47

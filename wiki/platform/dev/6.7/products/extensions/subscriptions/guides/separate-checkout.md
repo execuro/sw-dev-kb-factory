@@ -6,61 +6,74 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/subscriptions/guides/separate-checkout.html
 sourceHash: 601d27bdddf9e2944f41d97fb68222ce39ec6c1e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["separate subscription checkout", "express checkout", "subscription cart", "subscription context", "subscription.cart.collector", "subscription.cart.processor", "SubscriptionDiscountProcessor", "sw-subscription-plan", "sw-subscription-interval", "subscriptionToken", "subscription-plan-option", "CheckoutOrderPlacedCriteriaEvent", "_templateScopes", "initialSubscriptions", "commercial subscriptions"]
-summary: "Subscription express checkout with cart/context: subscription.cart.* tags, subscription.-prefixed events, sw-subscription-* headers, template scopes."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["subscription.cart.collector", "subscription.cart.processor", "subscription-plan-option", "sw-subscription-plan", "sw-subscription-interval", "subscriptionToken", "SubscriptionEventRegistry", "frontend.subscription.checkout.cart.page", "_templateScopes", "CheckoutOrderPlacedCriteriaEvent", "subscription event prefix", "separate subscription checkout", "express checkout"]
+summary: "Separate subscription checkout: isolated cart/context per product, subscription. cart tags and event prefix, plan headers, subscription template scope."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/extensions/subscriptions/concept.md", "platform/dev/6.7/products/extensions/subscriptions/guides/mixed-checkout.md", "platform/dev/6.7/products/extensions/subscriptions/guides/template-scoping.md"]
 ---
 ## What it is
 
-The separated subscription checkout (Commercial Subscriptions) is an express checkout for one subscription product: it uses a dedicated subscription cart and subscription sales channel context; the main cart and original context stay untouched. Read the [concept](platform/dev/6.7/products/extensions/subscriptions/concept.md) first.
+The separate subscription checkout of the Subscriptions extension: an isolated, express-style checkout with a dedicated cart that contains **only** the subscription product. Checkout starts right away, no other products can be added, and the main cart and original sales channel context stay untouched. See the [concept](platform/dev/6.7/products/extensions/subscriptions/concept.md).
 
 ## When to use
 
-When an extension must read subscription data in checkout, hook into subscription cart calculation, add subscription line items, listen to subscription checkout events, or adapt Storefront pages during it.
+When an extension must read subscription data, manipulate the subscription cart, react to subscription checkout events, or change Storefront pages during a separate subscription checkout.
 
 ## Key steps / config
 
-1. **Context data**: the subscription context has a `subscription` extension. Orders from a subscription cart carry `subscriptionId` / `subscription` plus `initialSubscriptions`; follow-up orders only `subscriptionId` / `subscription`.
+**Retrieving information** — the subscription cart and subscription context replace the main cart/context; subscription data sits in the context's `subscription` extension (`mainToken`, `subscriptionToken`, `managed`, `plan`, `interval`). The order placed has a `subscriptionId` / `subscription` extension plus `initialSubscriptions` (as a [mixed order](platform/dev/6.7/products/extensions/subscriptions/guides/mixed-checkout.md)); subsequent orders only carry `subscriptionId` / `subscription`. Cart line items carry `payload.subscriptionPlan` / `payload.subscriptionInterval` (since 6.7.4.0).
 
-```json
-{ "token": "...", "extensions": { "subscription": {
-    "mainToken": "...", "subscriptionToken": "...", "managed": true,
-    "plan": {}, "interval": {} } } }
+**Manipulating the cart** — the subscription cart calculator only runs collectors/processors tagged `subscription.cart.collector` / `subscription.cart.processor`. Distinguish separate from mixed calculation via `salesChannelContext.extensions.subscription.isManaged`. Example: `Shopware\Commercial\Subscription\Checkout\Cart\Discount\SubscriptionDiscountProcessor` (also supports mixed carts).
+
+**Adding subscription line items**
+
+- Store API / forms: send `subscription-plan-option` and `subscription-plan-option-<subscription-plan-id>-interval` next to `lineItems`, e.g. `POST /store-api/subscription/checkout/cart/line-item` (the only subscription request that needs no subscription headers).
+- Backend: set `lineItem.payload.subscriptionPlan` and `lineItem.payload.subscriptionInterval` with `setPayloadValue()`, using a composite `<product>-<plan>-<interval>` ID and type `LineItem::PRODUCT_LINE_ITEM_TYPE`; plan/interval come from `$salesChannelContext->getExtension('subscription')->getPlan()` / `getInterval()`.
+
+**Events** — most events in the subscription checkout are prefixed `subscription.` and are otherwise identical; subscribe to the prefixed name. Known prefixed events: `Subscription/Framework/Event/SubscriptionEventRegistry.php`.
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return ['subscription.' . CheckoutOrderPlacedCriteriaEvent::class => 'onOrderPlacedCriteria'];
+}
 ```
 
-2. **Cart calculation**: tag collectors `subscription.cart.collector`, processors `subscription.cart.processor`. Distinguish separate vs. mixed via `salesChannelContext.extensions.subscription.isManaged`. Example: `Shopware\Commercial\Subscription\Checkout\Cart\Discount\SubscriptionDiscountProcessor`.
-3. **Add line items**:
-   - Store-API / forms: send `subscription-plan-option` and `subscription-plan-option-<subscription-plan-id>-interval` beside `lineItems` (remapped into the payload); endpoint `POST /store-api/subscription/checkout/cart/line-item`.
-   - Backend: `new LineItem($id, LineItem::PRODUCT_LINE_ITEM_TYPE, $productId)`, `setPayloadValue('subscriptionPlan', $planId)`, `setPayloadValue('subscriptionInterval', $intervalId)`, `$cart->add($lineItem)`. IDs from `$salesChannelContext->getExtension('subscription')->getPlan()->getId()` / `->getInterval()->getId()`. Use composite ID `<product-id>-<plan-id>-<interval-id>` to avoid merging.
-4. **Events**: same as checkout events, prefixed `subscription.`, e.g. `'subscription.' . CheckoutOrderPlacedCriteriaEvent::class`. List: `Subscription/Framework/Event/SubscriptionEventRegistry.php`.
-5. **Request scoping**: Storefront resolves URL parameter `subscriptionToken` (route `frontend.subscription.checkout.cart.page` with defaults `_subscriptionCart`, `_subscriptionContext`, `_templateScopes` = `subscription`). Headless sets headers `sw-subscription-plan` and `sw-subscription-interval` (except for adding a line item). See `Subscription/Resources/config/routes/storefront.php` / `store-api.php`.
-6. **Templates**: add scope `subscription` to templates of `frontend.checkout.cart.page`, `frontend.checkout.confirm.page`, `frontend.checkout.register.page`, `frontend.account.edit-order.page`, `frontend.account.login.page`, `frontend.account.register.page` — see [template scoping](platform/dev/6.7/products/extensions/subscriptions/guides/template-scoping.md).
+**Request scoping** — Storefront resolves the URL parameter `subscriptionToken`; headless needs headers `sw-subscription-plan` and `sw-subscription-interval`. Route definitions: `Subscription/Resources/config/routes/storefront.php`, `Subscription/Resources/config/routes/store-api.php`.
+
+```php
+$routes->add('frontend.subscription.checkout.cart.page', '/subscription/checkout/cart/{subscriptionToken}')
+    ->controller('subscription.storefront.controller.checkout::cartPage')
+    ->defaults(['_noStore' => 'true', '_routeScope' => ['storefront'],
+        '_subscriptionCart' => 'true', '_subscriptionContext' => 'true',
+        '_controllerName' => 'checkout', '_controllerAction' => 'cartpage',
+        '_templateScopes' => 'subscription']);
+```
+
+**Storefront** — add template scope `subscription` to the templates (and sub-templates) of at least `frontend.checkout.cart.page`, `frontend.checkout.confirm.page`, `frontend.checkout.register.page`, `frontend.account.edit-order.page`, `frontend.account.login.page`, `frontend.account.register.page` (e.g. `@Storefront/storefront/page/checkout/confirm/index.html.twig`). See [template scoping](platform/dev/6.7/products/extensions/subscriptions/guides/template-scoping.md).
 
 ## Essential identifiers
 
 - `subscription.cart.collector`, `subscription.cart.processor`
+- `subscription-plan-option`, `subscription-plan-option-<subscription-plan-id>-interval`
 - `sw-subscription-plan`, `sw-subscription-interval`, `subscriptionToken`
-- `LineItem::PRODUCT_LINE_ITEM_TYPE`, `CheckoutOrderPlacedCriteriaEvent`
+- `/store-api/subscription/checkout/cart/line-item`, `frontend.subscription.checkout.cart.page`
+- `SubscriptionEventRegistry`, `subscription.` event prefix
 
 ## Gotchas
 
-- Customers cannot add other products; leaving means returning via browser history or restarting from the product.
-- Listeners without the `subscription.` prefix only get main-checkout events.
+- A customer leaving the subscription checkout can only return via browser history or by starting a new checkout with the product.
+- Normal (unprefixed) event listeners do not fire for the subscription checkout; register the `subscription.`-prefixed name.
 
-## Version notes
-
-- Line item `payload` keys `subscriptionPlan` / `subscriptionInterval` exist only since 6.7.4.0.
-
-## Code check (6.7.13.0)
-- confirmed `LineItem::PRODUCT_LINE_ITEM_TYPE` — value `'product'` — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:24
-- confirmed `LineItem::setPayloadValue()` — takes key, value, optional protected flag — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:259
-- confirmed `Cart::add()` — accepts a LineItem — vendor/shopware/core/Checkout/Cart/Cart.php:155
-- confirmed `CheckoutOrderPlacedCriteriaEvent` — core event class exists — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedCriteriaEvent.php:13
-- confirmed `_templateScopes` — request attribute read for template scopes — vendor/shopware/core/Framework/Adapter/Twig/TemplateScopeDetector.php:15
-- confirmed `_noStore` — core route attribute — vendor/shopware/core/PlatformRequest.php:79
-- confirmed `frontend.checkout.cart.page` — storefront route name — vendor/shopware/storefront/Controller/CheckoutController.php:76
-- confirmed `frontend.checkout.register.page` — storefront route name — vendor/shopware/storefront/Controller/RegisterController.php:158
-- confirmed `frontend.account.login.page` — storefront route name — vendor/shopware/storefront/Controller/AuthController.php:77
-- unverified `subscription.cart.collector` — Commercial Subscription code not installed under vendor/shopware core/storefront/administration
+## Code check (6.7.15.1)
+- confirmed `CheckoutOrderPlacedCriteriaEvent` — core event class — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedCriteriaEvent.php:16
+- confirmed `_templateScopes` — `TemplateScopeDetector::SCOPES_ATTRIBUTE`, string or array accepted — vendor/shopware/core/Framework/Adapter/Twig/TemplateScopeDetector.php:14
+- confirmed `_noStore` — `PlatformRequest::ATTRIBUTE_NO_STORE` — vendor/shopware/core/PlatformRequest.php:81
+- confirmed `_routeScope` — `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` — vendor/shopware/core/PlatformRequest.php:78
+- confirmed `LineItem::PRODUCT_LINE_ITEM_TYPE` — value `product` — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:24
+- confirmed `LineItem::setPayloadValue()` — payload setter used for plan/interval — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:254
+- confirmed `frontend.checkout.confirm.page` — core Storefront route the scope applies to — vendor/shopware/storefront/Controller/CheckoutController.php:122
+- unverified `SubscriptionEventRegistry` — commercial Subscriptions extension, out of scope
+- unverified `sw-subscription-plan` — header handled by commercial extension, not found in core/storefront
+- unverified `subscription.cart.processor` — commercial extension tag, out of scope

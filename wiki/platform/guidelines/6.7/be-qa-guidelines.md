@@ -3,111 +3,117 @@ id: platform/guidelines/6.7/be-qa-guidelines.md
 title: Backend QA guidelines
 docType: guideline
 version: "6.7"
-summary: Rules for PHPUnit unit and integration tests, API test contexts, queue and cache state, migration and versioned DAL tests, and Store code quality.
-keywords: ["phpunit", "unit tests", "integration tests", "mocks", "stubs", "testbootstrapper", "integrationtestbehaviour", "migration test", "versioning", "message queue", "store review", "code quality"]
-sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html", hash: "4765adb1ddd045550844bd777945039efc4f1b3adc1aade8f010f8259470d9a6"}, {url: "code:administration/Resources/app/administration/technical-docs/07-testing/**", hash: "b3fd893024c1e3bcb2f90f7e5fb25aae83dd446c31641f549f2c22e3ff5cb30f"}, {url: "https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html", hash: "b57f11e9254779030426000f27dcb3f6ed8c11c5c87113c9947a207997cd22d7"}, {url: "https://developer.shopware.com/docs/guides/development/testing/store/quality-guidelines.html", hash: "24d766368b66e9310db561b64d2baec69f67ec7f1f0b465bb39f417daa18b7f7"}, {url: "https://developer.shopware.com/docs/guides/development/testing/store/code-quality.html", hash: "552916b1fb0afcc9409bc954fd378fbb0f1d50378793ef8de005e5054aedc0ed"}]
-codeVersion: "6.7.13.0+8da531fe"
-lastBuilt: 2026-09-15
+summary: PHPUnit rules for Shopware 6.7 backend code - unit vs integration, doubles, events, API browsers, queues, migrations, versions, store review checks
+keywords: ["phpunit", "unit test", "integration test", "coversclass", "createstub", "staticentityrepository", "integrationtestbehaviour", "migration test", "queuetestbehaviour", "store api", "admin api", "versioning", "code quality", "phpstan"]
+sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html", hash: "0591387dd188020205a0e33d46bb7a0ab63988e312b2415ab1df5df9fc9b7b28"}, {url: "code:administration/Resources/app/administration/technical-docs/07-testing/**", hash: "524ca568868967bb5242a755e23f50af2e267a0788c2d704ab36a9db49c8d621"}, {url: "https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html", hash: "b57f11e9254779030426000f27dcb3f6ed8c11c5c87113c9947a207997cd22d7"}, {url: "https://developer.shopware.com/docs/guides/development/testing/store/quality-guidelines.html", hash: "24d766368b66e9310db561b64d2baec69f67ec7f1f0b465bb39f417daa18b7f7"}, {url: "https://developer.shopware.com/docs/guides/development/testing/store/code-quality.html", hash: "552916b1fb0afcc9409bc954fd378fbb0f1d50378793ef8de005e5054aedc0ed"}]
+codeVersion: "6.7.15.1+7d4303db"
+lastBuilt: 2026-10-21
 ---
 
-## phpunit unit test conventions
+## unit test structure
 
-- Test every use case of a service, including failure paths. Coverage percentage alone is not the goal.
-- Give every test class `#[Package('…')]` with the same package as the production domain it covers, so CI failures reach the owning team.
-- Declare exactly one `#[CoversClass]` per test file. If a file covers several classes, split it.
-- Give each new source file focused unit tests. If it is covered by integration tests on purpose, mark it `@codeCoverageIgnore` and add a `@see \Shopware\Tests\Integration\…` docblock line pointing to a dedicated integration test. Use the fully qualified name and do not import the class. `CodeCoverageIgnoreEvaluationRule` rejects the annotation on methods that branch, mutate values, or call guards on `$this`/parameters, unless that `@see` is present.
-- Create doubles without `->expects()` with `createStub()`, never `createMock()`. Stubs have no `->with()`, so assert arguments inside `willReturnCallback()`. Type helper parameters that receive stubs as `Foo&Stub`.
-- Never behaviour-mock the Doctrine DBAL `Connection` by asserting SQL text or parameters. Move SQL into adapter classes and cover them with integration tests. Unit-test the business logic against a narrow abstraction or a hand-written double such as `StaticEntityRepository` or `StaticSystemConfigService`.
-- If a write is the only observable effect, do this in order: extract the decision into a collaborator, write an integration test, or capture the executed statements and assert on the written values (never on SQL text). If you use a `Connection` double, its `transactional()` must actually call the closure.
-- Merge near-duplicate tests into one data provider with named cases. Use named arguments for opaque literals passed to builders.
-- Use `expectExceptionObject()` or `expectException*()` instead of `try/catch`.
-- Never call private or protected methods of Shopware classes through reflection. Test through the public API instead. Reading reflection metadata is fine.
-- Never let code under test call `exit()`/`die()`. With a console `Application`, call `setAutoExit(false)` or use `CommandTester`.
-- Keep fixture classes used by a single test in that test file. Tests must be paratest-compatible and must not depend on artifacts left by other tests.
-
-Enforced by: PHPStan
+- Test every use case of a service, including failure paths, not just line coverage.
+- Declare `#[Package('…')]` on every test class with the package of the covered domain, and exactly one `#[CoversClass]` per file; split files covering several classes. Enforced by: review (Danger)
+- Merge tests differing only in input and expectation into one data-provider test; name each case as a sentence.
+- Pass opaque literals to builders as named arguments (`points: 0, status: false`).
+- Keep a fixture class used by one test file below the test class in that file; move it to `_fixtures` once a second test needs it.
+- Use `expectExceptionObject()` / `expectException*()`, never a manual `try/catch`.
+- Keep tests order-independent and paratest-compatible; remove dynamic listeners and roll back data or schema changes in teardown.
+- Do not compose helpers into a new unit test through a trait. Put builders in a static fixture class (e.g. `Shopware\Core\Test\Checkout\CartRuleFixture`) and doubles in a `Stub/` folder next to the test. Only state-restoring lifecycle traits (`EnvTestBehaviour`, `EventDispatcherBehaviour`, Symfony's `ClockSensitiveTrait`) are allowed. Enforced by: review (Danger)
 
 Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html
 
-## plugin phpunit setup
+## test doubles
 
-- Put a `phpunit.xml` in the plugin root with `bootstrap="tests/TestBootstrap.php"`, `KERNEL_CLASS` set to `Shopware\Core\Kernel` and `APP_ENV=test`. `bin/console plugin:create` generates both files.
-- Bootstrap with `(new TestBootstrapper())->addCallingPlugin()->addActivePlugins('<Plugin>')->setForceInstallPlugins(true)->bootstrap()`. `setForceInstallPlugins(true)` installs and activates the plugin even when the test database already exists.
-- To override a dangerous service (file deletion, external API) only in tests, add `Resources/config/services_test.php`. Do not branch on the environment in production code.
-- Run tests with `./vendor/bin/phpunit --configuration="custom/plugins/<Plugin>"`, and add `--testsuite` or `--filter` to narrow the run.
+- Prefer, in order: the real implementation, a static double (`StaticEntityRepository`, `StaticSystemConfigService`, `CollectingEventDispatcher`), then a PHPUnit double.
+- Use `createStub()` for a double that never gets `->expects()`. A stub checks arguments in `willReturnCallback()` (`->with()` is mock-only); helpers type it `Foo&Stub`, not `MockObject`. Enforced by: PHPStan (`shopware.createMockWithoutExpectations`)
+- Never behaviour-mock DBAL `Connection` by asserting SQL text or parameters; isolate SQL in adapters covered by integration tests.
+- Assert observed arguments inside the callback; keep only minimal outside state (a called flag, a counter).
+- Never invoke a private/protected method of a Shopware class via reflection (`invoke()`, `invokeArgs()`, `setAccessible()`); test via the public API or extract a collaborator. Reading reflection metadata stays allowed. Enforced by: PHPStan (`shopware.reflectionOnNonPublicMethod`)
+- Never let code under test reach `exit()`/`die()`; call `setAutoExit(false)` on a console `Application` or use `CommandTester`. `CompletionGuard` fails such runs.
 
-Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
-
-## integration traits and api contexts
-
-- Use `IntegrationTestBehaviour` for kernel-backed tests. It combines `KernelTestBehaviour`, `DatabaseTransactionBehaviour`, `CacheTestBehaviour`, `FilesystemBehaviour` and others.
-- `DatabaseTransactionBehaviour` opens a transaction before each test and rolls it back afterwards. It fails the test when the nesting level is not 1, so close every transaction you open.
-- Build a system-scope DAL context with `Context::createDefaultContext()` (marked `@internal`, test and CLI use only).
-- For Admin API tests, use `AdminFunctionalTestBehaviour` and get an authorised client via `getBrowser()`. Pass scopes or ACL permissions to test privilege checks.
-- For Store API tests, use `SalesChannelFunctionalTestBehaviour`. Use `createSalesChannelContext()` for a `SalesChannelContext` and `login()` for a customer session.
-- Register listeners dynamically through `EventDispatcherBehaviour::addEventListener()`, which removes them after each test. Never leave a listener attached.
-
-Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
-
-## async and cache assertions
-
-- Cache and service state are reset automatically: `CacheTestBehaviour::clearCacheData()` runs before and after each test, clears through `TestCacheClearer` and resets `services_resetter`. Do not add manual cache clears for isolation.
-- For message queue assertions, use `QueueTestBehaviour`. It empties `messenger_messages` and resets the test bus around each test.
-- Assert that a message was dispatched with `getDispatchedMessageCount(<MessageClass>::class)`. Call `runWorker()` only when the test needs the handler side effects.
-- In a callback or listener that observes async behaviour, assert the arguments inside the callback. Keep only a minimal flag, counter or captured value outside it.
+Rationale: mock-heavy tests pin the implementation and break on pure refactorings such as `search()` to `searchIds()`.
 
 Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html
 
-## migration tests
+## asserting writes without a seam
 
-- Implement `MigrationStep::update()` for non-destructive changes and `updateDestructive()` for destructive ones. Test each separately.
-- Use `KernelTestBehaviour` to get the `Connection` from the container. Assert that running `update()` again on an existing schema leaves `SHOW CREATE TABLE` unchanged, and that it recreates a dropped table.
-- Use DBAL 3+ fetch APIs (`fetchAssociative()`, `fetchOne()`). The `fetchAssoc()`/`fetchColumn()` calls in older examples no longer exist.
+When a decision's only effect is a write and the class has no other seam (the `SeoUrlPersister` write guard is the reference case), prefer: 1) extract the decision into a collaborator and unit-test it; 2) an integration test against a real database; 3) drive the public method, stub reads, capture statements in one helper and assert on written values in domain terms, never SQL text. For option 3, ensure the `transactional()` double invokes its closure and that each test fails when the decision is flipped.
+
+Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html
+
+## event assertions
+
+- Never add or remove listeners on the shared `event_dispatcher` in a test.
+- For "this service dispatches this event", build the service with a `CollectingEventDispatcher` and assert on `getEvents()` / `getEventsOfClass()` after the call.
+- Never assert inside a listener; code that catches and logs around a dispatch swallows the failure. Capture, then assert after the code ran, and assert the capture is not null.
+- Move an integration test that only checks a payload to the unit suite.
+
+Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html
+
+## source coverage
+
+- Give each new source file focused unit coverage, or mark it `@codeCoverageIgnore` with a `@see \Shopware\Tests\Integration\…` line naming a dedicated integration test (FQCN, leading `\`, no import).
+- The annotation is rejected on methods with branching, error paths, mutation, discarded calls on `$this`/`self::`/`static::` or a parameter, or constructors configuring their parent, unless such a `@see` exists. Enforced by: PHPStan (`CodeCoverageIgnoreEvaluationRule`)
+
+Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/unit-tests.html
+
+## integration tests and api contexts
+
+- Use `IntegrationTestBehaviour` for kernel tests; it bundles `KernelTestBehaviour`, `DatabaseTransactionBehaviour`, `CacheTestBehaviour` and filesystem/request/session/translation resets.
+- `DatabaseTransactionBehaviour` rolls back after each test and fails if the nesting level is not 1 - close every transaction you open.
+- `static::getContainer()` returns the test container with private services public.
+- Admin API: `AdminApiTestBehaviour::getBrowser()` (optional scopes, permissions). Store API: `SalesChannelApiTestBehaviour::getSalesChannelBrowser()` or `createCustomSalesChannelBrowser()`.
+- Override side-effecting services in `Resources/config/services_test.php`; it loads only when `kernel.environment` is `test`.
 
 Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
 
-Read more: platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md
+## async and cache
 
-## versioned entity tests
+- With `QueueTestBehaviour`, the queue and test bus are reset around each test; call `runWorker()` to consume the `async` and `webhook` transports and `getDispatchedMessageCount()` to assert dispatches.
+- `CacheTestBehaviour::clearCacheData()` clears caches and resets `services_resetter` before and after each test; never rely on cache state from another test.
 
-- Test versioned entities on a draft: `$versionId = $repository->createVersion($id, $context)`, then write and read with `$context->createWithVersionId($versionId)`.
-- Assert that the live row (`Defaults::LIVE_VERSION`) stays unchanged until `$repository->merge($versionId, $context)`, then assert the merged state.
+Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
 
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/versioning-entities.md
+## migrations
 
-## store code quality checks
+- Test `update()` of the `MigrationStep`, and `updateDestructive()` when implemented, using `KernelTestBehaviour` for the connection.
+- Assert idempotency (`SHOW CREATE TABLE` unchanged after re-running `update()`) and recovery (drop the table, run `update()`, assert it exists).
 
-- Before submitting to the Store, pass the automated review (PHPStan, SonarQube) and test on the highest supported Shopware version.
-- Never ship `die`, `exit` or `var_dump`. They are SonarQube blockers.
-- Ship production artifacts only: no dev-only files, no unused resources, no `composer.lock`. Declare dependencies in `composer.json`.
-- Write logs only under `/var/log/`, as `MyExtension-Year-Month-Day.log`. Payment extensions must use the plugin logger. Clean custom log tables on a schedule and keep at most six months of data.
-- Ship readable, unminified JavaScript sources in a separate folder next to the compiled assets.
-- Verify `postMessage()` origins and never use `*` as the target origin.
+Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
 
-Enforced by: review
+## versioned entities
+
+- For versioned entities, create a version with `EntityRepository::createVersion()`, write through `Context::createWithVersionId()`, and assert `Defaults::LIVE_VERSION` data separately from version data before and after `merge()`.
+
+Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
+
+## plugin test setup
+
+- Bootstrap with `TestBootstrapper`: `addCallingPlugin()`, `addActivePlugins()`, `setForceInstallPlugins(true)`, `bootstrap()`; set `KERNEL_CLASS` to `Shopware\Core\Kernel` and `APP_ENV=test` in `phpunit.xml`.
+
+Read more: https://developer.shopware.com/docs/guides/development/testing/unit/php-unit.html
+
+## store code quality
+
+- Expect PHPStan and SonarQube review plus manual review, against the highest supported Shopware 6 version.
+- Never ship `die`, `exit` or `var_dump` (SonarQube blockers).
+- Log only under `/var/log/` as `MyExtension-Year-Month-Day.log`; payment extensions use the plugin logger; custom log tables need cleanup, retention at most six months.
+- Ship production artifacts only: no `composer.lock`, no dev files; declare dependencies in `composer.json`; include readable unminified JavaScript sources.
+- Verify `postMessage()` origins; never use `*` as target origin.
 
 Read more: https://developer.shopware.com/docs/guides/development/testing/store/code-quality.html
-
 Read more: https://developer.shopware.com/docs/guides/development/testing/store/quality-guidelines.html
 
-## Code check (6.7.13.0+8da531fe)
+## Code check (6.7.15.1+7d4303db)
 
-- absent `Shopware\Core\Test\PHPUnit\CompletionGuard` — not present in this codeVersion
-- confirmed `Package` — attribute class for package ownership — core/Framework/Log/Package.php:16
-- confirmed `CodeCoverageIgnoreEvaluationRule` — PHPStan rule — core/DevOps/StaticAnalyze/PHPStan/Rules/CodeCoverageIgnoreEvaluationRule.php:32
-- confirmed `NoCreateMockWithoutExpectationsRule` — PHPStan rule — core/DevOps/StaticAnalyze/PHPStan/Rules/Tests/NoCreateMockWithoutExpectationsRule.php:39
-- confirmed `StaticEntityRepository` — repository test double — core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:31
-- confirmed `StaticSystemConfigService` — config test double — core/Test/Stub/SystemConfigService/StaticSystemConfigService.php:10
-- confirmed `setForceInstallPlugins` — TestBootstrapper option — core/TestBootstrapper.php:286
-- confirmed `IntegrationTestBehaviour` — composite test trait — core/Framework/Test/TestCaseBase/IntegrationTestBehaviour.php:5
-- confirmed `DatabaseTransactionBehaviour` — rolls back after each test — core/Framework/Test/TestCaseBase/DatabaseTransactionBehaviour.php:14
-- confirmed `Context::createDefaultContext` — internal system context — core/Framework/Context.php:119
-- confirmed `getBrowser` — authorised Admin API client — core/Framework/Test/TestCaseBase/AdminApiTestBehaviour.php:273
-- confirmed `createSalesChannelContext` — Store API context helper — core/Framework/Test/TestCaseBase/SalesChannelApiTestBehaviour.php:91
-- confirmed `addEventListener` — auto-removed listener — core/Framework/Test/TestCaseBase/EventDispatcherBehaviour.php:15
-- confirmed `clearCacheData` — before/after cache reset — core/Framework/Test/TestCaseBase/CacheTestBehaviour.php:14
-- confirmed `getDispatchedMessageCount` — queue assertion helper — core/Framework/Test/TestCaseBase/QueueTestBehaviour.php:57
-- confirmed `updateDestructive` — destructive migration hook — core/Framework/Migration/MigrationStep.php:38
-- confirmed `createVersion` — DAL version draft — core/Framework/DataAbstractionLayer/EntityRepository.php:161
-- confirmed `Defaults::LIVE_VERSION` — live version id — core/Defaults.php:20
-- unverified `setAutoExit` — vendor/symfony, out of scope
+- confirmed `CartRuleFixture` — static fixture class — core/Test/Checkout/CartRuleFixture.php:25
+- confirmed `CollectingEventDispatcher::getEvents` — collected events — core/Test/Stub/EventDispatcher/CollectingEventDispatcher.php:37
+- confirmed `shopware.createMockWithoutExpectations` — PHPStan id — core/DevOps/StaticAnalyze/PHPStan/Rules/Tests/NoCreateMockWithoutExpectationsRule.php:1518
+- confirmed `shopware.reflectionOnNonPublicMethod` — PHPStan id — core/DevOps/StaticAnalyze/PHPStan/Rules/Tests/NoReflectionOnNonPublicMethodsRule.php:41
+- confirmed `DatabaseTransactionBehaviour::stopTransactionAfter` — nesting check, rollback — core/Framework/Test/TestCaseBase/DatabaseTransactionBehaviour.php:37
+- confirmed `QueueTestBehaviour::runWorker` — consumes async/webhook — core/Framework/Test/TestCaseBase/QueueTestBehaviour.php:30
+- confirmed `SalesChannelApiTestBehaviour::getSalesChannelBrowser` — Store API browser — core/Framework/Test/TestCaseBase/SalesChannelApiTestBehaviour.php:132
+- confirmed `Context::createWithVersionId` — versioned context — core/Framework/Context.php:173
+- absent `EventHookDispatcher` — not present in this codeVersion
+- absent `NoAssertionInEventHookRule` — not present in this codeVersion

@@ -6,57 +6,62 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/assets/adr/catalog-import/examples.html
 sourceHash: d43847afd92374ddbdb1bf39c2667aa3abd89142
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["catalog import", "import api", "adr", "import record", "bulk import", "products", "media", "categories", "extensions", "unassign media", "import error response", "failures"]
-summary: Catalog-import ADR asset - example requests/responses for a proposed import API (products, media, categories, custom entities); absent in 6.7.13.0.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["catalog import", "import api", "/api/import/{import_id}/record", "/api/import/{import_id}/record/delete", "/api/import/{import_id}/record/unassign", "containsErrors", "failures", "adr", "bulk product import", "media import", "custom entity extensions", "category assignment"]
+summary: ADR request/response examples for a proposed catalog import API (/api/import/{import_id}/record, delete, unassign) - not implemented in Shopware 6.7.15.1.
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-An asset of the catalog-import architecture decision record (ADR), mirrored from the ADR section of the Shopware 6 repository. It lists example HTTP requests and responses for a proposed import API that creates, updates, deletes and un-assigns catalog records (products, media, categories, custom entities) within an import run identified by an import id.
+A set of request and response examples attached to an architecture decision record (ADR) on catalog import, mirrored from the Shopware repository's ADR section. It sketches an import endpoint family under `/api/import/{{import_id}}/record` that accepts products, media, categories and custom-entity extensions in one payload and reports per-record errors. The installed 6.7.15.1 code contains none of these routes (see Gotchas and Code check), so this is a design proposal, not a usable API.
 
 ## When to use
 
-When reading the catalog-import ADR and needing concrete payload shapes, or when checking whether the proposed import API exists in the installed Shopware version (it does not in 6.7.13.0 - see Gotchas).
+When reading or discussing the catalog-import ADR and you need the proposed payload shapes. For working bulk imports on 6.7, use the existing Admin API sync route `/api/_action/sync`.
 
 ## Key steps / config
 
-All examples are JSON `POST` requests authenticated against the Admin API. Records are grouped by top-level entity key.
+All proposed requests are `POST` with a JSON body (`Content-Type: application/json`, `Accept: application/json`) and an authenticated Admin API token.
 
-Create / update (records keyed by entity; nested entities and custom entities via `extensions`):
+Record payload skeleton (create/update):
 
 ```json
 {
-  "products": [
-    { "id": "...", "name": "...", "productNumber": "...",
-      "tax": { "name": "..." },
-      "prices": [ { "currency": "EUR", "gross": 0, "net": 0, "linked": false } ],
-      "media": [ { "url": "https://...", "title": "...", "alt": "...", "filename": "..." } ],
-      "extensions": { "myCustomEntity": { "id": "...", "name": "..." } } }
-  ],
-  "media": [ { "id": "...", "title": "..." } ],
-  "categories": [ { "name": "...", "parent": ["Home", "..."], "products": [ { "id": "..." } ] } ]
+  "products": [{
+    "id": "...", "name": "...", "productNumber": "...",
+    "tax": { "name": "..." },
+    "prices": [{ "currency": "EUR", "gross": 0, "net": 0, "linked": false }],
+    "media": [{ "url": "https://...", "title": "...", "alt": "...", "filename": "..." }],
+    "extensions": { "myCustomEntity": { "id": "...", "name": "..." } }
+  }],
+  "media": [{ "id": "...", "title": "..." }],
+  "categories": [{ "name": "...", "parent": ["Home", "..."], "products": [{ "id": "..." }] }]
 }
 ```
 
-- Updates reuse the same shape with only `id` plus changed fields; a top-level `extensions.myCustomEntity` list updates custom entity records.
-- Categories reference their parent by a name path (`parent: ["Home", "Category 2", ...]`).
-- Delete: body lists ids per entity, e.g. `{ "products": ["<id>"], "media": ["<id>"] }`.
-- Un-assign: `{ "products": { "id": "...", "media": [ { "id": "..." }, { "filename": "..." } ] } }` - media matched by `id` or `filename`.
+- Tax is referenced by `name`; a category parent by a name path array (`["Home", "Category 2", "Category 3"]`).
+- Updating a custom entity sends a top-level `extensions.myCustomEntity` array next to `products`.
+- Delete payload: ID lists per entity, `{"products": ["..."], "media": ["..."]}`.
+- Unassign payload: `{"products": {"id": "...", "media": [{"id": "..."}, {"filename": "..."}]}}` — a media can be matched by `id` or `filename`.
+
+Status response skeleton (asynchronous processing result):
+
+```json
+{ "status": "done", "startTime": "...", "duration": "...",
+  "totals": { "product": 0, "media": 0, "total": 0, "failures": 0 },
+  "failures": [{ "entity": "product", "path": "products.0",
+    "details": [{ "severity": "error", "entity": "media", "path": "products.0.media.0", "message": "..." }] }] }
+```
 
 ## Gotchas
 
-- The proposed endpoints are `POST /api/import/{import_id}/record`, `.../record/delete` and `.../record/unassign`. None of these routes exists in the installed 6.7.13.0 code - this page describes an ADR proposal, not a usable API.
-- Synchronous resolution errors return per-record errors with a dotted `path`:
+- None of the proposed routes exist in 6.7.15.1: `/api/import/{{import_id}}/record` (create/update), `/api/import/{{import_id}}/record/delete` and `/api/import/{{import_id}}/record/unassign`.
+- Unresolvable root IDs ("ID ... not found", path `products.0`) and nested IDs (path `categories.0.products.1`) are meant to be reported synchronously as `{"containsErrors": true, "records": [{"id": "...", "errors": [{"message": "...", "path": "..."}]}]}`.
+- Validation failures such as a non-unique `productNumber`, or media that fails to download, appear only in the status response under `failures[].details[]`, each with its own `entity` and `path`.
 
-```json
-{ "containsErrors": true,
-  "records": [ { "id": "...", "errors": [ { "message": "ID prod1d1 not found", "path": "categories.0.products.1" } ] } ] }
-```
-
-- Import status responses report asynchronous failures (e.g. non-unique product number, media download failure) under `failures[].details[]` with `severity`, `entity`, `path`, `message`, plus `status`, `startTime`, `duration` and `totals` (`product`, `media`, `total`, `failures`). A failing nested media also adds a failure on the parent product.
-
-## Code check (6.7.13.0)
-- absent `/api/import/{import_id}/record` — no `api/import` route string anywhere in the installed Shopware code
-- absent `/api/import/{import_id}/record/unassign` — no `record/unassign` route in the installed Shopware code
-- absent `containsErrors` — response key not found anywhere in the installed Shopware code
+## Code check (6.7.15.1)
+- absent `/api/import/{import_id}/record` — no route with this path exists anywhere in the installed code
+- absent `/api/import/{import_id}/record/delete` — no such route in the installed code
+- absent `/api/import/{import_id}/record/unassign` — no such route in the installed code
+- absent `containsErrors` — response key not found anywhere in the installed code
+- confirmed `/api/_action/sync` — existing Admin API bulk-write route usable for imports today — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43

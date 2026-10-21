@@ -6,38 +6,30 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/plugin-fundamentals/logging.html
 sourceHash: ee3ca00ff5cdfb1d75274ab3c872e5f2fd4ba055
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["monolog", "monolog.yaml", "monolog.logger.my_plugin_channel", "channels", "handlers", "rotating_file", "Resources/config/packages", "build", "DelegatingLoader", "logging", "log file", "logger channel", "plugin logs"]
-summary: "Plugin logging: load Resources/config/packages YAML in the plugin build(), define a Monolog channel and handler, inject monolog.logger.<channel>."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["monolog", "monolog.yaml", "monolog.logger.my_plugin_channel", "channels", "handlers", "rotating_file", "Resources/config/packages", "DelegatingLoader", "build", "logger", "log channel", "plugin logging", "log file"]
+summary: "Plugin logging with a dedicated Monolog channel - load packages/*.yaml in the plugin build() method, declare the channel and a rotating_file handler."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.md", "platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-custom-commands.md"]
 ---
 ## What it is
 
-How a plugin writes its own log messages through Monolog: load package configuration from the plugin, declare a dedicated Monolog channel, route it to a handler, and inject the channel-scoped logger service.
+How a plugin writes to its own log file: give it a dedicated Monolog channel, route that channel to a handler, and inject the channel-scoped logger service.
 
 ## When to use
 
-When a plugin should log actions or errors to a file for debugging or as a record of performed actions.
+You want plugin actions or errors logged separately for debugging or auditing, in a way project owners can re-route.
 
 ## Key steps / config
 
-1. Make the plugin load package config from `Resources/config/packages` by overriding `build()` in the plugin base class (a Symfony bundle requirement; Bundle Extensions are an alternative):
+1. Make the plugin load package configuration from `Resources/config/packages`. Override `build()` in the plugin base class (`<plugin root>/src/SwagBasicExample.php`, extends `Shopware\Core\Framework\Plugin`), call `parent::build($container)`, then load the glob with a Symfony `DelegatingLoader` over `YamlFileLoader`, `GlobFileLoader` and `DirectoryLoader` (all with `new FileLocator('Resources/config')`):
 
 ```php
-class SwagBasicExample extends Plugin
-{
-    public function build(ContainerBuilder $container): void
-    {
-        parent::build($container);
-        $locator = new FileLocator('Resources/config');
-        $resolver = new LoaderResolver([new YamlFileLoader($container, $locator),
-            new GlobFileLoader($container, $locator), new DirectoryLoader($container, $locator)]);
-        $confDir = \rtrim($this->getPath(), '/') . '/Resources/config';
-        (new DelegatingLoader($resolver))->load($confDir . '/{packages}/*.yaml', 'glob');
-    }
-}
+$confDir = \rtrim($this->getPath(), '/') . '/Resources/config';
+$configLoader->load($confDir . '/{packages}/*.yaml', 'glob');
 ```
+
+This is a Symfony bundle requirement; Bundle Extensions are an alternative.
 
 2. Declare a unique channel and a handler in `<plugin root>/src/Resources/config/packages/monolog.yaml`:
 
@@ -46,35 +38,30 @@ monolog:
   channels: ['my_plugin_channel']
   handlers:
     myPluginLogHandler:
-        type: rotating_file
-        path: "%kernel.logs_dir%/my_plugin_%kernel.environment%.log"
-        level: error
-        channels: [ "my_plugin_channel"]
+      type: rotating_file
+      path: "%kernel.logs_dir%/my_plugin_%kernel.environment%.log"
+      level: error
+      channels: ["my_plugin_channel"]
 ```
 
-3. Inject the logger Monolog registers for the channel: service ID `monolog.logger.my_plugin_channel`.
+3. Inject the channel logger by service id `monolog.logger.my_plugin_channel`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Plugin::build()` (inherited from `Shopware\Core\Framework\Bundle`)
-- `Symfony\Component\Config\Loader\DelegatingLoader`, `Symfony\Component\DependencyInjection\Loader\YamlFileLoader`, `GlobFileLoader`, `DirectoryLoader`
-- `src/Resources/config/packages/monolog.yaml`
-- `monolog.channels`, `monolog.handlers`, `rotating_file`
-- `monolog.logger.my_plugin_channel`
+- `monolog.channels`, `monolog.handlers`, handler `type: rotating_file`
+- `monolog.logger.my_plugin_channel` (service id pattern `monolog.logger.<channel>`)
+- `Resources/config/packages/monolog.yaml`
+- `Plugin::build()`, `getPath()`
 
 ## Gotchas
 
-- `Shopware\Core\Framework\Bundle::build()` by default loads only `Resources/config/services.*`, not `packages/`; hence the override. Core bundles (e.g. Storefront) instead call the protected `buildDefaultConfig()`, which loads `{packages}/*` and `{packages}/<env>/*` with all config extensions.
-- The example loader only handles `*.yaml` files.
-- A dedicated channel lets project owners redirect your logs to another handler.
+- In 6.7.15.1 `Bundle::build()` registers services, migrations, filesystems and events only; it does not load `Resources/config/packages`. Core bundles do that through the protected `buildDefaultConfig()`, which plugins do not call by default — hence step 1.
+- A separate channel lets project owners redirect your logs to a different handler.
 
-## Code check (6.7.13.0)
-- confirmed `Plugin` — extends Shopware Bundle — vendor/shopware/core/Framework/Plugin.php:17
-- confirmed `Bundle::build()` — loads services.* only, no packages dir — vendor/shopware/core/Framework/Bundle.php:34
-- confirmed `Resources/config/services.*` — container files globbed in build — vendor/shopware/core/Framework/Bundle.php:222
-- confirmed `Bundle::buildDefaultConfig()` — protected, loads {packages} config — vendor/shopware/core/Framework/Bundle.php:145
-- confirmed `buildDefaultConfig` — used by Storefront bundle build — vendor/shopware/storefront/Storefront.php:29
-- confirmed `rotating_file` — handler type used by core prod monolog config — vendor/shopware/core/Framework/Resources/config/packages/prod/monolog.yaml:8
-- confirmed `monolog.logger.business_events` — channel logger service id pattern used by core — vendor/shopware/core/Framework/DependencyInjection/services.xml:585
-- unverified `monolog.channels` — vendor/symfony/monolog-bundle, out of scope
-- unverified `Bundle::getPath()` — Symfony HttpKernel Bundle, out of scope
+## Code check (6.7.15.1)
+- confirmed `Bundle::build()` — no package config loading, only services/migrations/filesystem/events — vendor/shopware/core/Framework/Bundle.php:35
+- confirmed `Bundle::buildDefaultConfig()` — loads `{packages}/*`, called by core bundles only — vendor/shopware/core/Framework/Bundle.php:158
+- confirmed `Plugin` — abstract base class extending Bundle — vendor/shopware/core/Framework/Plugin.php:17
+- confirmed `monolog.logger.business_events` — core uses the `monolog.logger.<channel>` id pattern — vendor/shopware/core/Framework/DependencyInjection/services.php:772
+- unverified `rotating_file` — symfony/monolog-bundle, out of scope
+- unverified `DelegatingLoader` — vendor/symfony, out of scope

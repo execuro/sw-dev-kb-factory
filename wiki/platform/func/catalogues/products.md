@@ -5,47 +5,51 @@ docType: functional
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/catalogues/products
-sourceHash: 77b35e187b799e70afedf68eb05a0face2307a839324f8cd5201707bed68e8f4
+sourceHash: 79b3d5c5f39269e99a08c9d0708115526cb7f23198c8f08da1ed476c34c321f7
 revision:
   current: true
-  range: "6.7.9.0 - 6.7.13.1"
-  swMax: "6.7.13.1"
-  swMin: "6.7.9.0"
-keywords: ["products", "product creation", "product number", "tax rate", "advanced pricing", "Rule Builder", "variants", "variant generator", "cross-selling", "bundles", "digital products", "SEO", "cheapest price", "warehouse groups"]
-summary: "The product create/edit mask: required save fields plus General, Prices, Deliverability, Variants, Layout, SEO, Cross-Selling and Bundles tabs."
-lastBuilt: 2026-09-15
+  range: "6.7.14.0 - 6.7.14.2"
+  swMax: "6.7.14.2"
+  swMin: "6.7.14.0"
+keywords: ["products", "add product", "variant generator", "advanced pricing", "cross-selling", "digital products", "product number", "stock", "clearance sale", "SEO urls", "bundles", "properties", "3D models", "glb", "warehouse groups"]
+summary: "Creating products in the Administration: required fields, prices, stock, media, variants, SEO, cross-selling, bundles and digital products."
+lastBuilt: 2026-10-20
 ---
 ## What it is
-This page documents the product creation/edit mask in Shopware 6: the fields required to save a new product, and the tabbed areas (General, Specifications, Advanced pricing, Variants, Layout, SEO, Cross-Selling, Bundles, Reviews) available afterward.
+
+The product detail mask in the Administration (Products > Add product). It covers general data, prices, deliverability, visibility, media, specifications, advanced pricing, variants, layout, SEO, cross-selling, bundles, reviews and digital products.
 
 ## When to use
-Use when creating or editing a product, configuring pricing, variants, media, cross-selling, bundles, or digital product delivery.
+
+When creating or editing a product, configuring prices and stock, generating variants, assigning a shopping experience layout, or setting up cross-selling.
 
 ## Key steps / config
-- Required fields before first save: Name, Product number, Tax rate, Price (gross and net), Stock. After saving, Specifications, Extended Prices, Variants, Layout, SEO and Cross Selling tabs become available.
-- General tab: Name, Manufacturer, Product number, Description (WYSIWYG editor); internal SEO links use the placeholder `124c71d524604ccbad6042edce3ac799` plus the target's UUID.
-- AI description assistant (requires a booked Rise plan) generates a description text suggestion from entered key information; generated text must still be checked for legal compliance.
-- Prices: Tax rate, Price (gross/net), Purchase price (gross/net), List price (gross/net, must exceed the product price to display), Cheapest price (last 30 days, gross/net) — required in the EU under Art. 6a of Directive 98/6/EC when advertising price reductions; gross/net can be locked to auto-calculate via the stored tax rate; currency-dependent pricing can be unlinked per currency.
-- Deliverability: Stock, Available stock, Clearance sale, Delivery time, Restock time in days, Free shipping, Min./Max. order quantity, Purchase steps (e.g. a scale of 2 allows purchases of 2, 4, 6...). Stock management changed as of Shopware 6.6.0.0.
-- Warehouses and warehouse groups (from 6.4.19.0, Beyond Plan): select a Warehouse group, then configure per-warehouse Stock, Priority and Delivery time.
-- Visibility & structure: Sales channel, Active for all selected sales channels, Categories, extended visibility (Visible / hide in listing / hide in listing and search), Tags, Search keywords.
-- Media: assign images/videos (supported video formats `webm, mkv, flv, ogv, ogg, avi, mov, wmv, mp4`; MP4 recommended) and 3D models (`glb` format only, rendered via the ThreeJs library) with AR viewing on supported devices.
-- Advanced pricing: define rule-based prices using Rule Builder rules, including scaled prices via quantity/price allocation.
-- Variants: generated from Properties via the Variant Generator (Select values, price surcharges, Value exclusion for combinations); bulk edit supports Overwrite/Clear/Add/Remove per field block, up to 1000 variants selected at once.
-- Cross-Selling: Dynamic product group or Manual selection, with Title, Active, Position and (for dynamic) Sorting and maximum number of products.
-- Bundles tab: "Add product to bundles" / "Manage bundles"; the assignment between products and bundles is synchronized in both directions.
-- Digital products: uploaded as a file bound to the product; customers receive the file by email and can re-download it from Orders in their account.
 
-## Essential identifiers
-- Required fields: `Name`, `Product number`, `Tax rate`, `Price (gross)`, `Price (net)`, `Stock`
-- Supported video formats: `webm, mkv, flv, ogv, ogg, avi, mov, wmv, mp4`
-- 3D model format: `glb`
-- SEO link placeholder: `124c71d524604ccbad6042edce3ac799`
+Required before the first save: Name, Product number, Tax rate, Price (gross and net), Stock. After saving, the tabs Specifications, Extended Prices, Variants, Layout, SEO and Cross Selling become available.
+
+- **General**: name, manufacturer, product number (normally from number ranges), description with WYSIWYG editor. Internal SEO links use a magic placeholder plus the entity UUID. The AI description assistant needs a Rise plan; generated text must be checked for legal conformity.
+- **Prices**: tax rate, price gross/net (lock symbol links them), purchase price, list price (shown only if higher than the price), cheapest price in the last 30 days (needed to advertise price reductions in the EU, Art. 6a of Directive 98/6/EC). Currency-dependent prices are linked to the default price by a factor; the chain symbol unlinks them.
+- **Deliverability**: stock (real-time, reduced on order), available stock (mirrors stock), clearance sale, delivery time (overrides the shipping method's), restock time in days, free shipping, min. order quantity, purchase steps, max. order quantity. Warehouse groups (6.4.19.0, Beyond plan) move stock entry to a per-warehouse screen with priority and delivery time per group.
+- **Visibility and structure**: sales channels, active flag, categories, extended visibility (visible, hide in listing, hide in listing and search), tags, search keywords.
+- **Media**: recommended 600x600 square images (1920x1920 for zoom). Video formats: webm, mkv, flv, ogv, ogg, avi, mov, wmv, mp4 (MP4 most reliable). 3D models: only `glb`, cannot be a cover or used in shopping experiences, AR via QR code on iOS12+ and Android 8.0+ with ARCore 1.9.
+- **Labelling**: release date (informational only), GTIN/EAN, manufacturer product number. **Guarantee (GARAN Label)**: duration in months; label shows only with valid period, manufacturer and manufacturer product number.
+- **Specifications**: measurements, selling unit, product unit, basic unit, packing unit (plural), properties (AI Copilot suggestions on commercial plans), essential characteristics, custom fields. Base price needs selling unit, product unit and basic unit and shows separately only if the basic unit differs from the sales unit.
+- **Advanced pricing**: Rule Builder based prices and scaled prices per quantity.
+- **Variants**: open the Variant Generator, select property options, optionally set price surcharges and value exclusions (combined with "and"), then **Generate variants**. Display options: Main product vs Single variant in listings, and Fan out properties in product list. Variants inherit from the main product until the chain symbol is removed. Variant bulk edit follows the same rules as product bulk edit (max 1000).
+- **Layout**: assign, edit in Designer or remove a shopping experience layout.
+- **SEO**: meta title (about 70 characters), meta description (130-160), SEO keywords, single canonical URL for all variants, Open Graph title, description and image, SEO URLs per sales channel with main category.
+- **Cross-selling**: type Dynamic product group (position, sorting, max products, preview) or Manual assignment.
+- **Bundles**: assign the product to existing bundles; changes sync both ways with the bundle.
+- **Digital products**: upload a file bound to the product; an extra legal checkbox appears at order, and the file is mailed after payment and downloadable under "Orders".
 
 ## Gotchas
-- The MOV video format may not play correctly in some browsers (e.g. Chrome) since it is a proprietary Apple format; MP4 is recommended for best compatibility.
-- 3D files are not automatically optimized for storefront rendering; upload already-optimized files.
-- Bulk edit cannot set the cover image across multiple variants, and updating the gross price does not update the net price.
+
+- Some features appear only after the first save.
+- Stock management changed in 6.6.0.0; older versions use a different article.
+- Updating the gross price does not change the net price in bulk edit; the cover image cannot be set in bulk.
+- 3D files are not optimized automatically for the storefront; upload optimized files.
+- Simple editing mode hides non-essential fields and sections.
 
 ## Version notes
-- Stock management logic changed before Shopware 6.6.0.0; older versions use a different stock management approach.
+
+Warehouses and warehouse groups: 6.4.19.0 with the Beyond plan. Stock logic described applies from 6.6.0.0.

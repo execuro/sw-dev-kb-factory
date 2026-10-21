@@ -6,50 +6,40 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/e2e-playwright/actor-pattern.html
 sourceHash: f70ca9f3487fb381ca780ba3ad3d563601f4ea9f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["actor pattern", "ShopCustomer", "ShopAdmin", "attemptsTo", "goesTo", "expects", "presses", "fillsIn", "selectsRadioButton", "a11y_checks", "Task", "mergeTests", "playwright tasks", "accessibility testing", "acceptance test suite"]
-summary: ATS actor pattern for Playwright tests - ShopCustomer/ShopAdmin actors, goesTo/attemptsTo/expects, keyboard a11y methods, and tasks as fixtures.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["actor pattern", "ShopCustomer", "ShopAdmin", "attemptsTo", "goesTo", "expects", "Task", "presses", "fillsIn", "selectsRadioButton", "a11y_checks", "mergeTests", "playwright task fixture", "acceptance test suite", "e2e test"]
+summary: Shopware Acceptance Test Suite actor pattern - ShopCustomer/ShopAdmin actors, goesTo/attemptsTo/expects, Task fixtures and keyboard a11y methods.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/development/testing/e2e-playwright/page-object.md"]
 ---
 ## What it is
 
-The actor pattern in the Shopware Acceptance Test Suite (ATS) structures Playwright tests as: an **actor** goes to a **page**, attempts a **task**, and expects a result. It is optional; plain Playwright APIs remain usable. It adds two entities besides [page objects](platform/dev/6.7/guides/development/testing/e2e-playwright/page-object.md):
-
-- **Actor** — a user with a given context performing actions.
-- **Task** — a reusable action performed by an actor.
+The actor pattern in the Shopware Acceptance Test Suite (ATS) for Playwright: reusable, human-readable test logic built from three entities — an **Actor** (a user with a context performing actions), a **Task** (a reusable action the actor performs) and **Pages** (page objects the actor acts on, see [page objects](platform/dev/6.7/guides/development/testing/e2e-playwright/page-object.md)). It is optional; plain Playwright APIs stay usable.
 
 ## When to use
 
-Writing readable, reusable E2E test logic (login, add to cart, checkout steps) for Storefront or Administration, including keyboard-driven accessibility checks.
+Writing Storefront or Administration E2E tests where steps like login, add-to-cart or payment selection recur across scenarios, and you want tests to read as "actor goes to page, attempts task, expects result".
 
 ## Key steps / config
 
-Actor properties: `name` (human-readable name), `page` (Playwright page context).
+Actor properties: `name` (human-readable name), `page` (the Playwright page context it navigates).
 
-Primary methods:
+Actor primary methods:
+
 - `goesTo(url)` — navigate to a page URL.
-- `attemptsTo(task)` — run a task function; each task is wrapped in a Playwright test step.
+- `attemptsTo(task)` — run a task function; each task is wrapped in a Playwright test step automatically.
 - `expects(...)` — one-to-one export of Playwright `expect`.
 
-Accessibility methods:
-- `a11y_checks` — verifies a locator is focused and shows a visible focus indicator; called automatically by `presses`, `fillsIn`, `selectsRadioButton`.
-- `presses` — extends Playwright `press` with `a11y_checks` and a default keyboard key press (overridable); keyboard alternative to `click`.
+Default actors: `ShopCustomer` (Storefront user) and `ShopAdmin` (Administration user).
+
+Accessibility methods (keyboard navigation plus visible-focus checks, WCAG-oriented):
+
+- `a11y_checks(locator)` — asserts the locator is focused and shows a visible focus indicator; called automatically by `presses`, `fillsIn`, `selectsRadioButton`.
+- `presses` — extends Playwright `press`, applies the default browser key mapping (overridable); keyboard alternative to `click`.
 - `fillsIn` — extends Playwright `fill` with `a11y_checks`.
-- `selectsRadioButton` — selects a radio button by keyboard navigation, verifying visible focus via `presses`.
+- `selectsRadioButton(group, name)` — selects a radio via keyboard and verifies focus.
 
-Test shape:
-
-```typescript
-test("Product detail test scenario", async ({ ShopCustomer, StorefrontProductDetail, TestDataService }) => {
-  const product = await TestDataService.createBasicProduct();
-  await ShopCustomer.goesTo(StorefrontProductDetail.url(product));
-  await ShopCustomer.attemptsTo(AddProductToCart(product));
-  await ShopCustomer.expects(StorefrontProductDetail.offCanvasSummaryTotalPrice).toHaveText("€99.99*");
-});
-```
-
-A task is a Playwright fixture returning a factory for a named async function:
+A task is a Playwright fixture returning a function:
 
 ```typescript
 export const Login = base.extend<{ Login: Task }, FixtureTypes>({
@@ -62,28 +52,28 @@ export const Login = base.extend<{ Login: Task }, FixtureTypes>({
 });
 ```
 
-Used as `await ShopCustomer.attemptsTo(Login());`. Page objects implement `PageObject` (with `page`, locators and a `url()` method), e.g. `CheckoutConfirm` exposing `paymentMethodRadioGroup`, consumed by the `SelectPaymentMethod` task via `StorefrontCheckoutConfirm`.
+Usage in a test: `await ShopCustomer.attemptsTo(Login());`, or chain tasks such as `AddProductToCart(product)`, `ProceedFromProductToCheckout()`, `SelectPaymentMethod("Invoice")`, `ConfirmOrder()`. Page objects (e.g. `CheckoutConfirm implements PageObject`, `url()` returning `"checkout/confirm"`, locator `.checkout-card` with text "Payment Method") supply the locators tasks use.
 
-Register custom tasks by merging task fixtures into your base test file with Playwright `mergeTests`; the source points to `/src/tasks/shop-customer-tasks.ts` or `/src/tasks/shop-admin-tasks.ts` for that.
+Register your own tasks by merging task fixtures into your base test file with Playwright `mergeTests`; the source points to `/src/tasks/shop-customer-tasks.ts` or `/src/tasks/shop-admin-tasks.ts` for that.
 
 ## Essential identifiers
 
-- Actors: `ShopCustomer` (Storefront), `ShopAdmin` (Administration)
-- Methods: `goesTo`, `attemptsTo`, `expects`, `presses`, `fillsIn`, `selectsRadioButton`, `a11y_checks`
-- Types: `Task`, `FixtureTypes`, `Customer`, `PageObject`
-- Fixtures: `TestDataService`, `DefaultSalesChannel`, `StorefrontAccountLogin`, `StorefrontProductDetail`, `StorefrontCheckoutConfirm`
-- Playwright: `mergeTests`, `base.extend`
+- `ShopCustomer`, `ShopAdmin`
+- `goesTo`, `attemptsTo`, `expects`
+- `a11y_checks`, `presses`, `fillsIn`, `selectsRadioButton`
+- `Task`, `FixtureTypes`, `PageObject` types
+- `TestDataService.createBasicProduct()`, `DefaultSalesChannel`
+- `mergeTests`
 
 ## Gotchas
 
-- Playwright `click` includes actionability checks against flakiness; when using the actor accessibility methods you may need to assert some of those checks for certain locators yourself.
-- Name tasks so the call reads like `Actor.attemptsTo(doSomething)` — `PutProductIntoCart`, not `ProductCart`.
+- Playwright `click` includes built-in actionability checks against flakiness; when you use the actor accessibility methods instead, you may need to assert some of those checks for certain locators yourself.
+- Name tasks so the line reads like `Actor.attemptsTo(doSomething)` — e.g. `PutProductIntoCart`, not `ProductCart`.
 
-## Code check (6.7.13.0)
-- unverified `ShopCustomer` — defined in the external ATS npm package; no occurrence in vendor/shopware
-- unverified `ShopAdmin` — ATS actor, out of scope of the installed Shopware packages
-- unverified `attemptsTo` — ATS Actor method, out of scope
-- unverified `a11y_checks` — ATS Actor accessibility helper, out of scope
-- unverified `Task` — ATS type, out of scope
-- unverified `TestDataService` — ATS service; no occurrence in vendor/shopware
-- unverified `mergeTests` — Playwright API, out of scope
+## Code check (6.7.15.1)
+- unverified `ShopCustomer` — defined in the external @shopware-ag/acceptance-test-suite npm package, out of scope
+- unverified `attemptsTo` — ATS actor method, not part of Shopware core/storefront/administration
+- unverified `a11y_checks` — ATS actor method, out of scope
+- confirmed `frontend.checkout.confirm.page` — Storefront route behind the page object url `checkout/confirm` — vendor/shopware/storefront/Controller/CheckoutController.php:122
+- confirmed `checkout-card` — CSS class on the confirm page payment card the locator targets — vendor/shopware/storefront/Resources/views/storefront/page/checkout/confirm/confirm-payment.html.twig:2
+- confirmed `frontend.account.login.page` — Storefront login page the Login task navigates to — vendor/shopware/storefront/Controller/AuthController.php:77

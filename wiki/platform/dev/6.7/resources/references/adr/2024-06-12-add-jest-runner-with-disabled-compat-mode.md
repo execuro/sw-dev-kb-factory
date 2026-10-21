@@ -6,39 +6,37 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-06-12-add-jest-runner-with-disabled-compat-mode.html
 sourceHash: 264c05b995917f650c3608d7870c94beef9923ad
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["jest", "vue compat mode", "@vue/compat", "compatUtils", "unit:disabled-compat", "unit-watch:disabled-compat", "admin:unit:disabled-compat", "admin:unit-watch:disabled-compat", "DISABLE_JEST_COMPAT_MODE", "@group disabledCompat", "administration unit tests", "vue 3 migration"]
-summary: "ADR 2024-06-12: Jest runner without Vue compat mode for admin tests; unit:disabled-compat scripts, DISABLE_JEST_COMPAT_MODE, @group disabledCompat marker."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["unit:disabled-compat", "unit-watch:disabled-compat", "admin:unit:disabled-compat", "admin:unit-watch:disabled-compat", "DISABLE_JEST_COMPAT_MODE", "@group disabledCompat", "compatUtils", "isCompatEnabled", "jest", "vue compat mode", "administration unit tests", "test runner"]
+summary: "ADR: extra Jest runner for Administration tests without Vue compat mode; mark spec files with @group disabledCompat, run via unit:disabled-compat."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2024-06-12, area administration) adding a second Jest runner that executes Administration component tests with Vue compat mode disabled, so components can be migrated off compat mode one at a time.
+An architecture decision record (2024-06-12, area administration) that adds a second Jest runner, which runs the Administration component tests with the Vue compat mode disabled. Until then all component tests ran with compat mode enabled. To remove compat mode component by component, the tests also had to prove that they pass without it.
 
 ## When to use
 
-When fixing an Administration component or its Jest test to work without `@vue/compat`, and marking that test so it also runs in the compat-free pipeline stage.
+Read it when you write or fix an Administration Jest spec that must pass without the Vue 3 compat mode, or when you see `@group disabledCompat` in a spec header and need to know what it does.
 
 ## Key steps / config
 
-1. Run tests without compat mode via the NPM scripts `unit:disabled-compat` and `unit-watch:disabled-compat`, or the composer wrappers `admin:unit:disabled-compat` and `admin:unit-watch:disabled-compat`. They set the environment variable `DISABLE_JEST_COMPAT_MODE`.
-2. The CI pipeline has a stage `Jest (Administration with disabled compat mode)`.
-3. Mark a test file as compat-free with the `@group disabledCompat` docblock tag:
-   ```javascript
-   /**
-    * @package admin
-    * @group disabledCompat
-    */
-   import { mount } from '@vue/test-utils';
-   ```
-4. To make a component work in both modes, branch with `compatUtils` from `@vue/compat`:
-   ```javascript
-   import { compatUtils } from '@vue/compat';
-   if (compatUtils.isCompatEnabled('INSTANCE_LISTENERS')) {
-       return this.$listeners;
-   }
-   return {};
-   ```
+1. Run the tests without compat mode:
+   - NPM scripts: `unit:disabled-compat`, `unit-watch:disabled-compat`
+   - Composer wrappers: `admin:unit:disabled-compat`, `admin:unit-watch:disabled-compat`
+   - These commands set the environment variable `DISABLE_JEST_COMPAT_MODE` to turn compat mode off.
+2. Mark each spec file that works without compat mode with the `@group` tag `@group disabledCompat` in its header docblock:
+
+```javascript
+/**
+ * @package admin
+ * @group disabledCompat
+ */
+import { mount } from '@vue/test-utils';
+```
+
+3. CI has a separate pipeline stage for these tests, `Jest (Administration with disabled compat mode)`.
+4. To make a component work in both modes, the ADR uses the `compatUtils` helper from `@vue/compat`, for example `compatUtils.isCompatEnabled('INSTANCE_LISTENERS')` to decide whether to return `this.$listeners` or `{}`.
 
 ## Essential identifiers
 
@@ -46,19 +44,18 @@ When fixing an Administration component or its Jest test to work without `@vue/c
 - `admin:unit:disabled-compat`, `admin:unit-watch:disabled-compat`
 - `DISABLE_JEST_COMPAT_MODE`
 - `@group disabledCompat`
-- `compatUtils.isCompatEnabled('INSTANCE_LISTENERS')`
+- `compatUtils.isCompatEnabled()`
 
 ## Gotchas
 
-- A test tagged `@group disabledCompat` still runs in the compat-mode runner as well.
-- Planned follow-up: fix all components and tests, tag them, then remove compat mode from the Jest configuration.
-- In the installed 6.7.13 Administration source, no `compatUtils`, `@vue/compat` import, `disabledCompat` tag or `DISABLE_JEST_COMPAT_MODE` reference was found; spec files, `package.json` and Jest config are not part of the checked source tree, so the runner itself could not be verified. A few legacy components still set `compatConfig: Shopware.compatConfig`.
+- A marked test still runs with compat mode as well, in parallel. Marking a file adds the disabled-compat run; it does not replace the normal one.
+- The planned follow-up was to fix components and tests so they also run without compat mode, mark the fixed tests, and finally remove compat mode from the Jest configuration.
+- In the 6.7.15.1 Administration source, nothing imports `@vue/compat` and nothing calls `isCompatEnabled`. The dual-mode helper pattern is historical there. The `@group disabledCompat` markers are still present in spec files.
 
-## Code check (6.7.13.0)
-- unverified `unit:disabled-compat` — NPM script lives in administration package.json, outside the checked source roots
-- unverified `admin:unit:disabled-compat` — composer script of the monorepo, outside the checked roots
-- unverified `DISABLE_JEST_COMPAT_MODE` — no occurrence in administration src; Jest config out of scope
-- unverified `@group disabledCompat` — no occurrence in administration src; spec files not shipped
-- unverified `compatUtils` — no occurrence in administration src; @vue/compat package out of scope
-- confirmed `compatConfig` — legacy component still references Shopware.compatConfig — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/page/sw-settings-state-machine-detail/index.js:13
-- confirmed `$listeners` — template comment notes vue/compat removes listeners from attrs — vendor/shopware/administration/Resources/app/administration/src/app/component/form/sw-text-field/sw-text-field.html.twig:1
+## Code check (6.7.15.1)
+- confirmed `@group disabledCompat` — spec header tag still used — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/sw-block.spec.js:3
+- confirmed `@group disabledCompat` — also in TypeScript specs — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/shim/create-shim-slot.spec.ts:3
+- unverified `DISABLE_JEST_COMPAT_MODE` — read by Jest config, outside the checked package roots
+- unverified `unit:disabled-compat` — NPM script in package.json, outside the checked roots
+- unverified `admin:unit:disabled-compat` — composer script, outside the checked roots
+- unverified `compatUtils.isCompatEnabled()` — not found in admin src; @vue/compat not imported there

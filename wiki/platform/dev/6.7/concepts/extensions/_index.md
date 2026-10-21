@@ -6,53 +6,42 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/extensions/
 sourceHash: 64536a511e2d03e9e67a623ba58099ad8d95ebba
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["extensions", "apps", "plugins", "app system", "webhooks", "admin api", "manifest.xml", "Shopware\\Core\\Framework\\Plugin", "shopware cloud", "saas", "apps vs plugins", "extension concept"]
-summary: Overview of Shopware extension types - apps (external, webhooks + Admin API, cloud-compatible) vs plugins (in-process, DB access, not supported in cloud).
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["extensions", "apps", "plugins", "app system", "webhooks", "admin api", "Plugin", "Manifest", "manifest.xml", "shopware cloud", "saas", "apps vs plugins"]
+summary: "Shopware's two extension models: apps (external, webhooks + Admin API, cloud-compatible) vs plugins (in-process, DB access, not supported in cloud)."
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/development/extensions/_index.md", "platform/dev/6.7/guides/plugins/apps/app-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-Overview of the two ways to extend the Shopware Core: **apps** and **plugins**. The Core is designed for extensibility without sacrificing maintainability or structural integrity.
+Overview of the two ways to extend the Shopware Core: **apps** and **plugins**. The Core is built to allow extensibility without sacrificing maintainability or structural integrity.
 
 ## When to use
 
-Choosing between an app and a plugin before starting an extension, or explaining why an extension will or will not run in Shopware cloud.
+When deciding whether an extension should be an app or a plugin, before following the matching base guide.
 
 ## Key steps / config
 
-| | Apps | Plugins |
-|---|---|---|
-| Runs | outside the Shopware Core process | inside the Shopware Core process |
-| Integration | notified of events via registered webhooks; modify/read resources through the Admin REST API | react to events, execute custom code, extend services |
-| Database | no direct access | direct access (update-compatibility via guidelines such as service facades and database migrations) |
-| Shopware cloud | supported | **not supported** |
-| Available since | Shopware 6.4.0.0 | — |
-
-Implementation paths:
-
-- Decision guide: [Extensions](platform/dev/6.7/guides/development/extensions/_index.md)
-- [App Base Guide](platform/dev/6.7/guides/plugins/apps/app-base-guide.md) — apps are described by a `manifest.xml`.
-- [Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md) — plugins extend `Shopware\Core\Framework\Plugin`.
+- **Apps** (since Shopware 6.4.0.0): not executed inside the Shopware Core process. They register webhooks to be notified about events and modify/interact with Shopware resources through the Admin REST API. An app is described by its manifest file (`manifest.xml`, parsed by `Shopware\Core\Framework\App\Manifest\Manifest`).
+- **Plugins**: executed inside the Shopware Core process; they can react to events, execute custom code or extend services, and have direct access to the database. Update-compatibility is ensured by guidelines such as a service facade and database migrations. Every plugin class extends `Shopware\Core\Framework\Plugin`.
+- To choose between the two, use the [Extensions guide](platform/dev/6.7/guides/development/extensions/_index.md); then follow the [App Base Guide](platform/dev/6.7/guides/plugins/apps/app-base-guide.md) or the [Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Plugin` (plugin base class)
-- `manifest.xml` (app manifest)
-- Admin API, webhooks
+- `Shopware\Core\Framework\Plugin` — plugin base class
+- `Shopware\Core\Framework\App\Manifest\Manifest` — app manifest model
+- Webhooks, Admin API
 
 ## Gotchas
 
-- Plugins are not supported by Shopware cloud because of their direct access to the Shopware process and the database.
+- Because of their direct access to the Shopware process and the database, plugins are **not supported by Shopware cloud**. Cloud stores can only be extended with apps.
 
 ## Version notes
 
-- The app system was introduced with Shopware 6.4.0.0.
+- The app system was introduced in Shopware 6.4.0.0.
 
-## Code check (6.7.13.0)
-- confirmed `Plugin` — abstract plugin base class extends Shopware Bundle — vendor/shopware/core/Framework/Plugin.php:17
-- confirmed `Bundle` — Shopware Bundle extends Symfony bundle — vendor/shopware/core/Framework/Bundle.php:32
-- confirmed `WebhookDispatcher` — dispatches events to registered app webhooks — vendor/shopware/core/Framework/Webhook/WebhookDispatcher.php:15
-- confirmed `Manifest` — app manifest parsed from XML — vendor/shopware/core/Framework/App/Manifest/Manifest.php:31
-- confirmed `manifest-3.0.xsd` — installed manifest schema — vendor/shopware/core/Framework/App/Manifest/Manifest.php:33
+## Code check (6.7.15.1)
+- confirmed `Plugin` — abstract plugin base class, extends `Bundle` — vendor/shopware/core/Framework/Plugin.php:17
+- confirmed `Manifest` — app manifest class, validated against `manifest-3.0.xsd` — vendor/shopware/core/Framework/App/Manifest/Manifest.php:36
+- confirmed `WebhookManager` — dispatches events to registered webhooks — vendor/shopware/core/Framework/Webhook/Service/WebhookManager.php:38
+- confirmed `ApiRouteScope::ID` — Admin API route scope `api` — vendor/shopware/core/Framework/Routing/ApiRouteScope.php:15

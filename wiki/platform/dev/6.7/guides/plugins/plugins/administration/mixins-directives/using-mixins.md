@@ -5,56 +5,61 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/mixins-directives/using-mixins.html
-sourceHash: 3f07fbea746dab7611eb372b6f8ef42d5ee03c34
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Mixin.getByName", "notification", "createNotificationSuccess", "Shopware.Mixin", "mixins", "existing mixin", "notification mixin", "Component.register", "administration plugin", "user feedback", "vue mixin"]
-summary: "Inject an existing Administration mixin into a plugin component via Mixin.getByName, e.g. the notification mixin providing createNotificationSuccess."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md", "platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/add-mixins.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/displaying-user-feedback.md"]
+sourceHash: 537f329a6b41061dfc5bc97e56eec50a7fd65bc0
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["Mixin.getByName", "mixins", "mixin registry", "notification", "createNotificationSuccess", "Component.register", "Shopware.Mixin", "administration mixin", "shared component logic", "vue mixin", "composables", "plugin administration"]
+summary: Include an existing Administration mixin in a plugin component via Mixin.getByName in the mixins array, e.g. the notification mixin.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md", "platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/add-mixins.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/displaying-user-feedback.md", "platform/dev/6.7/guides/plugins/plugins/administration/single-file-components/roadmap.md"]
 ---
 ## What it is
 
-How a plugin component uses one of the mixins shipped with the Shopware 6 Administration. Mixins behave as in Vue; they are only registered in, and fetched by name from, a global registry.
+How to use an existing Shopware Administration mixin inside a plugin component. Mixins behave as in Vue; only registration and inclusion differ: they are fetched from Shopware's mixin registry by name instead of being imported.
 
 ## When to use
 
-You want built-in Administration behaviour (e.g. user notifications) inside your own component. The list of predefined mixins is in the [mixins reference](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md); to write your own, see [Adding Mixins](platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/add-mixins.md).
+You need shared component logic that the Administration already provides as a mixin (for example, showing notifications) in an Options API component registered by your plugin. The predefined mixins are listed in [Mixins reference](platform/dev/6.7/guides/plugins/plugins/administration/administration-reference/mixins.md); to write your own, see [Adding mixins](platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/add-mixins.md).
 
 ## Key steps / config
 
-1. Find the mixin name in the reference.
-2. Fetch it with `Mixin.getByName` and add it to the component's `mixins` array; its methods become available on `this`:
+1. Destructure `Component` and `Mixin` from the global `Shopware` object.
+2. Fetch the mixin from the registry with `Mixin.getByName('<name>')` and put it into the component's `mixins` array.
+3. Call the mixin's methods via `this` — the `notification` mixin provides `createNotificationSuccess` and siblings.
 
-```js
+```javascript
+// <administration root>/components/swag-basic-example/index.js
 const { Component, Mixin } = Shopware;
 
 Component.register('swag-basic-example', {
-    mixins: [Mixin.getByName('notification')],
+    mixins: [
+        Mixin.getByName('notification')
+    ],
     methods: {
-        greet() {
-            this.createNotificationSuccess({ title: 'Greetings' });
-        },
-    },
+        greet: function () {
+            this.createNotificationSuccess({ title: 'Greetings' })
+        }
+    }
 });
 ```
 
-The `notification` mixin forwards to the `notification` Pinia store (`Shopware.Store.get('notification')`). `createNotificationSuccess` sets `variant: 'success'` and a default title `global.default.success`, which your config overrides. Choosing between notifications and snackbars is covered in [Displaying user feedback](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/displaying-user-feedback.md).
+For choosing between notifications and snackbars, see [Displaying user feedback](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/displaying-user-feedback.md).
 
 ## Essential identifiers
 
-- `Shopware.Mixin.getByName(name)`
-- `notification` mixin: `createNotification`, `createNotificationSuccess`, `createNotificationInfo`
-- `Shopware.Component.register`
+- `Shopware.Mixin.getByName` — registry lookup
+- `Shopware.Mixin.register` — registry registration (used by core mixins)
+- `notification` — mixin name
+- `createNotificationSuccess` — method added by the `notification` mixin
+- `mixins` — component option
 
 ## Gotchas
 
-- `Mixin.getByName` throws `The mixin "<name>" is not registered.` for an unknown or not-yet-registered name.
+- A Single File Component cannot use mixins. The experimental SFC system is adding composables for the commonly used mixins; see [Composables replacing mixins](platform/dev/6.7/guides/plugins/plugins/administration/single-file-components/roadmap.md).
+- Mixins are the stable way to share component logic in Options API components today.
 
-## Code check (6.7.13.0)
-- confirmed `Mixin.getByName` — exposed on Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:175
-- confirmed `getByName` — throws when the mixin is not registered — vendor/shopware/administration/Resources/app/administration/src/core/factory/mixin.factory.ts:53
-- confirmed `notification` — mixin registered under this name — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:13
-- confirmed `createNotification` — delegates to the notification store — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:16
-- confirmed `createNotificationSuccess` — variant success, default title global.default.success — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:20
-- confirmed `createNotificationInfo` — info variant helper — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:30
-- confirmed `Component.register` — exposed on Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:130
+## Code check (6.7.15.1)
+- confirmed `Mixin.getByName` — exposed on the global Shopware object, mapped to `MixinFactory.getByName` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:188
+- confirmed `Mixin.register` — mapped to `MixinFactory.register` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:187
+- confirmed `notification` — core mixin registered under this name — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:15
+- confirmed `createNotificationSuccess` — method of the notification mixin — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:22
+- confirmed `Component.register` — mapped to `AsyncComponentFactory.register` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:135

@@ -5,47 +5,56 @@ docType: functional
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/commercial-features/b2b-components
-sourceHash: 7b83e22a8ab5b9473423fb0a47578eedd695395cb01f2097a7f1d199b790e200
+sourceHash: ad53f4ab0925eca1d426e9deae4f5cd54b088526b5ae4897224cbd5937a4bb53
 revision:
   current: true
   range: "6.7.13.0 - 6.7.13.1"
   swMax: "6.7.13.1"
   swMin: "6.7.13.0"
-keywords: ["B2B Components", "Shopware Commercial", "Shopware Evolve", "employee management", "order approval", "quote management", "organisation units", "budget", "shopping list", "quick order", "individual pricing", "sales agent"]
-summary: "B2B Components (Shopware Evolve/Commercial) provide roles, employee/order approval, quote management, organisation units and budgets for B2B customers."
-lastBuilt: 2026-09-15
+keywords: ["B2B Components", "quote management", "employee management", "order approvals", "organisation units", "budget", "individual pricing", "quick orders", "shopping lists", "sales agent", "Shopware Commercial", "Evolve plan", "approval rules", "product_number", "b2b"]
+summary: "B2B Components: quotes, employees, order approvals, organisation units, budgets, individual pricing, quick orders and shopping lists."
+lastBuilt: 2026-10-20
 ---
 ## What it is
-B2B Components equip a Shopware store with core B2B functionality: roles and employee sub-accounts, order approval workflows, quote management, organisation units, budgets, shopping lists, quick orders and individual pricing. Available from the Shopware Evolve plan via the Shopware Commercial extension.
+
+The B2B Components are a set of business-customer functions delivered with the Shopware Commercial extension from the Evolve plan. They let store customers model their company with roles, employees, organisation units, approvals, budgets and quotes.
 
 ## When to use
-Use when a store sells to business customers who need multi-user company accounts, order-approval chains, negotiated pricing, or hierarchical organisational structures (locations, departments, cost centres).
+
+When enabling B2B functions for customers or customer groups, or configuring quotes, employee roles, approval rules, organisation units, budgets, individual prices, quick orders or shopping lists.
 
 ## Key steps / config
-- Enable per customer: Admin > Customers > Overview > edit customer, activate individual B2B options.
-- Enable per customer group: Settings > Shop > customer groups, activate the customised registration form, then toggle Quick Orders, Employee Management, Quote Management, Order Approvals, Shopping Lists and/or Organisation Units.
-- Global default: Settings > Customer > B2B Components lets you pre-select which areas are enabled automatically for newly registered business customers (applies only going forward, existing customers can still be changed individually).
-- Quote management: storefront customers build a quote draft from the cart (status "Draft" until sent); merchants manage requests under Orders > Quotes in the Admin, with statuses such as Open request, Quote sent, Accepted, Cancelled, Expired; sending a quote requires an Expiry date and can attach a document.
-- Employee management (from 6.5.6.0, Evolve plan): activated per customer; employees are invited by first name, last name and email, accept within 2 hours, and can be assigned roles with permissions limited to employee management, role management and orders.
-- Order Approvals (from 6.5.8.0, Evolve plan): activated per customer; approval rules are created under Roles with Name, Priority, "Gives order approvals", "Needs order approvals", Applies to (All orders / Custom condition using Rule Builder conditions) and Status.
-- Organisation units: hierarchical sub-structures (locations, departments, teams, cost centres) each with their own employees, addresses, payment/shipping methods, product catalogues and budgets; created in the storefront via "Create unit" or in Admin under the customer's Company tab.
-- Advanced product catalogues: per organisation unit, restrict visible product categories; blocked categories/products return a 404 Not Found.
-- Budget (from 6.7.4.0, Evolve plan): configured under Customers > Overview > Company tab; fields include Active, Budget name, Cost centre, Amount in EUR, Technical name, Organisation units, Start date, Renews (None/Weekly/Monthly/Quarterly/Biannual/Yearly), End date, Allow approval requests, notification thresholds and Recipients.
-- Individual Pricing (from 6.7.8.0, requires organisation units): configured under Catalogues > Individual pricing; a pricing rule sets General settings + Target assignment (Companies and organisation units, or Tags), then Conditions on Target products and Discounts (Percentage off, Fixed amount off, Final price to fixed value, Volume pricing).
-- Quick orders (from 6.5.4.0, Evolve plan): activated per customer; lets customers add items by product number or upload a CSV with `product_number` and `quantity` columns.
-- Shopping list (from 6.6.3.0): activated per customer; storefront users can create, duplicate, rename, delete lists and add all items to the cart at once.
-- Sales Agent: a separately installed login for sales agents/dealers to access B2B customers, set up on its own server or subdomain.
+
+Activation:
+
+- Per customer: Admin **Customers > Overview**, edit mode, toggle the individual functions.
+- Per customer group: **Settings > Shop** customer groups, with the customised registration form enabled; functions Quick Orders, Employee Management, Quote Management, Order Approval, Shopping Lists and Organisation Units.
+- Global default for new business customers: **Settings > Customer > B2B Components** (existing customers are not changed).
+
+Functions:
+
+- **Quote management**: customers create a quote draft from the cart (status Draft, invisible to the merchant), then send the request with an optional message. In the Administration under **Orders > Quotes** the merchant edits items, discounts and shipping, then sends the quote with a required expiry date, optional message and document option (none, generated, custom upload). Statuses include Open request, Quote sent, Accepted, Cancelled, Expired. A sent quote can be withdrawn or cancelled; History holds messages, and **Resolve message** marks requests processed.
+- **Employee management** (from 6.5.6.0): invite employees by first name, last name, email; the invitation must be accepted within 2 hours. Roles have a name, an optional default-role flag, and permissions limited to employee management, role management and orders. An employee can belong to multiple companies and organisation units, with a role per assignment.
+- **Order approvals** (from 6.5.8.0): enable per customer, create roles, then approval rules with Name, Priority (higher wins), Gives order approvals, Needs order approvals, Applies to (All orders or Custom condition via Rule Builder style conditions), Status.
+- **Organisation units**: hierarchical units per location, department or cost centre with employees, shipping and billing addresses, payment and shipping methods, product catalogues and budgets; each unit sees only its own orders, addresses and users. Employees switch units after login or in the customer account. Advanced product catalogues restrict visible categories per unit (other categories return 404).
+- **Budget** (from 6.7.4.0): fields Active, Budget name, Cost centre, Amount, Technical name, Organisation units, Start date, Renews (None, Weekly, Monthly, Quarterly, Biannual, Yearly), End date, Allow approval requests, Show remaining budget, notification trigger (X percent used, specific date, X days before end) and recipients. Selected at checkout; exceeding it requires approval.
+- **Individual pricing** (from 6.7.8.0, requires organisation units): **Catalogues > Individual pricing**; target Companies and organisation units or Tags; discount types Percentage off, Fixed amount off, Final price to fixed value, Volume pricing; products filtered with Rule Builder conditions.
+- **Quick orders** (from 6.5.4.0): add by product number or name, or upload a CSV with columns `product_number` and `quantity`.
+- **Shopping lists** (from 6.6.3.0): enabled per customer; create, open, duplicate, rename, delete, add products to cart; merchants manage lists in the customer's Company tab.
+- **Order confirmation to employees**: Flow Builder, Order placed flow (trigger Checkout / Order / Placed), Send email action with the Order confirmation template, recipient Employee.
+- **Sales Agent**: separate installation for agents and dealers.
 
 ## Essential identifiers
-- Settings > Customer > B2B Components (global activation)
-- Customers > Overview > Company tab (organisation units, budgets, shopping lists)
-- Orders > Quotes (Admin quote management)
-- CSV columns for quick order upload: `product_number`, `quantity`
+
+- `product_number`, `quantity` (quick order CSV columns)
+- Admin paths: **Settings > Customer > B2B Components**, **Orders > Quotes**, **Catalogues > Individual pricing**, **Settings > Automation > Flow Builder**
 
 ## Gotchas
-- Employee management, Order Approvals, Budget and Individual Pricing each require a specific minimum Shopware version and the Evolve plan.
-- A quote is only visible to the merchant after the customer explicitly sends it; a Draft is not.
-- Once a budget limit is exceeded, an order can only be completed with approval.
+
+- Global activation only affects newly created business customers.
+- The Company tab appears only when employee management is active for the customer.
+- A sub organisation unit needs a parent; subordinate budgets can optionally use the parent budget.
 
 ## Version notes
-- Employee Management requires 6.5.6.0+, Order Approvals 6.5.8.0+, Quick orders 6.5.4.0+, Shopping list 6.6.3.0+, Budget 6.7.4.0+, Individual Pricing 6.7.8.0+.
+
+Employee management 6.5.6.0, order approvals 6.5.8.0, quick orders 6.5.4.0, shopping lists 6.6.3.0, budgets 6.7.4.0, individual pricing 6.7.8.0.

@@ -1,37 +1,41 @@
 ---
-id: platform/dev/6.7/resources/guidelines/documentation-guidelines/02-conceptual-structure.md
-title: Conceptual Structure
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/02-conceptual-structure.html
+id: platform/dev/6.7/resources/guidelines/documentation-guidelines/02-conceptual-structure.md
 sourceHash: 72816c55b8ebc0d11cc8fd676bd63a5e79db398b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["documentation guidelines", "conceptual outline", "docs structure", "concepts", "products", "guides", "resources", "how-to", "tutorials", "cross-references"]
-summary: "Shopware docs are split into Concepts, Products, Guides and Resources; purpose of each section and how Guides cross-reference Concepts."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/02-conceptual-structure.html
+title: Conceptual Structure
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["conceptual structure", "documentation outline", "concepts", "products", "guides", "resources", "how-to", "tutorials", "cookbooks", "cross-references", "docs sections", "documentation guidelines"]
+summary: "How Shopware developer docs are split into Concepts, Products, Guides and Resources, what each section contains, and how to cross-reference them."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Documentation guideline describing the four top-level sections of the Shopware developer docs (Concepts, Products, Guides, Resources) and what kind of content belongs in each.
+Part of the Shopware documentation guidelines describing the conceptual outline of the developer documentation. The docs are divided into four top-level sections — Concepts, Products, Guides, and Resources — each offering a different level of detail, abstraction, and focus, with writing guidelines established per section.
 
 ## When to use
 
-When deciding where a new documentation article belongs, or how deep and in which style (explain vs. show) it should be written.
+When deciding where a new documentation article belongs, what kind of content (explanation versus code and step-by-step instructions) it should contain, or how it should link to related articles in other sections.
 
 ## Key steps / config
 
-- **Concepts** — core concepts of Shopware and how the platform is organized; an entry point that **explains** rather than **shows** how things work.
-- **Products** — topics specific to a single Shopware product; each product serves as an entry point to other sections. Example: the catalog in the Community Edition and in all commercial plans is technically the same.
-- **Guides** — how-tos, examples, cookbooks and tutorials. Unlike Concepts, Guides show code, give concrete examples and provide step-by-step instructions.
-- **Resources** — structured documentation for API references, code references, testing references, tooling, links, SDKs and libraries, plus contribution and publishing guidelines.
+Place content in the section that matches its purpose:
 
-Cross-referencing: Guides refer back to the Concepts section for related topics. Example from the source: "How to create a custom cart processor" may use terms from "Concepts > Commerce > Checkout > Cart" and relate to "Concepts > Framework > Rules".
+- **Concepts** — the core concepts of Shopware and the entry point for learning how the platform is organized. Articles here **explain** rather than **show** how things work.
+- **Products** — topics specific to a single Shopware product. Every product shares at least some aspects with others and acts as an entry point to the other sections; for example, the catalog used in the Community Edition and in all commercial plans is technically the same.
+- **Guides** — all how-tos, examples, cookbooks, and tutorials. Unlike Concepts articles, Guides show code, give concrete examples, and provide step-by-step instructions.
+- **Resources** — structured documentation such as API references, code references, testing references, tooling, links, SDKs, and libraries, plus guidelines for contribution and publishing.
+
+Cross-reference from Guides back to Concepts for related topics. The guide's example: an article on "How to create a custom cart processor" may use terms explained in "Concepts > Commerce > Checkout > Cart" and relate to topics in "Concepts > Framework > Rules". A clear structure makes these cross-references possible and keeps the documentation readable.
 
 ## Gotchas
 
-- Do not put code-heavy step-by-step material into Concepts; it belongs in Guides, with a link back to the concept.
+- Do not mix explanation-only content into Guides or step-by-step code into Concepts; the split between explaining and showing is the defining difference between the two sections.
 
-## Code check (6.7.13.0)
-- unverified `Concepts > Commerce > Checkout > Cart` — documentation navigation path, not an identifier in vendor/shopware code
-- unverified `Concepts > Framework > Rules` — documentation navigation path, not an identifier in vendor/shopware code
+## Code check (6.7.15.1)
+- unverified `Concepts` — documentation section name, not a code identifier in the vendor/shopware roots
+- unverified `Guides` — documentation section name, no normative code claim to check
+- unverified `Resources` — documentation section name, no normative code claim to check

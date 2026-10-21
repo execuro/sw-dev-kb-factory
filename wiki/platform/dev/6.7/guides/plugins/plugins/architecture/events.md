@@ -1,5 +1,5 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
 id: platform/dev/6.7/guides/plugins/plugins/architecture/events.md
 sourceHash: f79260a76c5dd3bc71d0a92f595fbb630a232c26
@@ -8,42 +8,31 @@ title: Event Extension Architecture
 version: "6.7"
 versions:
   - "6.7"
-keywords: ["ShopwareEvent", "ShopwareSalesChannelEvent", "SalesChannelAware", "getContext", "getSalesChannelContext", "getSalesChannelId", "event subscriber", "extension point", "decoration vs events", "event architecture", "sales channel event", "enrichment"]
-summary: "Architecture rules for Shopware events: enrich data, do not alter control flow; events implement ShopwareEvent, sales channel events add SalesChannelAware."
-lastBuilt: 2026-09-15
+keywords: ["ShopwareEvent", "ShopwareSalesChannelEvent", "SalesChannelAware", "getContext", "getSalesChannelContext", "getSalesChannelId", "event subscriber", "custom event", "decoration", "data enrichment", "sales channel event"]
+summary: Mandatory rules for plugin events - enrichment not control flow, decorate to replace logic, implement ShopwareEvent; sales channel events add two interfaces.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture guideline for events in Shopware 6.7: events are extension points for loading additional data or reacting to system changes. They exist for observation and enrichment, not for changing core control flow, and the page lists the interfaces an event class must implement.
+The architectural contract for using and defining events in Shopware plugins. Events are extension points for loading additional data or reacting to system changes; they are meant for observation and enrichment, not for altering core control flow.
 
 ## When to use
 
-- Designing a new event that core code or your own extension dispatches.
-- Deciding whether an extension should subscribe to an event or decorate a service.
-- Reviewing subscribers for side effects or heavy work.
+When deciding between an event subscriber and service decoration, and when defining a custom event class in a plugin.
 
 ## Key steps / config
 
-Design principles:
+Design principles: events expose extension points without breaking encapsulation; they should not mutate core program flow; replacing business logic uses decoration, not events; events stay predictable and side-effect aware.
 
-1. Events expose extension points without breaking encapsulation.
-2. Events must not mutate core program flow; replacing business logic uses decoration, not events.
-3. Events stay predictable and side-effect aware.
-
-Subscriber guidelines:
-
-- Use events to add data, not to override behavior.
-- Avoid heavy computation or database queries inside subscribers.
-- Keep subscribers idempotent and deterministic.
-- Prefer decoration when logic execution has to change.
-
-Technical requirements (interfaces and the methods they oblige, per installed code):
-
-- Every event implements `\Shopware\Core\Framework\Event\ShopwareEvent` — declares `getContext(): Context`.
-- Sales channel events implement `\Shopware\Core\Framework\Event\ShopwareSalesChannelEvent` (extends `ShopwareEvent`, adds `getSalesChannelContext(): SalesChannelContext`) and `\Shopware\Core\Framework\Event\SalesChannelAware` (adds `getSalesChannelId(): string`).
+1. Use events to add data, not to override behaviour. To change how logic executes, decorate the service instead.
+2. In subscribers, avoid heavy computation and database queries; keep them idempotent and deterministic.
+3. Every custom event implements `\Shopware\Core\Framework\Event\ShopwareEvent` (requires `getContext(): Context`).
+4. Sales channel events additionally implement:
+   - `\Shopware\Core\Framework\Event\ShopwareSalesChannelEvent` (extends `ShopwareEvent`, requires `getSalesChannelContext(): SalesChannelContext`)
+   - `\Shopware\Core\Framework\Event\SalesChannelAware` (requires `getSalesChannelId(): string`)
 
 ```php
-class MyEvent extends Event implements ShopwareSalesChannelEvent, SalesChannelAware
+class MyEvent implements ShopwareSalesChannelEvent, SalesChannelAware
 {
     public function getContext(): Context { /* ... */ }
     public function getSalesChannelContext(): SalesChannelContext { /* ... */ }
@@ -59,14 +48,13 @@ class MyEvent extends Event implements ShopwareSalesChannelEvent, SalesChannelAw
 
 ## Gotchas
 
-- `ShopwareSalesChannelEvent` already extends `ShopwareEvent`, so implementing it satisfies the base requirement; `SalesChannelAware` is a separate interface and must be listed explicitly (core `CustomerLoginEvent` lists both).
-- An event that tries to change what core code does next is a design smell here — use service decoration instead.
+- Events are for enrichment and extension; using a subscriber to change control flow violates the contract — use decoration.
+- `ShopwareSalesChannelEvent` already extends `ShopwareEvent`, so implementing it also covers the base requirement.
 
-## Code check (6.7.13.0)
-- confirmed `ShopwareEvent` — interface in Shopware\Core\Framework\Event — vendor/shopware/core/Framework/Event/ShopwareEvent.php:9
-- confirmed `ShopwareEvent::getContext()` — only member of the interface — vendor/shopware/core/Framework/Event/ShopwareEvent.php:11
+## Code check (6.7.15.1)
+- confirmed `ShopwareEvent` — interface in `Shopware\Core\Framework\Event` — vendor/shopware/core/Framework/Event/ShopwareEvent.php:9
+- confirmed `ShopwareEvent::getContext()` — only required member — vendor/shopware/core/Framework/Event/ShopwareEvent.php:11
 - confirmed `ShopwareSalesChannelEvent` — interface extending ShopwareEvent — vendor/shopware/core/Framework/Event/ShopwareSalesChannelEvent.php:9
 - confirmed `ShopwareSalesChannelEvent::getSalesChannelContext()` — required member — vendor/shopware/core/Framework/Event/ShopwareSalesChannelEvent.php:11
-- confirmed `SalesChannelAware` — interface in Shopware\Core\Framework\Event — vendor/shopware/core/Framework/Event/SalesChannelAware.php:9
+- confirmed `SalesChannelAware` — interface in `Shopware\Core\Framework\Event` — vendor/shopware/core/Framework/Event/SalesChannelAware.php:9
 - confirmed `SalesChannelAware::getSalesChannelId()` — required member — vendor/shopware/core/Framework/Event/SalesChannelAware.php:11
-- confirmed `CustomerLoginEvent` — core event implementing SalesChannelAware and ShopwareSalesChannelEvent — vendor/shopware/core/Checkout/Customer/Event/CustomerLoginEvent.php:26

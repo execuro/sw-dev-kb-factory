@@ -6,44 +6,42 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/routing-navigation/
 sourceHash: 73eec8aee2b2886a0be8ca624e5fa8b0252a94cb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["administration routing", "admin navigation", "menu entry", "admin tab", "override route", "Shopware.Module.register", "routes", "navigation", "routeMiddleware", "vue router", "registerModule"]
-summary: Index of Administration routing guides - custom routes, menu entries, tabs on existing modules, overriding core routes via routeMiddleware.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["routing", "navigation", "admin routes", "menu entry", "tabs", "overriding routes", "Shopware.Module.register", "routes", "routeMiddleware", "vue router", "administration", "main menu"]
+summary: "Index of Administration guides on routing and navigation: custom routes, menu entries, new tabs on existing modules, and overriding routes."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview page of the Shopware 6.7 Administration "Routing and Navigation" guides. It groups four how-tos for plugin developers working with Administration routes, menu entries and tabs:
+Landing page for the Administration guides on adding and managing routes, main-menu entries and tabs in plugin modules. It lists four guides:
 
-- Add Custom Route — define the `routes` object of a module.
-- Add Menu Entry — define the `navigation` array of a module.
-- Add New Tab — add a tab to an existing module page (e.g. product detail) and register its child route.
-- Overriding Routes — change or replace existing core routes.
+- Add Custom Route — define the `routes` of a module (route name, `component`, `path`, `meta`).
+- Add Menu Entry — the `navigation` array of a module and how entries are nested under a parent.
+- Add New Tab (Add Tab to Existing Module) — extend a core detail page with an extra tab and register its child route.
+- Overriding Routes — replacing or adjusting existing Administration routes.
 
 ## When to use
 
-Start here when a plugin needs a new Administration page reachable by URL, a menu item that opens it, an extra tab on a core detail page, or a change to an existing core route (for example its required ACL privilege).
+Start here when a plugin needs to make an Administration module reachable (route plus menu entry) or add a view to an existing core page.
 
 ## Key steps / config
 
-All four topics go through the same registration call, `Shopware.Module.register(moduleId, manifest)`, implemented by `registerModule()` in the Administration module factory. The manifest keys involved are:
+All three mechanisms the sub-guides cover are keys of the module manifest passed to `Shopware.Module.register(moduleId, manifest)`:
 
-- `routes` — object of route configs; each key becomes part of the route name (`<module id with dashes as dots>.<key>`) and the path is prefixed with `/<module id with dashes as slashes>/`.
-- `navigation` — array of menu entries (`id`, `label`, `path`, `parent`, `position`, `color`, `icon`, `privilege`).
-- `routeMiddleware(next, currentRoute)` — function called with each registered top-level route, used to add or replace child routes of existing modules.
+- `routes` — object of route configs; the final route name is the module id with dashes turned into dots plus the route key.
+- `navigation` — array of menu entries; plugin entries must set `parent`.
+- `routeMiddleware(next, currentRoute)` — hook called for routes, used to inject child routes into core modules (the tab guide's approach).
 
-A module must have `routes` or a `routeMiddleware`, otherwise registration is aborted with a warning.
+A module needs either `routes` or a `routeMiddleware`, otherwise registration is aborted.
 
 ## Essential identifiers
 
 - `Shopware.Module.register`
 - `routes`, `navigation`, `routeMiddleware`
-- `registerModule` (module factory)
 
-## Code check (6.7.13.0)
-- confirmed `ModuleFactory.registerModule` — exposed as `Shopware.Module.register` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:123
-- confirmed `routeMiddleware` — optional `(next, currentRoute)` manifest function — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:92
-- confirmed `navigation` — optional array of `Navigation` entries — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:99
-- confirmed `routes` — module without `routes` and without `routeMiddleware` is rejected — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:202
-- confirmed `route.name` — built as `${routePrefixName}.${routeKey}` — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:222
-- confirmed `middlewareHelper.go` — middleware runs for each top-level module route — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:457
+## Code check (6.7.15.1)
+- confirmed `registerModule` — `Shopware.Module.register` maps to `ModuleFactory.registerModule` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:128
+- confirmed `routeMiddleware` — manifest key `(next, currentRoute)` — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:92
+- confirmed `navigation` — manifest key, array of entries — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:99
+- confirmed `routes` — module without `routes` or `routeMiddleware` is rejected — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:202
+- confirmed `parent` — plugin navigation entries without `parent` are dropped — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:293

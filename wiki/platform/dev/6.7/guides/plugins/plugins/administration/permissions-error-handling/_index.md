@@ -6,40 +6,29 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/permissions-error-handling/
 sourceHash: 029a1eb6fb39d559cc933b78980488029a2e96e9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["acl", "privileges", "addPrivilegeMappingEntry", "acl.can", "mapPropertyErrors", "mapPageErrors", "access control", "permissions", "error handling", "api validation errors", "administration security", "admin roles"]
-summary: Overview of Administration guides for ACL privileges (routes, menu entries, shortcuts) and handling/mapping API validation errors in components and pages.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["acl", "permissions", "privileges", "access control", "error handling", "api validation errors", "form errors", "privileges service", "acl service", "administration security"]
+summary: "Section overview for Administration ACL (custom privileges; protected routes, menu entries, shortcuts) and API validation error handling in forms."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section overview for two Administration plugin guides: access control (ACL) and error management. Together they cover how a plugin integrates with the Administration's permission system and how it gives users feedback on API validation errors.
+Section overview for access control and error management in the Shopware Administration, so plugins integrate securely and give users proper feedback. It groups two guides: Add ACL Rules and Add Error Handling.
 
 ## When to use
 
-Start here when a plugin must:
+Start here when a plugin needs to:
 
 - define and register custom ACL privileges;
-- protect routes, menu entries and keyboard shortcuts behind privileges;
+- protect routes, menu entries and shortcuts;
 - handle API validation errors in components;
-- surface and map errors in forms and on pages (e.g. flag a tab that contains an invalid field).
+- surface and map errors in forms and pages.
 
 ## Key steps / config
 
-The section contains two guides:
+- Privileges are registered through the `privileges` service (`Shopware.Service('privileges')`) and checked at runtime through the `acl` service (`Shopware.Service('acl').can(identifier)`); details are on the Add ACL Rules page.
+- Error handling for API validation errors is covered on the Add Error Handling page.
 
-1. **Add ACL Rules** ("Adding Permissions") — register admin privileges with the `privileges` service (`Shopware.Service('privileges').addPrivilegeMappingEntry({ category, parent, key, roles })`), protect routes and navigation with a `privilege` value, and check rights anywhere with the `acl` service's `acl.can(identifier)`.
-2. **Add Error Handling** — read API errors from the error store (`getApiError`, `getApiErrorFromPath`) and map them to computed properties with the component helpers `mapPropertyErrors` and `mapPageErrors` from `Shopware.Component.getComponentHelper()`.
-
-## Essential identifiers
-
-- `Shopware.Service('privileges')`, `addPrivilegeMappingEntry`
-- `Shopware.Service('acl')`, `acl.can`
-- `Shopware.Component.getComponentHelper()`, `mapPropertyErrors`, `mapPageErrors`
-
-## Code check (6.7.13.0)
-- confirmed `addPrivilegeMappingEntry` — public method of the privileges service — vendor/shopware/administration/Resources/app/administration/src/app/service/privileges.service.ts:257
-- confirmed `AclService::can()` — returns true for admins, else checks session userPrivileges — vendor/shopware/administration/Resources/app/administration/src/app/service/acl.service.ts:10
-- confirmed `mapPropertyErrors` — exported error-mapping helper — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:11
-- confirmed `mapPageErrors` — exported page-error helper — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:66
-- confirmed `getComponentHelper` — exposed on `Shopware.Component` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137
+## Code check (6.7.15.1)
+- confirmed `PrivilegesService::addPrivilegeMappingEntry()` — entry point for registering privileges — vendor/shopware/administration/Resources/app/administration/src/app/service/privileges.service.ts:236
+- confirmed `AclService::can()` — returns true for admins, otherwise checks the session's user privileges — vendor/shopware/administration/Resources/app/administration/src/app/service/acl.service.ts:10

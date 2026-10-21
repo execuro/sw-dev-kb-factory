@@ -6,27 +6,25 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-04-03-disable-css-autoprefixer.html
 sourceHash: 12982c0981569309b89a3f0e6bb73a5d1648f5e4
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["theme:compile", "storefront.theme.auto_prefix_css", "padaliyajay/php-autoprefixer", "scssphp/scssphp", "autoprefixer", "vendor prefixes", "css prefix", "browserslist", "all.css", "theme compiler", "scss", "adr"]
-summary: "ADR 2023: CSS auto-prefixing of theme:compile output disabled by default; option later removed, prefix manually in SCSS instead."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["autoprefixer", "css vendor prefixes", "padaliyajay/php-autoprefixer", "scssphp/scssphp", "theme:compile", "storefront.theme.auto_prefix_css", "theme compiler", "ScssPhpCompiler", "browserslist", "all.css", "scss", "adr"]
+summary: ADR 2023-04-03 - Storefront theme:compile stops adding CSS vendor prefixes by default; prefix manually in SCSS. Option removed by 6.7.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2023-04-03, area: storefront) that disables automatic vendor-prefixing of the Storefront CSS compiled by `theme:compile` by default, and plans its deprecation for 6.6.0 so only SCSS compiling remains.
+An architecture decision record (2023-04-03, area storefront) that disables automatic CSS vendor prefixing of the compiled Storefront theme CSS by default. Storefront SCSS is compiled by `scssphp/scssphp`; the prefixes were previously added by the `padaliyajay/php-autoprefixer` package.
 
 ## When to use
 
-When Storefront CSS lacks `-webkit-`/`-moz-` prefixes you expected, when supporting older browsers, or when you need the reasoning behind prefix-free theme compilation.
+- You rely on vendor-prefixed CSS (`-webkit-...`, `-moz-...`) in a Storefront theme and notice it is missing from the compiled `all.css`.
+- You need to decide whether to prefix CSS properties manually in theme SCSS.
 
 ## Key steps / config
 
-Reasons given:
-- Storefront CSS is compiled by `scssphp/scssphp`; the PHP prefixer added little value after the Bootstrap v5 browser-support update.
-- The prefixer significantly slowed `theme:compile` (a problem in SaaS).
-- It hard-coded the prefixed properties and ignored `.browserslist`.
-
-Browser support at the time of the ADR:
+- `bin/console theme:compile` compiles the theme SCSS with scssphp and writes `all.css` without any vendor prefixes.
+- When a prefix is still needed (older browsers, or a property from the ADR's table), write it manually in your SCSS. The ADR recommends this over automatic prefixing anyway.
+- Browser support at the time of the decision (`.browserslist`):
 
 ```
 >= 0.5%
@@ -40,35 +38,35 @@ Safari >= 12
 not Explorer <= 11
 ```
 
-What to do on 6.7:
-1. Write required vendor prefixes manually in your theme SCSS (the ADR's recommendation).
-2. Run `bin/console theme:compile`; the output `all.css` contains no automatic vendor prefixes.
-
-Prefixes the ADR marks as not fully covered by browser support (candidates for manual prefixing): `-webkit-box-reflect`, `-webkit-clip-path` (Safari 7-13, iOS 7-12.5), `-webkit-background-clip` (value `text`), `-webkit-hyphens` (Safari/iOS), `-webkit-mask-repeat`/`-webkit-mask-position`/`-webkit-mask-size` (Chrome, Edge), `position: -webkit-sticky` (Safari 7.1-12.1), `-webkit-flow-from`/`-webkit-flow-into` (no browser support). All listed `-moz-` prefixes are fully covered.
-
 ## Essential identifiers
 
-- `theme:compile` (Storefront theme compile command)
-- `scssphp/scssphp` (`ScssPhp\ScssPhp\Compiler`)
-- `all.css` (compiled theme stylesheet)
+- `theme:compile` (CLI)
+- `scssphp/scssphp` (the SCSS compiler package)
+- `Shopware\Storefront\Theme\ScssPhpCompiler`
 
 ## Gotchas
 
-- The ADR says auto-prefixing could be re-enabled via `storefront.theme.auto_prefix_css` in `Storefront/Resources/config/packages/storefront.yaml`. In 6.7.13.0 neither the key nor that file exists; the `storefront.theme` config tree only offers `config_loader_id`, `theme_path_builder_id`, `available_theme_provider`, `file_delete_delay` (deprecated), `allowed_scss_values` and `validate_on_compile`. There is no switch to turn PHP auto-prefixing back on.
-- `padaliyajay/php-autoprefixer` is not referenced by the installed Shopware packages.
-- Not treated as a hard break: most prefixes are unneeded, some target abandoned properties, the rest are mostly cosmetic.
-- The storefront Node build config (`postcss.config.js`) still lists the `autoprefixer` PostCSS plugin; that is the JS/asset build, not the PHP `theme:compile` SCSS step.
+- Why it was disabled: since the Bootstrap v5 update, most generated prefixes are no longer needed for the supported browsers. The autoprefixer slowed `theme:compile` down noticeably, especially in SaaS. It also hard-coded the properties it prefixed and ignored `.browserslist`.
+- Prefixes that the ADR says may still matter, because support is only partial:
+  - `-webkit-clip-path` (Safari 7–13, iOS 7–12.5)
+  - `-webkit-background-clip: text`
+  - `-webkit-hyphens` (Safari/iOS)
+  - `-webkit-mask-repeat`, `-webkit-mask-position` and `-webkit-mask-size` (Chrome/Edge)
+  - `position: -webkit-sticky` (Safari 7.1–12.1)
+  - `-webkit-box-reflect` (not supported in Firefox)
+- `flow-from`/`flow-into` are not supported by any current browser, so no prefix helps.
+- The ADR does not treat the change as a hard break. Its reasoning: the remaining valid prefixes are mostly cosmetic.
 
 ## Version notes
 
-- ADR (2023): prefixing disabled by default, still switchable via config; deprecation planned for 6.6.0.
-- 6.7.13.0: the config option and the PHP prefixer are gone from the installed code; SCSS compiling only.
+- The ADR made the old prefixing opt-in through the config key `storefront.theme.auto_prefix_css` (in `Storefront/Resources/config/packages/storefront.yaml`). It also announced that auto-prefixing would be deprecated for v6.6.0, leaving SCSS compiling only.
+- In 6.7.15.1, neither that key nor the PHP autoprefixer exists in the code. Manual prefixing in SCSS is the only option.
+- The Storefront JS build (webpack/PostCSS) uses its own npm `autoprefixer`. That is separate from the PHP theme compiler.
 
-## Code check (6.7.13.0)
-- absent `storefront.theme.auto_prefix_css` — not in the storefront `theme` config tree nor anywhere in installed vendor/shopware
-- absent `padaliyajay/php-autoprefixer` — no reference in installed vendor/shopware packages
-- confirmed `storefront.theme.validate_on_compile` — last key of the storefront `theme` config node, no prefix option — vendor/shopware/storefront/DependencyInjection/Configuration.php:36
-- confirmed `storefront.theme` — config node definition — vendor/shopware/storefront/DependencyInjection/Configuration.php:23
-- confirmed `theme:compile` — console command name — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:19
-- confirmed `ScssPhp\ScssPhp\Compiler` — scssphp used for theme SCSS compiling — vendor/shopware/storefront/Theme/ScssPhpCompiler.php:5
-- confirmed `autoprefixer` — PostCSS plugin in the storefront Node build config — vendor/shopware/storefront/Resources/app/storefront/postcss.config.js:6
+## Code check (6.7.15.1)
+- absent `storefront.theme.auto_prefix_css` — no config key or reference anywhere in core/storefront; the opt-in described by the ADR no longer exists
+- absent `padaliyajay/php-autoprefixer` — no reference in core/storefront; the PHP autoprefixer is gone
+- confirmed `ScssPhpCompiler` — theme SCSS is compiled with scssphp, no prefixing step — vendor/shopware/storefront/Theme/ScssPhpCompiler.php:13
+- confirmed `ScssPhp\ScssPhp\Compiler` — the scssphp compiler class is used — vendor/shopware/storefront/Theme/ScssPhpCompiler.php:5
+- confirmed `theme:compile` — CLI command name — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:21
+- confirmed `autoprefixer` — npm PostCSS plugin used only by the Storefront JS/SCSS build — vendor/shopware/storefront/Resources/app/storefront/postcss.config.js:6

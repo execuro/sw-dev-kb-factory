@@ -5,58 +5,59 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/
-sourceHash: a708d2ce05ad5bc3c218fabf109d3716d425b07e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["administration", "admin plugin", "backend ui", "custom module", "vue components", "acl", "Shopware.Module.register", "Shopware.Component.register", "Shopware.Store", "pinia", "vuex", "meteor admin sdk", "webpack"]
-summary: Entry point for extending the Shopware 6.7 Administration from a plugin - module, routes, components, data, ACL, services, templates, state in order.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md", "platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-menu-entry.md", "platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-custom-route.md", "platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/using-base-components.md"]
+sourceHash: 3a1409dd09f13a0be47065aa108492f589de6e73
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["administration plugin", "admin extension", "Shopware.Module.register", "Shopware.Component.register", "Shopware.Store", "pinia", "vuex", "meteor admin sdk", "single file components", "acl", "admin module", "admin workflow"]
+summary: Entry page for extending the Shopware Administration from a plugin, with the recommended workflow from module and route to components, data, ACL and state.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md", "platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md", "platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-menu-entry.md", "platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-custom-route.md"]
 ---
 ## What it is
 
-Section overview for customizing and extending the Shopware Administration (backend UI) from a plugin: adding modules, routes, components, services, permissions and UI logic. It lays out the recommended order in which to work through the Administration plugin guides.
+Overview of the Administration section of the plugin guides: how a plugin adds modules, routes, components, services, permissions and UI logic to the Shopware backend interface, and in which order to approach it.
 
 ## When to use
 
-You are writing a plugin that changes or extends the Administration. Typical cases: a custom module, routes and navigation entries, Vue components, repository/API data, ACL permissions, injected services, template and styling customizations. For stable cross-version extension points usable by both apps and plugins, use the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) instead.
+You extend the Administration from a plugin, e.g. adding a custom module, registering routes and navigation entries, creating Vue components, working with repositories/API data, handling ACL permissions, injecting services, or customizing templates and styling. For stable cross-version extension points, apps and plugins can use the [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md).
 
 ## Key steps / config
 
-Developer workflow for a plugin:
+Recommended workflow:
 
-1. [Add a custom module](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md) (registered via `Shopware.Module.register`) and a [menu entry](platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-menu-entry.md).
+1. [Add a custom module](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md) (`Shopware.Module.register`) and a [menu entry](platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-menu-entry.md).
 2. [Add custom routes](platform/dev/6.7/guides/plugins/plugins/administration/routing-navigation/add-custom-route.md).
-3. [Add custom components](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-component.md) (`Shopware.Component.register`) and [use base components](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/using-base-components.md).
-4. Connect [data](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.md) — repositories or [API requests](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/making-api-requests.md).
+3. [Add custom components](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-component.md) (`Shopware.Component.register` / `extend` / `override`) and [use base components](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/using-base-components.md).
+4. Connect [data](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.md) via repositories or [API requests](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/making-api-requests.md).
 5. Handle permissions and [add ACL rules](platform/dev/6.7/guides/plugins/plugins/administration/permissions-error-handling/add-acl-rules.md).
-6. [Inject services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md) (`Shopware.Service`) and [extend services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/extending-services.md).
+6. [Inject services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md) and [extend services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/extending-services.md).
 7. [Customize templates](platform/dev/6.7/guides/plugins/plugins/administration/templates-styling/writing-templates.md) and [add custom styles](platform/dev/6.7/guides/plugins/plugins/administration/templates-styling/add-custom-styles.md).
-8. Manage state with Pinia stores (`Shopware.Store`); the older Vuex approach is covered in [using Vuex state](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-vuex-state.md).
+8. Manage state with Pinia through `Shopware.Store` ([Pinia guide](platform/dev/6.7/guides/upgrades-migrations/administration/pinia.md)).
+9. Optional: the experimental [Single File Component extension system](platform/dev/6.7/guides/plugins/plugins/administration/single-file-components/_index.md) and its [tutorial](platform/dev/6.7/guides/plugins/plugins/administration/single-file-components/tutorial/_index.md).
 
-Advanced topics: [mixins and directives](platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/using-mixins.md) (`Shopware.Mixin`, `Shopware.Directive`) and [extending webpack](platform/dev/6.7/guides/plugins/plugins/administration/advanced-configuration/extending-webpack.md).
+Advanced: [mixins and directives](platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/using-mixins.md), [extending webpack](platform/dev/6.7/guides/plugins/plugins/administration/advanced-configuration/extending-webpack.md).
 
 ## Essential identifiers
 
 - `Shopware.Module.register`
-- `Shopware.Component.register`
-- `Shopware.Service`
-- `Shopware.Store`
-- `Shopware.Mixin`, `Shopware.Directive`
+- `Shopware.Component.register`, `Shopware.Component.extend`, `Shopware.Component.override`
+- `Shopware.Store` (Pinia)
 
 ## Gotchas
 
-- The Vuex-based global `Shopware.State` is deprecated in the installed code (removal planned for 6.8.0); new plugin code should use `Shopware.Store` (Pinia).
+- Step 8 of the docs also offers [Vuex](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-vuex-state.md); in the installed code the Vuex-based `Shopware.State` is deprecated (`tag:v6.8.0`, "use Store instead") — use `Shopware.Store`.
+- The Options API with TwigJS templates remains the stable way; native Vue Single File Components are experimental.
 
 ## Version notes
 
-- 6.7: Pinia (`Shopware.Store`) is the state API; `Shopware.State` carries `@deprecated tag:v6.8.0`.
+- Single File Components as an alternative to the Options API/TwigJS: available since 6.7.16.0 per the docs (experimental).
+- `Shopware.State` (Vuex) is scheduled for removal in 6.8.0.
 
-## Code check (6.7.13.0)
-- confirmed `Shopware.Module.register` — maps to ModuleFactory.registerModule — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:123
-- confirmed `Shopware.Component.register` — maps to AsyncComponentFactory.register — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:130
-- confirmed `Shopware.Store` — Pinia store instance on the global object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:171
-- deprecated `Shopware.State` — Vuex state factory, removed in v6.8.0, use Store — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:169
-- confirmed `Shopware.Mixin` — mixin registry on the global object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:173
-- confirmed `Shopware.Directive` — directive registry on the global object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:184
-- confirmed `Shopware.Service` — ServiceFactory on the global object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:208
-- unverified `Meteor Admin SDK` — separate npm package, not located in the checked vendor roots
+## Code check (6.7.15.1)
+- confirmed `Shopware.Module.register` — maps to `ModuleFactory.registerModule` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:128
+- confirmed `Shopware.Component.register` — maps to `AsyncComponentFactory.register` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:135
+- confirmed `Shopware.Component.extend` — maps to `AsyncComponentFactory.extend` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:136
+- confirmed `Shopware.Component.override` — maps to `AsyncComponentFactory.override` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137
+- deprecated `Shopware.State` — Vuex state factory, `@deprecated tag:v6.8.0`, use Store — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:182
+- confirmed `Shopware.Store` — Pinia store instance — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:184
+- confirmed `Shopware.Component.registerOverrideComponent` — private mounting hook for override SFCs present in 6.7.15.1 — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:159
+- unverified `Single File Components` — docs: available since 6.7.16.0; release version not derivable from code

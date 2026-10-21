@@ -6,26 +6,29 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-03-25-cache-stampede-protection.html
 sourceHash: 316da6df6ae716f17ef144353fcfece6f6e70c99
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cache stampede", "stampede protection", "Symfony\\Contracts\\Cache\\CacheInterface", "CacheInterface::get", "CachedRuleLoader", "AbstractRuleLoader", "cart_rules", "TagAwareAdapterInterface", "cache miss", "cached store api routes", "performance", "adr"]
-summary: "ADR: Shopware cached services use Symfony CacheInterface::get() with a callback for stampede protection instead of getItem/save; example CachedRuleLoader."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cache stampede", "\\Symfony\\Contracts\\Cache\\CacheInterface", "CacheInterface", "CachedRuleLoader", "AbstractRuleLoader", "cart_rules", "CACHE_KEY", "TagAwareAdapterInterface", "cache get callback", "dog-pile effect", "cache expiry load", "adr"]
+summary: "ADR: cache stampede protection via Symfony CacheInterface::get() with a callback; CachedRuleLoader example, hit/miss logging removed."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2022-03-25). Cache stampede protection prevents many concurrent requests from all recomputing an expired or invalidated cache entry (e.g. a category listing) and overloading the database. Shopware switched its cached services to `\Symfony\Contracts\Cache\CacheInterface`, whose callback-based `get()` provides this protection; it is mainly used in the cached Store API routes and makes the code shorter.
+An architecture decision record (2022-03-25, area: core) on cache stampede protection: a mechanism that stops many concurrent requests from all recomputing the same cache entry once it has expired or been invalidated. Without it, if several users open a category listing that is no longer cached at the same time, all of them hit the database and the server can collapse under the load. Shopware integrated this protection into its caching services by using `\Symfony\Contracts\Cache\CacheInterface` (Symfony's built-in stampede protection, see the Symfony blog post "New in Symfony 4.2: cache stampede protection"), mainly in cached Store API routes.
 
 ## When to use
 
-When writing or decorating a caching service (a `Cached*` decorator) in core or a plugin, or when wondering why such services no longer log cache hits/misses.
+- You write or decorate a Shopware service that caches computed data and want the same stampede-safe pattern.
+- You wonder why `CachedRuleLoader` logs no cache hits or misses.
 
 ## Key steps / config
 
-Pattern: inject `Symfony\Contracts\Cache\CacheInterface` and wrap the expensive call in `$cache->get($key, $callback)` instead of `getItem()`/`isHit()`/`set()`/`save()` on a `Symfony\Component\Cache\Adapter\TagAwareAdapterInterface`.
+Replace manual `getItem()` / `isHit()` / `set()` / `save()` handling on a `Symfony\Component\Cache\Adapter\TagAwareAdapterInterface` with a single `CacheInterface::get()` call that receives a callback computing the value on a miss. Symfony handles locking and recomputation, which also makes the code much shorter.
 
-The installed `Shopware\Core\Checkout\Cart\CachedRuleLoader` follows it; a decorator of `AbstractRuleLoader` must declare both `getDecorated()` and `load()`:
+Installed 6.7.15.1 form of `Shopware\Core\Checkout\Cart\CachedRuleLoader` (abridged); it extends `AbstractRuleLoader` and therefore declares both `getDecorated()` and `load()`:
 
 ```php
+use Symfony\Contracts\Cache\CacheInterface;
+
 class CachedRuleLoader extends AbstractRuleLoader
 {
     final public const CACHE_KEY = 'cart_rules';
@@ -41,24 +44,29 @@ class CachedRuleLoader extends AbstractRuleLoader
 }
 ```
 
-The previous version injected a `LoggerInterface` and logged `cache-hit:`/`cache-miss:`; the new one has no logger.
+The "before" version of the ADR additionally injected a `Psr\Log\LoggerInterface`, logged `cache-hit: cart_rules` / `cache-miss: cart_rules`, and caught `\Throwable` when reading the item.
 
 ## Essential identifiers
 
-- `Symfony\Contracts\Cache\CacheInterface`
-- `Shopware\Core\Checkout\Cart\CachedRuleLoader`, `CachedRuleLoader::CACHE_KEY` (`cart_rules`)
+- `\Symfony\Contracts\Cache\CacheInterface` (`get(key, callback)`)
+- `Shopware\Core\Checkout\Cart\CachedRuleLoader`, `CachedRuleLoader::CACHE_KEY` = `'cart_rules'`
 - `Shopware\Core\Checkout\Cart\AbstractRuleLoader` (`getDecorated()`, `load(Context $context): RuleCollection`)
+- `Symfony\Component\Cache\Adapter\TagAwareAdapterInterface` (previous approach)
 
 ## Gotchas
 
-- Because the service cannot tell a hit from a miss inside `CacheInterface::get()`, hit/miss logging was removed.
-- `CachedRuleLoader` is annotated `@final` and its constructor `@internal`: depend on `AbstractRuleLoader`, do not extend `CachedRuleLoader`.
+- Because the service no longer knows whether `get()` was a hit or a miss, the cache-hit/miss logging was removed.
+- `CachedRuleLoader` is marked `@final` in its docblock (6.7.15.1): depend on and decorate `AbstractRuleLoader` instead of extending the cached class.
 
-## Code check (6.7.13.0)
-- confirmed `CachedRuleLoader` — extends AbstractRuleLoader, annotated @final — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:14
-- confirmed `CachedRuleLoader::CACHE_KEY` — value cart_rules (now final const) — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:16
-- confirmed `CachedRuleLoader::load()` — uses cache->get() with callback — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:34
-- confirmed `Symfony\Contracts\Cache\CacheInterface` — injected into CachedRuleLoader — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:8
-- confirmed `AbstractRuleLoader::getDecorated()` — abstract, required — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:12
-- confirmed `AbstractRuleLoader::load()` — abstract, required — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:14
-- unverified `CacheInterface::get()` stampede behaviour — implemented in vendor/symfony, out of scope
+## Version notes
+
+- In 6.7.15.1 `CachedRuleLoader` uses constructor property promotion with `readonly` properties and `CACHE_KEY` is `final public const`. No `Cached*Route.php` Store API route classes ship in the installed core, so the "cached store api routes" the ADR mentions are not present in this version.
+
+## Code check (6.7.15.1)
+- confirmed `CachedRuleLoader` — extends AbstractRuleLoader, docblock @final — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:14
+- confirmed `CachedRuleLoader::CACHE_KEY` — value 'cart_rules' — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:16
+- confirmed `CacheInterface` — injected Symfony contracts cache — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:23
+- confirmed `CachedRuleLoader::load()` — single cache get with callback to decorated loader — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:34
+- confirmed `AbstractRuleLoader::getDecorated()` — abstract member subclasses must declare — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:12
+- confirmed `AbstractRuleLoader::load()` — abstract, returns RuleCollection — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:14
+- unverified `\Symfony\Contracts\Cache\CacheInterface::get()` — stampede protection lives in vendor/symfony, out of scope

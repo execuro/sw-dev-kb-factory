@@ -1,53 +1,55 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2023-08-03-collecting-entity-data.md
-title: Collecting and dispatching entity data
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
+id: platform/dev/6.7/resources/references/adr/2023-08-03-collecting-entity-data.md
+sourceHash: 8f9efbc95a931d76c3fa83a4efd17ea59983f9e7
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-08-03-collecting-entity-data.html
+title: Collecting and dispatching entity data
 version: "6.7"
 versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-08-03-collecting-entity-data.html
-sourceHash: 8f9efbc95a931d76c3fa83a4efd17ea59983f9e7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["usage data", "entity data collection", "data sharing consent", "allow-list", "usage-data-allow-list.json", "ManyToManyIdField", "ManyToManyAssociationField", "associationName", "usage_data.entity_data.collect", "shopware.usage_data", "gateway batch_size", "puid", "kill-switch"]
-summary: "ADR: consent-based usage data collection of allow-listed entity fields, sent in batches to the shopware AG gateway via scheduled task and queue."
-lastBuilt: 2026-09-15
+keywords: ["usage data", "data sharing consent", "allow-list", "usage-data-allow-list.json", "usage_data.entity_data.collect", "CollectEntityDataTask", "shopware.usage_data.gateway.batch_size", "usage_data_entity_deletion", "ManyToManyIdField", "associationName", "kill-switch", "PUID", "data-services"]
+summary: "ADR: consent-based collection of allow-listed entity fields, sent to the shopware AG gateway in daily low-priority queue batches of 50 with delta sync."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (area `data-services`, 2023-08-03) describing how Shopware extracts entity data from shops, with merchant consent, and transfers it to the *shopware AG* gateway as the basis for data-driven features delivered as apps.
+Architecture decision record (2023-08-03, area data-services) on how a shop extracts entity data and transfers it to *shopware AG* as the basis for data-driven features. It covers consent, exclusion of sensitive data, pseudonymisation, the entity/field allow-list, and the asynchronous, delta-based dispatch process.
 
 ## When to use
 
-Read this when working with the usage data (data sharing) feature in core (`Shopware\Core\System\UsageData`), when adding or checking which entity fields are shared, or when debugging the collection scheduled task, queue messages or deletion tracking.
+Read this when you need to know what entity data a shop shares after the merchant consents, how the allow-list format works (including many-to-many and translated fields), or how the scheduled collection, deletion tracking and gateway kill-switch behave.
 
 ## Key steps / config
 
-Decisions:
+Principles:
 
-- **Consent first**: no data is collected or transferred without explicit merchant consent. Admin users are prompted on the Administration dashboard; the state can be changed later in system settings. Consent changes are sent to and stored on the gateway. Revocation stops the process.
-- **No sensitive data**: personal or business-critical information is excluded. PII is modified so a person cannot be identified; a *personal unique identifier (PUID)* links the same person across sources (entity data, on-site tracking).
-- **Allow-list only**: entities are excluded by default; only entities and fields listed in the allow-list are collected. In 6.7.13.0 the list ships as `usage-data-allow-list.json` next to `UsageDataAllowListService`.
+- **No sharing without consent.** Administration users are prompted on the dashboard; consent can be changed later in the system settings and revoked any time. Consent changes are sent to and stored on the gateway. Without consent nothing is collected or transferred.
+- **No sensitive information** (personal or business-critical data) is collected.
+- **PII** is modified so no person can be identified; a *personal unique identifier (PUID)* links the same person across sources (entity data, on-site tracking) without revealing who they are.
+- Current approach is *data pushing* (prepared on the merchant's servers from the database); a move to *data pulling* via the Admin API is planned.
+- Features built on the data ship as apps, independent of the Shopware release cycle.
 
-Allow-list shape:
+Allow-list: entities are excluded by default; only listed entities and fields are collected. The default list ships as `usage-data-allow-list.json` in the core UsageData package. Shape (entity name to list of field names):
 
 ```json
 {
     "category": ["id", "parentId", "type"],
-    "product": ["id", "parentId", "name", "categories", "tags"]
+    "product": ["id", "parentId", "name"]
 }
 ```
 
-- **Many-to-many associations**: mapping entities (e.g. `product_category`) are not listed. List the association on the owning entity using the `associationName`, not the `propertyName` (e.g. `categories`, not `categoryIds`). Associations with a matching `ManyToManyIdField` (e.g. `new ManyToManyIdField('category_ids', 'categoryIds', 'categories')`) are read as ids directly from the database; other many-to-many associations are resolved by fetching the associated entities first and matching them.
-- **Translated fields** are not resolved automatically — add translation entities (e.g. `product_translation`) to the allow-list explicitly.
+- Many-to-many mapping entities are not listed themselves. List the association on the owning entity instead, using its `associationName` rather than the `propertyName` — e.g. `"product": ["categories", "tags"]`, where `ProductDefinition` declares `new ManyToManyIdField('category_ids', 'categoryIds', associationName: 'categories')`.
+- Associations with a matching `ManyToManyIdField` have their ids read from the database directly; others are resolved by loading the associated mappings beforehand and matching them to the processed entity.
+- Translated fields are not resolved automatically — add the translation entities to the allow-list explicitly.
 
-Runtime behaviour (consequences):
+Process:
 
-- Triggered daily by the scheduled task `usage_data.entity_data.collect` while consent is given, and immediately when consent is granted.
-- For each entity definition, messages go to a low-priority queue and are processed asynchronously; batches of up to 50 entities are sent to the gateway (config `shopware.usage_data.gateway.batch_size`, default `50`).
-- After the first run only deltas (created/updated since the last send) are dispatched.
-- Deletions are stored by an event subscriber and sent (then removed) on the next run; nothing is stored without consent.
-- A remote kill-switch on the gateway stops new messages from being scheduled; already queued messages are still handled.
-
-Relevant config block (`shopware.yaml` defaults):
+- Scheduled task `usage_data.entity_data.collect` runs daily while consent is given, and also right after consent is given.
+- Per entity definition, messages go to the low-priority queue and are processed asynchronously.
+- Entities are sent in batches; default `shopware.usage_data.gateway.batch_size: 50`.
+- After the first run only deltas (created/updated since the last send) are sent.
+- An entity-delete subscriber stores deletions in `usage_data_entity_deletion`; they are sent and removed on the next run. Nothing is stored without consent.
+- A gateway kill-switch can stop new dispatches; messages already queued are still handled.
 
 ```yaml
 shopware:
@@ -61,28 +63,26 @@ shopware:
 
 ## Essential identifiers
 
-- `Shopware\Core\System\UsageData\Services\UsageDataAllowListService`
-- `usage-data-allow-list.json`
-- `Shopware\Core\System\UsageData\ScheduledTask\CollectEntityDataTask` (`usage_data.entity_data.collect`)
-- `Shopware\Core\System\UsageData\Subscriber\EntityDeleteSubscriber`
-- `ManyToManyIdField`, `ManyToManyAssociationField`
-- `shopware.usage_data.gateway.batch_size`
+- `usage_data.entity_data.collect` (scheduled task `CollectEntityDataTask`)
+- `usage-data-allow-list.json`, `UsageDataAllowListService`
+- `shopware.usage_data.collection_enabled`, `shopware.usage_data.gateway.dispatch_enabled`, `shopware.usage_data.gateway.batch_size`
+- `usage_data_entity_deletion` table, `EntityDeleteSubscriber`
+- `ManyToManyIdField`, `associationName`
 
 ## Gotchas
 
-- Using the `propertyName` of a many-to-many field in the allow-list instead of its `associationName` does not include the association.
-- The source's `ProductDefinition` snippet passes `associationName:` as a named argument and adds `SearchRanking` flags; the installed definition passes `'categories'` positionally and has no `SearchRanking` on those associations — the allow-list semantics are the same.
+- Allow-list entries for many-to-many use the association name, not the id-field property name (`categories`, not `categoryIds`).
+- Translated fields are silently missing unless translation entities are allow-listed.
+- The ADR's section "Associations problem: product -> category" is empty in the source.
 
-## Version notes
-
-The ADR announces a planned move from data pushing (reading the database on the merchant's server) to data pulling via the Admin API; it is stated as a plan, not as implemented.
-
-## Code check (6.7.13.0)
-- confirmed `ManyToManyIdField::$associationName` — third constructor argument used to map the association — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ManyToManyIdField.php:14
-- corrected `ManyToManyIdField('category_ids'` — docs: named `associationName:` argument; code passes `'categories'` positionally — vendor/shopware/core/Content/Product/ProductDefinition.php:207
-- confirmed `ManyToManyAssociationField('tags'` — product tags association used in the allow-list example — vendor/shopware/core/Content/Product/ProductDefinition.php:283
-- confirmed `usage_data.entity_data.collect` — scheduled task name, interval `self::DAILY` — vendor/shopware/core/System/UsageData/ScheduledTask/CollectEntityDataTask.php:16
-- confirmed `batch_size` — `shopware.usage_data.gateway.batch_size` defaults to 50 — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:652
-- confirmed `usage-data-allow-list.json` — allow-list loaded from JSON file — vendor/shopware/core/System/UsageData/Services/UsageDataAllowListService.php:31
-- confirmed `product_translation` — translation entity listed explicitly in the allow-list — vendor/shopware/core/System/UsageData/usage-data-allow-list.json:889
-- confirmed `EntityDeleteSubscriber` — subscribes to `EntityDeleteEvent` to track deletions — vendor/shopware/core/System/UsageData/Subscriber/EntityDeleteSubscriber.php:29
+## Code check (6.7.15.1)
+- confirmed `CollectEntityDataTask::getTaskName()` — returns `usage_data.entity_data.collect` — vendor/shopware/core/System/UsageData/ScheduledTask/CollectEntityDataTask.php:16
+- confirmed `CollectEntityDataTask::getDefaultInterval()` — `self::DAILY` — vendor/shopware/core/System/UsageData/ScheduledTask/CollectEntityDataTask.php:21
+- confirmed `batch_size` — default 50 under `shopware.usage_data.gateway` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:694
+- confirmed `UsageDataAllowListService::getDefaultUsageDataAllowList()` — loads `usage-data-allow-list.json` — vendor/shopware/core/System/UsageData/Services/UsageDataAllowListService.php:31
+- confirmed `IterateEntityMessage` — implements `LowPriorityMessageInterface` — vendor/shopware/core/System/UsageData/EntitySync/IterateEntityMessage.php:12
+- confirmed `EntityDeleteSubscriber::DELETIONS_TABLE_NAME` — `usage_data_entity_deletion` — vendor/shopware/core/System/UsageData/Subscriber/EntityDeleteSubscriber.php:31
+- confirmed `EntityDeleteSubscriber::handleEntityDeleteEvent()` — returns early without consent — vendor/shopware/core/System/UsageData/Subscriber/EntityDeleteSubscriber.php:49
+- confirmed `killswitch` — gateway kill-switch queried by the client — vendor/shopware/core/System/UsageData/Client/GatewayClient.php:26
+- confirmed `ManyToManyIdField::$associationName` — constructor argument — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ManyToManyIdField.php:14
+- confirmed `ManyToManyAssociationService::getMappingIdsForAssociationFields()` — resolves many-to-many mapping ids — vendor/shopware/core/System/UsageData/Services/ManyToManyAssociationService.php:33

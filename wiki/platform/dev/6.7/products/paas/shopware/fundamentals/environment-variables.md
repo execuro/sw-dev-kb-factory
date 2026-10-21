@@ -1,43 +1,40 @@
 ---
-id: platform/dev/6.7/products/paas/shopware/fundamentals/environment-variables.md
-title: Environment variables
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/fundamentals/environment-variables.html
+id: platform/dev/6.7/products/paas/shopware/fundamentals/environment-variables.md
+relatedPages:
+  - platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md
+  - platform/dev/6.7/products/paas/shopware/fundamentals/secrets.md
+  - platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md
 sourceHash: b39f220c45c3bbd1f2334a953b8fe2d89a99fba9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["environment variables", "env vars", "app.environment_variables", "application.yaml", ".env", "vault secrets", "sw-paas vault create", "sw-paas application update", "scope", "RUN", "BUILD", "build-time variables", "paas native"]
-summary: "Shopware PaaS Native env var sources and priority (.env, application.yaml, vault) and app.environment_variables entries with name, value, scope RUN/BUILD."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md", "platform/dev/6.7/products/paas/shopware/fundamentals/secrets.md", "platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md"]
+sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/fundamentals/environment-variables.html
+title: Environment variables
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["app.environment_variables", "application.yaml", ".env", "sw-paas vault create", "sw-paas application update", "RUN", "BUILD", "scope", "env vars", "environment variables", "vault secrets", "paas native", "build-time variable", "runtime variable"]
+summary: "PaaS Native env vars: .env < application.yaml app.environment_variables < vault secrets; each entry has name, value and scope RUN or BUILD."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How environment variables are defined for a Shopware project running on Shopware PaaS Native: the three sources, their precedence, and the `app.environment_variables` block of `application.yaml`.
+How environment variables are defined for a Shopware PaaS Native application: three sources with a fixed priority order, and the `app.environment_variables` list in `application.yaml` with per-variable build-time or runtime scope.
 
 ## When to use
 
-When a PaaS Native application needs a configuration value at build time or at runtime, or when a variable seems to have the wrong value because another source overrides it.
+When you need to pass configuration to the Shopware runtime or to the build, and must decide whether a value belongs in the committed `.env`, in [`application.yaml`](platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md), or in a vault secret.
 
 ## Key steps / config
 
-Sources, from lowest to highest priority (higher wins when the same name is defined twice):
+Sources, lowest to highest priority — a higher source overwrites the same variable from a lower one:
 
-| Source | Notes |
-|---|---|
-| `.env` file | Committed to the repository; use for defaults |
-| `application.yaml` | Defined in `app.environment_variables`; non-sensitive per-environment config (see platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md) |
-| Vault secrets | Created via `sw-paas vault create`; sensitive values such as passwords or API tokens (see platform/dev/6.7/products/paas/shopware/fundamentals/secrets.md and platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md) |
+| Source | Where | Use for |
+|---|---|---|
+| `.env` file | committed to the repository | defaults |
+| `application.yaml` | `app.environment_variables` | non-sensitive per-environment config |
+| [Vault secrets](platform/dev/6.7/products/paas/shopware/fundamentals/secrets.md) | `sw-paas vault create` | passwords, API tokens |
 
-A variable in `application.yaml` overwrites the same variable from `.env`; a vault secret overwrites both.
-
-Each entry in `app.environment_variables` needs `name`, `value` and `scope`:
-
-- `RUN` — value is passed to the Shopware application at runtime.
-- `BUILD` — build-time environment variable.
-
-The same name may be defined twice with different scopes to use different values at build time and runtime.
+Each entry in `app.environment_variables` needs `name`, `value` and `scope`. `RUN` passes the value to the Shopware application at runtime; `BUILD` makes it a build-time variable. The same name may be defined twice with different scopes to get different build-time and runtime values.
 
 ```yaml
 app:
@@ -50,27 +47,22 @@ app:
       scope: RUN
 ```
 
-Apply changes after editing `application.yaml`:
-
-```sh
-sw-paas application update
-```
+Apply changes with `sw-paas application update`. For secret handling details see the [secrets vault guide](platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md).
 
 ## Essential identifiers
 
-- `app.environment_variables` (keys `name`, `value`, `scope`)
-- Scopes `RUN`, `BUILD`
-- `sw-paas application update`
-- `sw-paas vault create`
+- `app.environment_variables` (`name`, `value`, `scope`)
+- `RUN`, `BUILD`
+- `.env`, `application.yaml`
+- `sw-paas vault create`, `sw-paas application update`
 
 ## Gotchas
 
-- Editing `application.yaml` has no effect until `sw-paas application update` is run.
-- Do not put secrets in `.env` or `application.yaml`; use vault secrets, which also take precedence over both files.
+- A vault secret overrides both `application.yaml` and `.env`; an `application.yaml` entry overrides `.env`. Keep sensitive values out of `.env` and `application.yaml`.
 
-## Code check (6.7.13.0)
-- unverified `app.environment_variables` — PaaS Native `application.yaml` schema, not part of vendor/shopware
-- unverified `sw-paas application update` — sw-paas CLI, out of scope of vendor/shopware
-- unverified `sw-paas vault create` — sw-paas CLI, out of scope of vendor/shopware
-- unverified `RUN` — PaaS scope value, not defined in vendor/shopware
-- unverified `BUILD` — PaaS scope value, not defined in vendor/shopware
+## Code check (6.7.15.1)
+- unverified `app.environment_variables` — PaaS application.yaml schema, not part of the Shopware code roots
+- unverified `RUN` — PaaS scope value, out of scope
+- unverified `BUILD` — PaaS scope value, out of scope
+- unverified `sw-paas vault create` — PaaS CLI, out of scope
+- unverified `.env` — loaded by the project front controller/Symfony Dotenv, not by the core/storefront/administration sources

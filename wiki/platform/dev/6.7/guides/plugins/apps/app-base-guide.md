@@ -6,36 +6,44 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-base-guide.html
 sourceHash: ea343c469fb6a4d2e95afee198cb78b415a7c7d7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app", "manifest.xml", "custom/apps", "app:refresh", "app:install", "app:activate", "app:list", "app:validate", "--no-validate", "cache:clear", "create app", "app setup", "meta name"]
-summary: Shared foundation for every Shopware app - folder in custom/apps, manifest.xml meta block, app:refresh, app:install --activate, cache clear.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/extensions/apps-concept.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md", "platform/dev/6.7/guides/plugins/apps/create-admin-extension.md", "platform/dev/6.7/resources/references/app-reference/manifest-reference.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["app base guide", "manifest.xml", "custom/apps", "app:refresh", "app:install", "app:activate", "app:list", "app:validate", "--no-validate", "manifest-3.0.xsd", "create app", "app registry", "install app"]
+summary: Shared foundation for every Shopware app - custom/apps folder, manifest.xml meta block, app:refresh, app:install --activate, cache clear.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/concepts/extensions/apps-concept.md
+  - platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md
+  - platform/dev/6.7/guides/plugins/apps/create-admin-extension.md
+  - platform/dev/6.7/resources/references/app-reference/manifest-reference.md
 ---
 ## What it is
 
-The common starting point for all Shopware apps: create an app folder in `custom/apps`, add a valid `manifest.xml`, refresh the app registry, then install and activate the app. See the [App concept](platform/dev/6.7/concepts/extensions/apps-concept.md) for background.
+The common starting point for every Shopware app: create an app folder in `custom/apps`, add a valid `manifest.xml`, refresh the app registry, then install and activate the app. Background: [App concept](platform/dev/6.7/concepts/extensions/apps-concept.md).
 
 ## When to use
 
-You are creating a new app locally. After this foundation, continue with [App registration & backend setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md) for apps needing a backend (registration, webhooks, signing, Admin API credentials, payment methods, tax providers), or [Build an Admin UI app](platform/dev/6.7/guides/plugins/apps/create-admin-extension.md) for Administration-only apps using Vite and the Admin Extension SDK.
+Before building any app. After the manifest is valid, the path diverges:
+
+- **Apps requiring a backend** (registration, signed server-to-server communication, webhooks, Admin API credentials/permissions, payment methods, tax providers): continue with [App registration & backend setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md).
+- **Admin UI apps** (Administration module iterated locally with Vite and the Admin Extension SDK `@shopware-ag/admin-extension-sdk`, no app backend needed): continue with [Build an Admin UI app](platform/dev/6.7/guides/plugins/apps/create-admin-extension.md).
+
+Prerequisites: Shopware running locally, Administration access, shell access to the PHP container for `bin/console`.
 
 ## Key steps / config
 
-Prerequisites: Shopware running locally, Administration access (`/admin`), shell access to the PHP container for `bin/console`.
-
 1. Pick a technical name in UpperCamelCase, e.g. `MyExampleApp`.
-2. Create `custom/apps/MyExampleApp/manifest.xml`. Schema: `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Manifest/Schema/manifest-3.0.xsd` (full reference: [Manifest reference](platform/dev/6.7/resources/references/app-reference/manifest-reference.md)).
+2. Create the folder `custom/apps/MyExampleApp/` containing `manifest.xml`. The folder name must match `<meta><name>` (the validator compares them case-insensitively).
+3. Write the manifest against the schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Manifest/Schema/manifest-3.0.xsd` (set as `xsi:noNamespaceSchemaLocation`, with the usual XMLSchema-instance namespace declared):
 
 ```xml
-<manifest xsi:noNamespaceSchemaLocation="...manifest-3.0.xsd">
+<manifest xsi:noNamespaceSchemaLocation="…/manifest-3.0.xsd">
     <meta>
         <name>MyExampleApp</name>
         <label>Label</label>
         <label lang="de-DE">Name</label>
-        <description>...</description>
-        <author>...</author>
-        <copyright>...</copyright>
+        <description>…</description>
+        <author>…</author>
+        <copyright>…</copyright>
         <version>1.0.0</version>
         <icon>Resources/config/plugin.png</icon>
         <license>MIT</license>
@@ -43,36 +51,42 @@ Prerequisites: Shopware running locally, Administration access (`/admin`), shell
 </manifest>
 ```
 
-3. From the project root in the PHP container, refresh the registry: `bin/console app:refresh` (fix reported validation errors and rerun).
-4. Install by technical name (`<meta><name>`), not path: `bin/console app:install --activate MyExampleApp`.
-5. Check with `bin/console app:list`. Without `--activate` the app is installed inactive; activate in **Extensions > My Extensions > Apps** or with `bin/console app:activate MyExampleApp`.
-6. Clear cache if changes do not show: `bin/console cache:clear`, optionally `bin/console cache:clear:http` or `bin/console cache:clear:all`.
-7. Apps are validated during installation; `bin/console app:validate` reports configuration issues.
+Required meta fields in code: `label`, `name`, `author`, `copyright`, `license`, `version`. Details: [Manifest reference](platform/dev/6.7/resources/references/app-reference/manifest-reference.md).
+
+4. From the project root inside the PHP container (e.g. `/var/www/html`):
+
+```bash
+bin/console app:refresh
+bin/console app:install --activate MyExampleApp
+bin/console app:list
+```
+
+`app:install` takes the technical name (`<meta><name>`), not a filesystem path. Without `--activate` the app is installed inactive; activate it later under **Extensions → My Extensions → Apps** or with `bin/console app:activate MyExampleApp`.
+
+5. Clear caches if changes do not show: `bin/console cache:clear` (also `cache:clear:http` or `cache:clear:all`).
 
 ## Essential identifiers
 
-- `custom/apps/<Name>/manifest.xml`
-- `<meta>`: `name`, `label`, `description`, `author`, `copyright`, `version`, `icon`, `license`
-- `bin/console app:refresh`, `app:install`, `app:activate`, `app:list`, `app:validate`
-- `--activate`, `--no-validate`, `--force`
-- `bin/console cache:clear`, `cache:clear:http`, `cache:clear:all`
+- `custom/apps` (container parameter `shopware.app_dir`)
+- `manifest.xml`, `manifest-3.0.xsd`
+- `bin/console app:refresh` (alias `app:update`)
+- `bin/console app:install --activate <Name>`, option `--no-validate`
+- `bin/console app:activate`, `app:list`, `app:validate`
 
 ## Gotchas
 
-- The folder name and `<meta><name>` must match (per source).
-- `<author>` and `<copyright>` are required; if missing or empty, `app:refresh` fails. The installed `Metadata` class lists `label`, `name`, `author`, `copyright`, `license` and `version` as required meta fields.
-- `--no-validate` on `app:install` skips validation; use it only while debugging.
-- `app:install` asks interactively to accept requested permissions and hosts unless `--force` (`-f`) is passed; `--activate` also has the short form `-a`.
-- `app:refresh` has the alias `app:update` and accepts `--activate`/`--no-validate` too.
+- Missing or empty `<author>` / `<copyright>` makes `bin/console app:refresh` fail.
+- If `app:refresh` reports validation errors, fix them and rerun.
+- Apps are validated during installation; `--no-validate` on `app:install` skips this and is meant only for debugging. Use `bin/console app:validate` to find configuration issues.
 
-## Code check (6.7.13.0)
-- confirmed `app:refresh` — command name, alias `app:update` — vendor/shopware/core/Framework/App/Command/RefreshAppCommand.php:26
-- confirmed `app:install` — takes `name` argument (array), options `force`, `activate`, `no-validate` — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:28
-- confirmed `no-validate` — skips `ManifestValidator::validate()` on install — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:76
-- confirmed `app:activate` — command name — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:15
-- confirmed `app:list` — command name — vendor/shopware/core/Framework/App/Command/AppListCommand.php:19
-- confirmed `app:validate` — command name — vendor/shopware/core/Framework/App/Command/ValidateAppCommand.php:24
-- confirmed `Metadata::REQUIRED_FIELDS` — includes `author` and `copyright` — vendor/shopware/core/Framework/App/Manifest/Xml/Meta/Metadata.php:18
-- confirmed `shopware.app_dir` — `%kernel.project_dir%/custom/apps` — vendor/shopware/core/Framework/DependencyInjection/app.php:182
-- confirmed `cache:clear:http` — only HTTP cache — vendor/shopware/core/Framework/Adapter/Command/CacheClearHttpCommand.php:14
-- confirmed `cache:clear:all` — all caches/pools — vendor/shopware/core/Framework/Adapter/Command/CacheClearAllCommand.php:14
+## Code check (6.7.15.1)
+- confirmed `shopware.app_dir` — set to `%kernel.project_dir%/custom/apps` — vendor/shopware/core/Framework/DependencyInjection/app.php:192
+- confirmed `AppNameValidator::validate()` — folder name vs meta name, compared lowercased — vendor/shopware/core/Framework/App/Validation/AppNameValidator.php:17
+- confirmed `Metadata::REQUIRED_FIELDS` — label, name, author, copyright, license, version — vendor/shopware/core/Framework/App/Manifest/Xml/Meta/Metadata.php:18
+- confirmed `author` — element in manifest-3.0.xsd meta type — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:175
+- confirmed `app:refresh` — command, alias app:update — vendor/shopware/core/Framework/App/Command/RefreshAppCommand.php:27
+- confirmed `app:install` — command name — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:29
+- confirmed `no-validate` — app:install option — vendor/shopware/core/Framework/App/Command/InstallAppCommand.php:122
+- confirmed `app:activate` — command name — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:16
+- confirmed `app:list` — command name — vendor/shopware/core/Framework/App/Command/AppListCommand.php:20
+- confirmed `app:validate` — command name — vendor/shopware/core/Framework/App/Command/ValidateAppCommand.php:25

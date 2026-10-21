@@ -6,24 +6,37 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/flow/add-flow-builder-action.html
 sourceHash: 852b1ba5fa5ce183aa03cdca9605645dc20aff7e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["FlowAction", "flow.action", "action.create.tag", "StorableFlow", "FlowEventAware", "IsFlowEventAware", "BusinessEventCollector", "BusinessEventCollectorEvent", "sw-flow-sequence-action", "/api/_info/flow-actions.json", "custom flow action", "flow builder", "aware interface", "flow trigger", "requirements"]
-summary: "Create a custom Flow Builder action: FlowAction subclass tagged flow.action (key + priority), aware interface, custom trigger event, and admin UI override."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/framework/flow-concept.md", "platform/dev/6.7/guides/development/troubleshooting/flow-reference.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["FlowAction", "flow.action", "StorableFlow", "IsFlowEventAware", "FlowEventAware", "BusinessEventCollector", "BusinessEventCollectorEvent", "/api/_info/flow-actions.json", "sw-flow-sequence-action", "flowBuilderService", "custom flow action", "flow builder action", "action.create.tag", "aware interface"]
+summary: Custom Flow Builder action - FlowAction subclass tagged flow.action, requirements() via aware interfaces, admin sw-flow-sequence-action override.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/concepts/framework/flow-concept.md", "platform/dev/6.7/guides/development/troubleshooting/flow-reference.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md"]
 ---
 ## What it is
 
-Walkthrough for a custom flow action (example `action.create.tag`, plugin `CreateTagAction`): PHP action and registration, scoping via aware interfaces, an optional custom trigger event, and the Administration UI (label, group, config modal).
+How to add a custom action to the Flow Builder: a PHP `FlowAction` registered as a tagged service (example: `action.create.tag`, which creates tags) plus an Administration extension that labels the action and provides its configuration UI. Existing triggers and actions: [Flow reference](platform/dev/6.7/guides/development/troubleshooting/flow-reference.md); background: [Flow Builder concept](platform/dev/6.7/concepts/framework/flow-concept.md).
 
 ## When to use
 
-A plugin adds its own action to Flow Builder. Prerequisites: [Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md), [DI container](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md), [event subscribers](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md). Existing triggers/actions: [Flow reference](platform/dev/6.7/guides/development/troubleshooting/flow-reference.md).
+A plugin must perform its own business task when a flow fires, selectable by the shop owner in the Flow Builder. Requires a plugin, [Dependency injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md) and an event subscriber ([Listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md)).
 
 ## Key steps / config
 
-1. **Aware interface** (for scoping) `src/Core/Framework/Event/TagAware.php`: extends `Shopware\Core\Framework\Event\FlowEventAware`, marked `#[IsFlowEventAware]`, constants `TAG = 'tag'`, `TAG_ID = 'tagId'`, method `getTag()`.
-2. **Action** `src/Core/Content/Flow/Dispatching/Action/CreateTagAction.php`:
+**1. Aware interface** - marks events carrying the data the action needs. The installed code detects awareness by the `#[IsFlowEventAware]` attribute on the interface:
+
+```php
+use Shopware\Core\Framework\Event\IsFlowEventAware;
+
+#[IsFlowEventAware]
+interface TagAware
+{
+    public const TAG = 'tag';
+    public const TAG_ID = 'tagId';
+    public function getTag();
+}
+```
+
+**2. Action class** extending `Shopware\Core\Content\Flow\Dispatching\Action\FlowAction`:
 
 ```php
 class CreateTagAction extends FlowAction
@@ -33,51 +46,56 @@ class CreateTagAction extends FlowAction
     public function requirements(): array { return [TagAware::class]; }
     public function handleFlow(StorableFlow $flow): void
     {
-        $config = $flow->getConfig(); // sequence config, e.g. $config['tags']
-        // $flow->hasStore(TagAware::TAG_ID), $flow->getStore($key), $flow->getData($key)
-        // $this->tagRepository->create($tagData, $flow->getContext());
+        $config = $flow->getConfig();               // config saved with the sequence
+        $tagId = $flow->getStore(TagAware::TAG_ID); // data from aware interfaces
+        $tag = $flow->getData(TagAware::TAG);       // data from the original event
+        /* ... $this->tagRepository->create($tagData, $flow->getContext()); */
     }
 }
 ```
 
-   `getStore($key)` reads aware-interface values; `getData($key)` reads original event or additional data.
-3. **Register** in `src/Resources/config/services.php`; `priority` sets the order in `/api/_info/flow-actions.json`, `key` must equal `getName()`:
+**3. Register** in `src/Resources/config/services.php`; tag `key` must equal `getName()`, `priority` orders the action in `/api/_info/flow-actions.json`:
 
 ```php
-$services->set(Swag\CreateTagAction\Core\Content\Flow\Dispatching\Action\CreateTagAction::class)
+$services->set(CreateTagAction::class)
     ->args([service('tag.repository')])
     ->tag('flow.action', ['priority' => 600, 'key' => 'action.create.tag']);
 ```
 
-4. **Scope** via `requirements()`: `[]` = all triggers; `[OrderAware::class, CustomerAware::class]` = only those events; `[TagAware::class]` = events implementing `TagAware`.
-5. **Custom trigger** (optional): `BasicExampleEvent extends Event implements TagAware` with `EVENT_NAME = 'example.event'`, `getName()`, static `getAvailableData()` (`(new EventDataCollection())->add('tag', new EntityType(TagDefinition::class))`), `getContext()`, `getTag()`. A subscriber on `BusinessEventCollectorEvent::NAME` calls `$this->businessEventCollector->define(BasicExampleEvent::class)` and adds the definition to `$event->getCollection()`; register it with argument `Shopware\Core\Framework\Event\BusinessEventCollector` and tag `kernel.event_subscriber`. Trigger label: `sw-flow.triggers` in `src/Resources/app/administration/src/module/sw-flow/snippet/en-GB.json`.
-6. **Admin label and group**: constant file with `ACTION = { CREATE_TAG: 'action.create.tag' }` and `GROUP = 'customer'`; snippets `create-tag-action.*`. `Component.override('sw-flow-sequence-action', …)` overriding computed `groups` (only for a new group) and `modalName` (returns `'sw-flow-create-tag-modal'`), and methods `getActionDescriptions(sequence)` and `getActionTitle(actionName)` (returns `{ value, icon, label, group }`), falling back to `this.$super(...)`; import in `main.js`. Groups: `general` (default), `tag`, `customer`, `order`.
-7. **Config modal**: `Component.register('sw-flow-create-tag-modal', …)` (index.js + twig using `sw-modal`, `sw-entity-tag-select`), prop `sequence`, emits `process-finish` with `{ ...this.sequence, config }` and `modal-close`; import in `main.js`.
-8. **No modal**: override `openDynamicModal(value)`; when `value` is your action, set `this.selectedAction`, call `this.onSaveActionSuccess({ config })`, then `return`.
+**4. Scope** via `requirements()`: `[]` = all events; `[OrderAware::class, CustomerAware::class]` = events with that awareness; `[TagAware::class]` = a new plugin event implementing `TagAware` and `FlowEventAware` (`getName()`, static `getAvailableData()`, `getContext()`). Add that event to the trigger list with a `kernel.event_subscriber` on `BusinessEventCollectorEvent::NAME` that calls `BusinessEventCollector::define(BasicExampleEvent::class)` and sets the result into `$event->getCollection()`. Trigger label snippet: `sw-flow.triggers.*` in `src/Resources/app/administration/src/module/sw-flow/snippet/en-GB.json`.
+
+**5. Administration** (`src/Resources/app/administration/src/`):
+
+- constants `ACTION = { CREATE_TAG: 'action.create.tag' }`, `GROUP = 'customer'`; snippets `create-tag-action.*` (en-GB, de-DE).
+- `Component.override('sw-flow-sequence-action', ...)`: computed `groups()`, `modalName()` (return `'sw-flow-create-tag-modal'` for the action, else `this.$super('modalName')`); methods `getActionDescriptions(sequence)`, `getActionTitle(actionName)` returning `{ value, icon, label, group }`.
+- `Component.register('sw-flow-create-tag-modal', ...)` with prop `sequence`; emits `process-finish` with `{ ...this.sequence, config }` and `modal-close`. Import both in `main.js`.
+- Without a modal: override `openDynamicModal(value)`, set `this.selectedAction`, call `this.onSaveActionSuccess({ config })`.
+- Groups: `general` (default), `tag`, `customer`, `order`.
 
 ## Essential identifiers
 
 - `Shopware\Core\Content\Flow\Dispatching\Action\FlowAction`, `Shopware\Core\Content\Flow\Dispatching\StorableFlow`
-- `Shopware\Core\Framework\Event\FlowEventAware`, `Shopware\Core\Framework\Event\IsFlowEventAware`
-- `flow.action` tag (`priority`, `key`), `/api/_info/flow-actions.json`
+- `Shopware\Core\Framework\Event\IsFlowEventAware`, `Shopware\Core\Framework\Event\FlowEventAware`
 - `Shopware\Core\Framework\Event\BusinessEventCollector`, `BusinessEventCollectorEvent::NAME`
-- Admin: `sw-flow-sequence-action`, `flowBuilderService`
+- DI tag `flow.action` (`priority`, `key`); `/api/_info/flow-actions.json`
+- Admin: `sw-flow-sequence-action`, `flowBuilderService`, `onSaveActionSuccess`, `openDynamicModal`
 
 ## Gotchas
 
-- The docs' prose names the parent interface `Shopware\Core\Framework\Event\FLowEventAware` (capital L); that spelling does not exist in code.
-- `TagAware` snippet namespace `Swag\ExamplePlugin\...` differs from the action's import `Swag\CreateTagAction\...`; keep them consistent.
-- `FlowExecutor` indexes `flow.action` services by `key`; omitting it breaks execution.
-- The no-modal example uses `Component.register('sw-flow-sequence-action', …)`, but core already registers it — use `Component.override`. `flowBuilderService.getActionName('CREATE_TAG')` only resolves after `flowBuilderService.addActionNames({ CREATE_TAG: 'action.create.tag' })`.
+- The source says the aware interface extends the misspelled `Shopware\Core\Framework\Event\FLowEventAware`; that name does not exist. Core aware interfaces (e.g. `CustomerAware`) carry `#[IsFlowEventAware]` and do not extend `FlowEventAware`; only the event class implements it.
+- `BusinessEventCollector::define()` instantiates the event without its constructor and calls `getName()`; an empty name skips the event.
+- The source's `groups()` override does `this.actionGroups.unshift(GROUP)`, but `actionGroups` is rebuilt from `flowBuilderService.getGroups()` on each access, so the push does not persist; `flowBuilderService.addGroups()` registers a new group.
+- `flowBuilderService.getActionName('CREATE_TAG')` only resolves keys added via `addActionNames()`.
+- The modal-less example uses `Component.register('sw-flow-sequence-action', ...)`, while the rest of the guide extends that core component with `Component.override`.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\Event\FLowEventAware` — wrong casing; the interface is FlowEventAware
-- confirmed `FlowEventAware::getAvailableData()` — static; with getName() and ShopwareEvent::getContext() — vendor/shopware/core/Framework/Event/FlowEventAware.php:11
-- confirmed `IsFlowEventAware` — class-level attribute — vendor/shopware/core/Framework/Event/IsFlowEventAware.php:9
-- confirmed `FlowAction::requirements()` — abstract; getName() static abstract at line 18 — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:14
-- confirmed `flow.action` — tagged_iterator index-by key in FlowExecutor — vendor/shopware/core/Content/DependencyInjection/flow.xml:61
-- confirmed `/api/_info/flow-actions.json` — InfoController route api.info.actions — vendor/shopware/core/Framework/Api/Controller/InfoController.php:231
-- confirmed `StorableFlow::getStore()` — reads aware store values — vendor/shopware/core/Content/Flow/Dispatching/StorableFlow.php:60
-- confirmed `BusinessEventCollector::define()` — returns ?BusinessEventDefinition — vendor/shopware/core/Framework/Event/BusinessEventCollector.php:55
-- corrected `sw-flow-sequence-action` — docs: Component.register in no-modal example; core already registers it — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/index.js:17
-- confirmed `addActionNames` — needed before getActionName('CREATE_TAG') resolves — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/service/flow-builder.service.ts:185
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Framework\Event\FLowEventAware` — misspelling; correct name is `Shopware\Core\Framework\Event\FlowEventAware`
+- confirmed `FlowAction::requirements()` — abstract, with `handleFlow()` and static `getName()` — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:14
+- confirmed `FlowEventAware::getAvailableData()` — static, with `getName()`; extends `ShopwareEvent` (`getContext()`) — vendor/shopware/core/Framework/Event/FlowEventAware.php:11
+- corrected `IsFlowEventAware` — docs: aware interface extends FlowEventAware; awareness read from attribute — vendor/shopware/core/Framework/Event/BusinessEventCollector.php:74
+- confirmed `BusinessEventCollector::define()` — instantiates without constructor, requires `FlowEventAware` — vendor/shopware/core/Framework/Event/BusinessEventCollector.php:55
+- confirmed `BusinessEventCollectorEvent::NAME` — `collect.business-events` — vendor/shopware/core/Framework/Event/BusinessEventCollectorEvent.php:14
+- confirmed `flow.action` — actions collected by tagged iterator indexed by `key` — vendor/shopware/core/Content/DependencyInjection/flow.php:164
+- confirmed `/api/_info/flow-actions.json` — route `api.info.actions` — vendor/shopware/core/Framework/Api/Controller/InfoController.php:238
+- corrected `actionGroups` — docs: unshift into it; getter rebuilt from `getGroups()` — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/store/flow.store.ts:162
+- confirmed `addGroups` — registers action groups in `flowBuilderService` — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/service/flow-builder.service.ts:190

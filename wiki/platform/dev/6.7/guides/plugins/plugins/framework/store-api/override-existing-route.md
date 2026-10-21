@@ -1,72 +1,76 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/plugins/plugins/framework/store-api/override-existing-route.md
-sourceHash: 40dc4c77d708cd69a7171feb2334bcd6cb7287cc
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/store-api/override-existing-route.html
 title: Override Existing Route
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["override store api route", "decorate route", "decorator pattern", "ExampleRouteDecorator", "AbstractExampleRoute", "getDecorated", "decorate", ".inner", "StoreApiRouteScope", "DecorationPatternException", "services.php", "extend store api response"]
-summary: Override a Store API route by decorating its abstract route class - getDecorated() returns the inner route, service registered with decorate() and .inner.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/store-api/override-existing-route.html
+sourceHash: 40dc4c77d708cd69a7171feb2334bcd6cb7287cc
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["store-api", "decorate route", "route decorator", "AbstractExampleRoute", "ExampleRouteDecorator", "getDecorated", "StoreApiRouteScope", "PlatformRequest::ATTRIBUTE_ROUTE_SCOPE", ".inner", "decoration pattern", "override store api", "services.php"]
+summary: Override a Store API route by decorating its Abstract route class, delegating to the inner route via getDecorated() and registering with decorate().
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md"]
 ---
 ## What it is
 
-How to override (decorate) an existing Store API route to change or enrich its response, using the `AbstractExampleRoute` / `ExampleRoute` pair from [Add Store API Route](platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md). Core Store API routes follow the same pattern (e.g. `AbstractProductListingRoute` with `getDecorated()` and `load()`).
+How to change the result of an existing Store API route (e.g. add data or headers) by decorating it: a new class extends the route's `Abstract...Route` base class, wraps the original route and calls it. The example decorates `ExampleRoute` from the [Add Store API route](platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md) guide; the plugin follows the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
 
 ## When to use
 
-You want to add data, headers, or custom logic to a Store API route you do not own, without replacing its controller. Built on the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
+You need to extend or alter the response of a Store API route (core or your own) without replacing the route class, so other plugins decorating the same route keep working.
 
 ## Key steps / config
 
-1. Create a class extending the route's abstract class; accept the decorated route in the constructor and return it from `getDecorated()`; call the decorated `load()` with the same arguments inside your `load()`:
-   ```php
-   #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StoreApiRouteScope::ID]])]
-   class ExampleRouteDecorator extends AbstractExampleRoute
-   {
-       public function __construct(EntityRepository $exampleRepository, private AbstractExampleRoute $decorated) { /* ... */ }
+1. Create a class extending the abstract route (here `AbstractExampleRoute`), named e.g. `ExampleRouteDecorator`. Core abstract routes declare exactly two abstract members: `getDecorated()` returning the abstract type, and the route method (for the example, `load`).
+2. Accept the inner route (typed as the abstract class) in the constructor; `getDecorated()` returns it.
+3. In `load()`, call the inner route with the same arguments, then modify the response. Store API responses extend Symfony's `Response`, so `->headers` is available.
 
-       public function getDecorated(): AbstractExampleRoute { return $this->decorated; }
+```php
+#[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StoreApiRouteScope::ID]])]
+class ExampleRouteDecorator extends AbstractExampleRoute
+{
+    public function __construct(EntityRepository $exampleRepository, AbstractExampleRoute $exampleRoute) { /* ... */ }
+    public function getDecorated(): AbstractExampleRoute { return $this->decorated; }
 
-       #[Route(path: '/store-api/example', name: 'store-api.example.search', methods: ['GET', 'POST'], defaults: ['_entity' => 'category'])]
-       public function load(Criteria $criteria, SalesChannelContext $context): ExampleRouteResponse
-       {
-           $response = $this->decorated->load($criteria, $context);
-           $response->headers->add(['cache-control' => 'max-age=10000']);
-           return $response;
-       }
-   }
-   ```
-2. Register it in `<plugin root>/src/Resources/config/services.php`, after `ExampleRoute`, decorating it and passing the inner service as second argument:
-   ```php
-   $services->set(ExampleRouteDecorator::class)
-       ->decorate(ExampleRoute::class)
-       ->public()
-       ->args([service('swag_example.repository'), service('.inner')]);
-   ```
+    #[Route(path: '/store-api/example', name: 'store-api.example.search', methods: ['GET', 'POST'], defaults: ['_entity' => 'category'])]
+    public function load(Criteria $criteria, SalesChannelContext $context): ExampleRouteResponse
+    {
+        $response = $this->decorated->load($criteria, $context);
+        $response->headers->add(['cache-control' => 'max-age=10000']);
+        return $response;
+    }
+}
+```
+
+4. Register it in `<plugin root>/src/Resources/config/services.php` as a decorator of the original route, passing the inner service:
+
+```php
+$services->set(ExampleRouteDecorator::class)
+    ->decorate(ExampleRoute::class)
+    ->public()
+    ->args([service('swag_example.repository'), service('.inner')]);
+```
 
 ## Essential identifiers
 
-- `ExampleRouteDecorator`, `AbstractExampleRoute`, `ExampleRoute`
-- `getDecorated()`, `load()`
-- `->decorate(...)`, `service('.inner')`
-- `StoreApiRouteScope::ID`, `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE`
+- `Shopware\Core\PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` (`_routeScope`)
+- `Shopware\Core\Framework\Routing\StoreApiRouteScope::ID` (`store-api`)
+- `getDecorated()`, `decorate()`, `service('.inner')`
+- `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`
+- Example names: `AbstractExampleRoute`, `ExampleRoute`, `ExampleRouteDecorator`, `ExampleRouteResponse`, `store-api.example.search`
 
 ## Gotchas
 
-- The source snippet calls `$this->decorated->load()` without arguments and misses a semicolon; the abstract signature requires `load(Criteria $criteria, SalesChannelContext $context)`, so pass both through.
-- Only the undecorated base route throws `DecorationPatternException` from `getDecorated()`; a decorator must return the inner instance.
-- The prose mentions `ExampleRouteDecorator.inner` as the inner service id, while the PHP config uses the `.inner` shortcut; core XML service files use the `<decorator id>.inner` form.
+- The source snippet calls `$this->decorated->load()` without arguments and has a missing semicolon; the inner route must be called with the method's arguments (`$criteria`, `$context`), as above.
+- The prose says to pass `ExampleRouteDecorator.inner`; the code sample uses `service('.inner')`.
+- Core base routes (e.g. `CategoryRoute`) throw `DecorationPatternException` from `getDecorated()` — only decorators return an inner route, so always decorate the `Abstract...Route` type.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractProductListingRoute::getDecorated()` — core route abstract with the same decoration pattern — vendor/shopware/core/Content/Product/SalesChannel/Listing/AbstractProductListingRoute.php:16
-- confirmed `AbstractProductListingRoute::load()` — abstract load on core route — vendor/shopware/core/Content/Product/SalesChannel/Listing/AbstractProductListingRoute.php:18
-- confirmed `DecorationPatternException` — thrown by undecorated core route — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingRoute.php:49
+## Code check (6.7.15.1)
+- confirmed `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` — constant value `_routeScope` — vendor/shopware/core/PlatformRequest.php:78
 - confirmed `StoreApiRouteScope::ID` — value `store-api` — vendor/shopware/core/Framework/Routing/StoreApiRouteScope.php:15
-- confirmed `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` — value `_routeScope` — vendor/shopware/core/PlatformRequest.php:77
-- confirmed `.inner` — core decorators reference `<id>.inner` services — vendor/shopware/core/Content/DependencyInjection/flow.xml:17
-- unverified `->decorate()` — Symfony DI configurator API, vendor/symfony out of scope
+- confirmed `AbstractCategoryRoute::getDecorated()` — abstract routes require getDecorated() plus the route method — vendor/shopware/core/Content/Category/SalesChannel/AbstractCategoryRoute.php:16
+- confirmed `CategoryRoute::getDecorated()` — base route throws DecorationPatternException — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:52
+- confirmed `StoreApiResponse` — extends Symfony Response, so headers can be modified — vendor/shopware/core/System/SalesChannel/StoreApiResponse.php:14
+- unverified `AbstractExampleRoute` — example plugin class from the add-route guide, not in core
+- unverified `.inner` — Symfony DI decoration feature, vendor/symfony out of scope

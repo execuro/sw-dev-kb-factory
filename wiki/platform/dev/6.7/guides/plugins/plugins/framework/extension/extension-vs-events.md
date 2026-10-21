@@ -6,68 +6,64 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/extension/extension-vs-events.html
 sourceHash: a68010773a808d3258adaf8d7cc55c4089470164
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["extension points vs events", "Extension", "ExtensionDispatcher", "ResolveListingExtension", "ProductPriceCalculationExtension", "ProductListingCriteriaEvent", "stopPropagation", "result", "service decoration", "event subscriber", "replace core logic", "side effects", "notification"]
-summary: When to use Extension Points (replace/short-circuit core logic via result and stopPropagation) vs events (side effects) vs service decoration.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["extension points vs events", "Extension", "ExtensionDispatcher", "ResolveListingExtension", "ProductPriceCalculationExtension", "ProductListingCriteriaEvent", "stopPropagation", "result", "service decoration", "side effects", "replace core logic", "event subscriber"]
+summary: "When to use Extension Points (replace core logic, result + stopPropagation) vs events (side-effect notifications) vs service decoration in Shopware 6.7."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md"]
 ---
 ## What it is
 
-A decision guide comparing Shopware's two extension mechanisms: **Extension Points** (result-oriented, can replace or short-circuit core logic) and **Events** (notifications about something that happened, side effects only), plus how extension points relate to service decoration.
+A comparison of the two extension mechanisms: **Extension Points** (result-oriented, flow-controlling — "change how this works") and **Events** (notification, fire-and-forget — "know when this happens"), plus how extension points compare to service decoration.
 
 ## When to use
 
-You need to decide whether to hook a subscriber onto an extension point, an ordinary event, or decorate a service.
+Deciding whether a plugin should subscribe to an extension point, listen to a regular event, or decorate a service.
 
 ## Key steps / config
 
-**Use an extension point** to replace core functionality, modify data before processing, integrate an external system (e.g. pricing, listing loading), or apply conditional business logic. Subscribe to `<NAME>.pre`, set `$event->result`, call `$event->stopPropagation()`:
+**Use an Extension Point** to replace core functionality, modify data before processing, integrate an external system (e.g. external pricing/search), or add conditional business logic. Subscriber shape:
 
 ```php
 public function onResolveListing(ResolveListingExtension $event): void
 {
     $event->result = $this->customProductLoader->load($event->criteria, $event->context);
-    $event->stopPropagation();
+    $event->stopPropagation(); // skip the default implementation
 }
 ```
 
-Error handling is built in: if the default implementation throws, the exception is stored on `$extension->exception`, the `<name>.error` event is dispatched, and the exception is rethrown only when no subscriber supplied a result.
+Extension points run before/during the action. Errors in the default implementation are caught by `ExtensionDispatcher::publish()`: `$extension->exception` is set, `<name>.error` is dispatched, and the exception is rethrown only if no subscriber set `result`.
 
-**Use an event** to send notifications, log actions, sync external systems, or trigger follow-up work after the action completed. Handlers cannot return values or control flow; error handling is up to the developer.
+**Use an Event** to send notifications, log actions, update external systems, or trigger follow-ups. Events run after the action, cannot return values or control flow, and error handling is up to the listener.
 
-**Migration**: listing logic previously adjusted through `ProductListingCriteriaEvent` (adding filters) plus post-processing loaded products can instead replace the whole listing resolution via `ResolveListingExtension`.
+**Comparison** (from the source): extension points return values via `result` and control flow via `stopPropagation()`; events do neither. Extension points have higher complexity and potentially significant performance impact; events are usually minimal.
 
-| Aspect | Extension Points | Events |
-|---|---|---|
-| Return values | Yes (`result` property) | No |
-| Flow control | Yes (`stopPropagation()`) | No |
-| Timing | Pre/during action | Post-action |
-| Performance impact | Can be significant | Usually minimal |
+**Extension points vs decoration** — see [adjusting a service](platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md): multiple extensions are independent subscribers rather than a nested decorator chain; one misbehaving subscriber affects only itself; new parameters become new extension properties instead of signature changes in every decorator; extension classes and event names are discoverable. Prefer an extension point when one exists; decorate only when none does.
 
-**Extension points vs service decoration** (see `platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md`): extension points allow independent subscribers on the same logic; a misbehaving subscriber affects only itself; new parameters become new properties without breaking subscribers; they are discoverable by class and event name. Decorators form a chain where one broken link drops others, and signature changes force a plugin major per Shopware major. Prefer an extension point when one exists; decorate only when none does.
+**Migration**: logic that used `ProductListingCriteriaEvent` to modify listing criteria can instead subscribe to `ResolveListingExtension` and replace the listing resolution.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Extensions\Extension` (`$result`, `$exception`, `stopPropagation()`)
 - `Shopware\Core\Framework\Extensions\ExtensionDispatcher`
 - `Shopware\Core\Content\Product\Extension\ResolveListingExtension` (`listing-loader.resolve`)
-- `Shopware\Core\Content\Product\Extension\ProductPriceCalculationExtension` (`product.calculate-prices`)
+- `ProductPriceCalculationExtension` (`product.calculate-prices`)
 - `ProductListingCriteriaEvent`
+- `$event->result`, `$event->stopPropagation()`
 
 ## Gotchas
 
-- Many example class names in the source are illustrative and do not exist in core: `ProductCreatedEvent`, `ProductUpdatedEvent`, `ProductLoadedEvent`, `OrderPlacedEvent`, `OrderCompletedEvent`, `CustomerRegisteredEvent`, `ProductListingExtension`, `ProductSearchExtension`. Real counterparts include `CheckoutOrderPlacedEvent` and `CustomerRegisterEvent`, or the generic `product.written`/`product.loaded` entity events.
-- Extension points are public API and can break core behaviour; use sparingly, test extensively, and provide fallbacks. Keep event handlers light and move heavy work to message queues.
+- `ProductPriceCalculationExtension` is typed `Extension<void>`: the source's examples assigning a price list to `$event->result` do not match the declared result type.
+- Many class names in the source are illustrative and do not exist in core: `ProductListingExtension`, `ProductSearchExtension`, `ProductCreatedEvent`, `ProductUpdatedEvent`, `ProductLoadedEvent`, `OrderPlacedEvent`, `OrderCompletedEvent`, `CustomerRegisteredEvent`.
+- Extension points are part of the public API: test extensively, they can break core functionality. Event listeners should stay light and use message queues for heavy work.
 
-## Code check (6.7.13.0)
-- confirmed `ResolveListingExtension` — NAME `listing-loader.resolve`, props criteria/context — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:20
-- confirmed `ProductPriceCalculationExtension` — NAME `product.calculate-prices`, prop products — vendor/shopware/core/Content/Product/Extension/ProductPriceCalculationExtension.php:22
-- confirmed `ExtensionDispatcher::publish()` — error phase rethrows when result stays null — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:53
-- confirmed `ProductListingCriteriaEvent` — class exists — vendor/shopware/core/Content/Product/Events/ProductListingCriteriaEvent.php:14
-- corrected `CheckoutOrderPlacedEvent` — docs: OrderPlacedEvent — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:27
-- corrected `CustomerRegisterEvent` — docs: CustomerRegisteredEvent — vendor/shopware/core/Checkout/Customer/Event/CustomerRegisterEvent.php:21
-- absent `ProductCreatedEvent` — illustrative example class
-- absent `ProductUpdatedEvent` — illustrative example class
-- absent `ProductListingExtension` — illustrative; no such extension point
-- absent `ProductSearchExtension` — illustrative; no such extension point
+## Code check (6.7.15.1)
+- confirmed `ResolveListingExtension::NAME` — `'listing-loader.resolve'` — vendor/shopware/core/Content/Product/Extension/ResolveListingExtension.php:20
+- confirmed `ExtensionDispatcher` — core service wrapping `event_dispatcher` — vendor/shopware/core/Framework/DependencyInjection/event.php:42
+- corrected `ProductPriceCalculationExtension` — docs: result is a price list; code: `@extends Extension<void>` — vendor/shopware/core/Content/Product/Extension/ProductPriceCalculationExtension.php:19
+- confirmed `ExtensionDispatcher::publish()` — catches throwable, dispatches error, rethrows if no result — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:53
+- confirmed `Extension::stopPropagation()` — skips default implementation — vendor/shopware/core/Framework/Extensions/Extension.php:98
+- confirmed `ProductListingCriteriaEvent` — existing listing criteria event — vendor/shopware/core/Content/Product/Events/ProductListingCriteriaEvent.php:17
+- absent `ProductListingExtension` — illustrative, not in installed code
+- absent `ProductSearchExtension` — illustrative, not in installed code
+- absent `ProductCreatedEvent` — illustrative; `ProductUpdatedEvent`/`ProductLoadedEvent` likewise absent
+- absent `OrderPlacedEvent` — illustrative; `OrderCompletedEvent`/`CustomerRegisteredEvent` likewise absent

@@ -5,69 +5,64 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/deployments/deployment-helper/configuration.html
-sourceHash: f7dc01e4509f11f13d4703a9dad6f64affefba1d
-codeCheckedAgainst: "6.7.13.0"
-keywords: [".shopware-project.yml", ".shopware-project.local.yml", "deployment helper config", "deployment.hooks", "extension-management", "force-update", "one-time-tasks", "theme-compile", "%php.bin%", "opensearch.index-on-install", "!reset", "!override", "maintenance mode", "staging", "hooks"]
-summary: Deployment Helper .shopware-project.yml reference - hooks, extension-management, one-time-tasks, maintenance, cache, theme-compile, local overrides.
-lastBuilt: 2026-09-15
+sourceHash: 1fda18459d11323b56627f38de808ad262379bde
+codeCheckedAgainst: "6.7.15.1"
+keywords: [".config/shopware-project.yml", ".config/shopware-project.local.yml", "deployment.hooks", "post-extension-on-project-install", "extension-management", "force-update", "one-time-tasks", "theme-compile", "index-on-install", "%php.bin%", "!reset", "!override", "deployment helper config", "deploy hooks", "yaml configuration"]
+summary: Deployment Helper .config/shopware-project.yml reference - hooks, extension management, one-time tasks, theme compile, local overrides.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/tools/cli/configuration.md"]
 ---
 ## What it is
 
-Reference for the Deployment Helper's `.shopware-project.yml` in the project root: every key under `deployment`, hook timing, multi-step hooks, `%php.bin%`, parallel theme compilation, OpenSearch indexing on install, and `.shopware-project.local.yml` overrides with custom YAML merge tags. Every section is optional; configure only what you use.
+The configuration reference for the Deployment Helper. The file is `.config/shopware-project.yml` in the project root. Every section is optional; configure only the keys you use. The Shopware CLI defines the lookup priority for this file and its legacy fallbacks (see [CLI configuration](platform/dev/6.7/products/tools/cli/configuration.md)).
 
 ## When to use
 
-When customising what `shopware-deployment-helper run` does: running scripts at deploy phases, excluding/force-updating/removing extensions, one-off tasks, enabling maintenance or staging mode, or overriding config locally.
+- Add custom scripts at fixed points of the deployment, control which extensions the helper manages, set the Store license domain, enable maintenance mode, staging mode, cache clearing, parallel theme compilation or OpenSearch indexing on install.
+- Override settings locally without changing the committed file.
 
 ## Key steps / config
 
-Minimal file:
+Full key map (values shown are the documented defaults or examples):
 
 ```yaml
 deployment:
+  hooks: { pre, post, pre-install, post-extension-on-project-install, post-install, pre-update, post-update }
   extension-management:
     enabled: true
-  store:
-    license-domain: 'example.com'
-```
-
-Hooks and extension management (skeleton):
-
-```yaml
-deployment:
-  hooks:
-    pre: |          # also: post, pre-install, post-install, pre-update, post-update
-      echo "..."
-  extension-management:
-    enabled: true   # manages custom/plugins, custom/apps and Composer extensions
-    exclude: [Name]          # not managed; handle via one-time-tasks
-    force-update: [Name]     # always reinstalled even if version unchanged
-    overrides:
-      MyPlugin: { state: ignore }            # same as exclude
-      AnotherPlugin: { state: inactive }     # installed but inactive
-      RemoveThisPlugin: { state: remove, keepUserData: true }
-```
-
-Other sections with defaults:
-
-```yaml
-deployment:
-  one-time-tasks:
-    - id: foo
-      when: after        # "before" = prior to system:update; default after
-      script: |
-        ./bin/console --version
+    exclude: [Name]
+    force-update: [Name]
+    overrides: { MyPlugin: { state: ignore }, AnotherPlugin: { state: inactive }, RemoveThisPlugin: { state: remove, keepUserData: true } }
+  one-time-tasks: [{ id: foo, when: after, script: "..." }]   # when: before | after (default)
   store: { license-domain: 'example.com' }
-  staging: { enabled: false }          # runs system:setup:staging --no-interaction --force post-deploy
-  maintenance: { enabled: false }      # storefront maintenance around system:update:finish
-  cache: { always_clear: false }       # clear HTTP/object cache after every deployment
+  staging: { enabled: false }
+  maintenance: { enabled: false }
+  cache: { always_clear: false }
   theme-compile: { parallel: false, workers: null }
   opensearch: { index-on-install: false }
 ```
 
-Hook execution order (install and update): `pre` → `pre-install`/`pre-update` → `system:install` or `system:update:finish` → extension management → `post-install`/`post-update` → PostDeploy listeners (cache clear, Fastly) → `post`.
+- `staging.enabled`: a PostDeploy listener runs `system:setup:staging --no-interaction --force` after deployment and extension management.
+- `maintenance.enabled`: puts the Storefront into maintenance mode before `system:update:finish` and restores it afterwards. Both switches are followed by a cache clear.
+- `cache.always_clear`: clears the HTTP and object cache after every deployment through a PostDeploy listener. This is independent of the maintenance-mode clears.
+- `extension-management.enabled`: installs and updates everything in `custom/plugins`, `custom/apps` and Composer. Extensions installed at runtime through the Store can conflict with it.
+- `exclude`: extensions the helper does not manage; handle them with one-time tasks. `force-update`: extensions that are reinstalled on every deployment even if the version is unchanged. Without it, the helper updates an extension only when the codebase version is newer than the installed one.
 
-Multi-step hooks: a hook may be a list; each step is an object `{ title, script }` (title shown in output) or a plain script string. The single-script form still works.
+### Hook order (fresh install)
+
+1. `pre`
+2. `pre-install`
+3. `system:install` runs, then extension management
+4. `post-extension-on-project-install` (fresh install only, after all plugin and app lifecycle operations)
+5. Optional OpenSearch indexing
+6. `post-install`
+7. `post`, after all PostDeploy listeners
+
+On updates, use `post-update`. `post-extension-on-project-install` does not run on updates.
+
+### Multi-step hooks
+
+A hook can be one script string or a list of steps. A step is either `{ title, script }` or a plain string:
 
 ```yaml
 deployment:
@@ -76,21 +71,34 @@ deployment:
       - title: Warm up the cache
         script: |
           %php.bin% bin/console cache:warmup
-      - ./notify.sh
+    pre-update:
+      - echo "first step"
 ```
 
-`%php.bin%`: use in hook and one-time-task scripts instead of bare `php` so the same PHP binary as the Deployment Helper runs (matters with several PHP versions installed).
+In hooks and one-time tasks, use `%php.bin%` instead of `php` so the script runs under the same PHP binary as the helper.
 
-`force-update`: without it, extensions are only updated when the codebase version is newer than the installed one.
+### Theme compilation
 
-Theme compilation: default is serial `theme:compile --active-only`; skip with `--skip-theme-compile`. `theme-compile.parallel: true` (Shopware 6.5.6+) auto-detects CPU count or uses `workers`, seeds each unique theme once single-threaded, then compiles sales channels in parallel up to `workers`.
+- Default (serial): runs `theme:compile --active-only` once.
+- Skip it with `--skip-theme-compile` if CI already compiled the theme.
+- Parallel (requires Shopware 6.5.6+): set `theme-compile.parallel: true` and optionally `workers`. The helper detects the CPU count unless `workers` is set, seeds each unique theme once single-threaded, then compiles sales channels in parallel, up to `workers` at a time.
 
-`opensearch.index-on-install`: creates OpenSearch indexes after a fresh install; `shopware-cli project create --deployment shopware-paas` generates it as `true`, otherwise defaults to `false`.
+### OpenSearch
 
-Local overrides: `.shopware-project.local.yml` (git-ignored) is deep-merged onto the base: scalars replaced, maps merged recursively, lists appended (order kept, no dedup). Custom tags:
+`opensearch.index-on-install: true` creates the indexes right after a fresh install. `shopware-cli project create --deployment shopware-paas` generates a config with this set to `true`.
 
-- `!reset` on one field — base value discarded, only the tagged value used (scalar, list or map).
-- `!override` on a mapping — whole section replaced, no recursive merge, unlisted keys removed.
+### Local overrides
+
+`.config/shopware-project.local.yml` (add it to `.gitignore`) is deep-merged on top of the base file:
+
+- Scalars are replaced.
+- Maps are merged recursively.
+- Lists from the local file are appended to the base list, in order, without deduplication.
+
+The custom tags `!reset` and `!override` are interpreted by the helper itself:
+
+- `!reset` on one field discards the inherited value for that field only. Lists lose all inherited items; maps keep only the keys you define.
+- `!override` on a mapping turns off deep-merging for the whole section. Keys you do not list are removed.
 
 ```yaml
 deployment:
@@ -104,9 +112,9 @@ deployment:
 
 ## Essential identifiers
 
-- `.shopware-project.yml`, `.shopware-project.local.yml`
-- `deployment.hooks.{pre,post,pre-install,post-install,pre-update,post-update}`
-- `deployment.extension-management.{enabled,exclude,force-update,overrides}`; `state: ignore|inactive|remove`, `keepUserData`
+- `.config/shopware-project.yml`, `.config/shopware-project.local.yml`
+- `deployment.hooks.{pre,post,pre-install,post-extension-on-project-install,post-install,pre-update,post-update}`
+- `deployment.extension-management.{enabled,exclude,force-update,overrides}`, override `state: ignore|inactive|remove`, `keepUserData`
 - `deployment.one-time-tasks[].{id,when,script}`
 - `deployment.store.license-domain`, `deployment.staging.enabled`, `deployment.maintenance.enabled`, `deployment.cache.always_clear`
 - `deployment.theme-compile.{parallel,workers}`, `deployment.opensearch.index-on-install`
@@ -114,22 +122,17 @@ deployment:
 
 ## Gotchas
 
-- With `extension-management.enabled`, extensions installed at runtime (e.g. via the Store in the Administration) can conflict during deployment.
-- Generic YAML parsers/linters may reject `!reset`/`!override` in the local file; use a Deployment Helper version that supports them.
-- Maintenance mode cache clears are independent of `cache.always_clear`.
+- Generic YAML parsers and linters may reject the custom `!reset`/`!override` tags in the local file. Make sure your tooling allows them, and check the helper changelog for the minimum version that supports them.
+- Single-script hooks keep working; the list form is optional.
 
-## Version notes
-
-- Parallel theme compilation requires Shopware 6.5.6+.
-
-## Code check (6.7.13.0)
-- confirmed `system:install` — core command run in the install flow — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:27
-- confirmed `system:update:finish` — core command wrapped by maintenance mode and update hooks — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:29
-- confirmed `system:setup:staging` — core staging command — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:24
-- confirmed `force` — system:setup:staging has --force option — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:48
-- confirmed `theme:compile` — storefront command — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:19
-- confirmed `active-only` — theme:compile option compiling only active sales channels — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:42
-- confirmed `sales-channel:maintenance:enable` — core maintenance toggle is per sales channel — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceEnableCommand.php:21
-- unverified `.shopware-project.yml` — parsed by the Deployment Helper package, outside the checked roots
-- unverified `%php.bin%` — Deployment Helper placeholder, outside the checked roots
-- unverified `cache:warmup` — Symfony framework command, out of scope
+## Code check (6.7.15.1)
+- confirmed `system:setup:staging` — core command run by the staging listener — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:25
+- confirmed `force` — `system:setup:staging` option exists — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:48
+- confirmed `system:update:finish` — core command maintenance mode wraps — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:30
+- confirmed `active-only` — `theme:compile` option exists — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:43
+- confirmed `only` — per-sales-channel `theme:compile` option used for parallel compile — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:44
+- confirmed `system:install` — core command run before extension management on fresh install — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:31
+- unverified `.config/shopware-project.yml` — parsed by the deployment-helper / shopware-cli packages, out of scope
+- unverified `%php.bin%` — placeholder resolved by the deployment-helper package, out of scope
+- unverified `!reset` — custom YAML tag of the deployment-helper package, out of scope
+- unverified `cache:warmup` — Symfony FrameworkBundle command, out of scope

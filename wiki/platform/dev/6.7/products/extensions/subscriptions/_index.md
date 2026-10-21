@@ -1,24 +1,34 @@
 ---
-id: platform/dev/6.7/products/extensions/subscriptions/_index.md
-title: Subscriptions
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/subscriptions/
+id: platform/dev/6.7/products/extensions/subscriptions/_index.md
+relatedPages:
+  - platform/dev/6.7/products/extensions/subscriptions/concept.md
 sourceHash: fc28f8bf13488c3246766baaf467c3212c7b128e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["subscriptions", "subscription extension", "recurring orders", "recurring payment", "subscription model", "subscription plans", "subscription intervals", "repeat delivery", "regular delivery", "abo"]
-summary: "Entry page for the Subscriptions extension: sell products on a recurring subscription basis delivered at regular intervals; start with the concept page."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/extensions/subscriptions/concept.md"]
+sourceUrl: https://developer.shopware.com/docs/products/extensions/subscriptions/
+title: Subscriptions
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["subscriptions", "subscription extension", "recurring payment", "recurring orders", "subscription model", "abo", "regular delivery", "subscription intervals", "repeat purchase"]
+summary: Entry page for the Subscriptions extension, which sells products as recurring-payment subscriptions delivered at regular intervals.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page of the Subscriptions extension documentation. The extension adds a subscription-based model for products: customers subscribe to a product and receive it at regular intervals, with recurring payment. The source names regularly consumed goods (groceries, cosmetics, magazines) as typical use cases.
+The entry page for the Subscriptions extension. The extension adds a subscription-based model for products, so a shop can offer products on a subscription basis. In this recurring payment model, customers subscribe to a product and receive it at regular intervals.
 
 ## When to use
 
-Start here when a shop needs to offer products on a recurring basis. Before working with the extension, read the [subscription concept](platform/dev/6.7/products/extensions/subscriptions/concept.md) (plans, intervals, checkout processes) and the merchant user documentation at `https://docs.shopware.com/en/shopware-6-en/settings/shop/subscriptions`.
+Products that are consumed regularly — the source names groceries, cosmetics and magazines — and that the shop wants to sell as recurring deliveries rather than one-off purchases.
 
-## Code check (6.7.13.0)
-- unverified `Shopware\Commercial\Subscription` — the Subscriptions extension code is not installed under vendor/shopware/{core,storefront,administration}; nothing on this page is checkable there
+## Key steps / config
+
+Before working with the extension, read the [subscription concepts](platform/dev/6.7/products/extensions/subscriptions/concept.md) and the merchant user documentation at `https://docs.shopware.com/en/shopware-6-en/settings/shop/subscriptions`.
+
+## Gotchas
+
+- Subscriptions is a separate extension; its code is not part of Shopware core, Storefront or Administration, so nothing on this page can be checked against the installed core packages.
+
+## Code check (6.7.15.1)
+- unverified `subscription extension` — separate extension, not shipped in the installed core, storefront or administration packages; the source names no identifiers

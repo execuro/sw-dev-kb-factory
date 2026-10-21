@@ -6,57 +6,58 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/in-app-purchases.html
 sourceHash: fd7230d09209989c026d5de024bc21e88f738760
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["in-app purchases", "iap", "paywall", "jwt", "jwks", "in-app-purchase.update", "scheduled-task:run-single", "InAppPurchase", "InAppPurchaseUpdateTask", "api.store.check-in-app-purchase-active", "extension monetization", "app server"]
-summary: In-App Purchases (6.6.9.0+) - per-extension signed JWT, JWKS verification, daily in-app-purchase.update task, app server checks, checkout modal.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["in-app purchases", "iap", "paywall", "jwt", "jwks", "in-app-purchase.update", "InAppPurchase", "InAppPurchaseUpdateTask", "scheduled-task:run-single", "api.store.active-in-app-purchases", "app server", "extension monetization"]
+summary: "In-App Purchases (since 6.6.9.0): per-extension signed JWT of bought features, JWKS verification, in-app-purchase.update task, sent to app servers."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Concept page for In-App Purchases (IAP): a way to lock features of an extension behind a paywall, so one extension can ship a free tier plus paid features. Available since Shopware 6.6.9.0.
+In-App Purchases (IAP), available since Shopware 6.6.9.0, let an extension lock features behind a paywall inside the same extension, e.g. a free version with limited features and paid features unlocked on purchase. Purchases are created in the Shopware Account (see the Extension Partner documentation at https://docs.shopware.com/en/account-en/extension-partner/in-app-purchases).
 
 ## When to use
 
-- You sell an app or plugin and want to unlock features per purchase.
-- You need to know how purchase data reaches Shopware and your app server, and how to verify it.
+- Offering paid feature tiers within one app or plugin.
+- Validating on an app server which features a shop has bought.
+- Forcing a refresh of a shop's purchase tokens.
 
 ## Key steps / config
 
-1. **Create** the In-App Purchase in the Shopware Account ([Documentation for Extension Partner](https://docs.shopware.com/en/account-en/extension-partner/in-app-purchases)).
-2. **Token**: each extension's purchases are delivered as a signed JSON Web Token (JWT); all bought IAPs are JWT claims, protecting against tampering/spoofing. Verify the signature with the JWKS at `https://api.shopware.com/inappfeatures/jwks`. Shopware verifies the signature itself for use in Core and Administration.
-3. **Refresh**: tokens are fetched on a new purchase and periodically by scheduled task `in-app-purchase.update` (default interval daily). Trigger manually:
+**Token** — each extension's purchases are represented by one signed JSON Web Token (JWT); all bought In-App Purchases are JWT claims. The signature can be verified with the JWKS at `https://api.shopware.com/inappfeatures/jwks`. Shopware verifies the signature itself for use in Core and Administration.
 
-   ```
-   bin/console scheduled-task:run-single in-app-purchase.update
-   ```
+**Updating tokens** — tokens are fetched when a purchase is made and periodically by the scheduled task `in-app-purchase.update` (`InAppPurchaseUpdateTask`, daily interval, rescheduled on failure). Trigger manually:
 
-4. **Apps**: IAP is optimised for app servers — Shopware includes the IAP JWT in every request to the app server, which validates active purchases and unlocks features. From the Admin API (integration source), an app can read its purchases via `GET /api/store/active-in-app-purchases` and check one identifier via `POST /api/store/check-in-app-purchase-active` with body `{"identifier": "..."}`.
-5. **Checkout**: to start a purchase, provide the IAP identifier; Shopware opens a modal where the user completes the transaction. Payment and subscription management are handled by Shopware.
+```bash
+bin/console scheduled-task:run-single in-app-purchase.update
+```
+
+**Apps** — IAP is optimized for app servers: whenever Shopware sends a request to the app server it includes the extension's IAP JWT (signed query parameter `in-app-purchases`), so the server can validate active purchases and unlock features.
+
+**Admin API (app integration context)** in 6.7.15.1:
+- `GET /api/store/active-in-app-purchases` → `{ "inAppPurchases": ..., "encodedInAppPurchases": ... }`
+- `POST /api/store/check-in-app-purchase-active` with `identifier` → `{ "isActive": bool }`
+
+**Checkout** — Shopware handles checkout, payment and subscription management. To start a purchase, provide the identifier of the desired In-App Purchase; a modal opens for the user to complete the transaction.
 
 ## Essential identifiers
 
-- `in-app-purchase.update` (`InAppPurchaseUpdateTask`)
-- `scheduled-task:run-single`
-- `InAppPurchase::isActive()`, `InAppPurchase::getByExtension()`, `InAppPurchase::getJWTByExtension()`
-- Routes `api.store.active-in-app-purchases`, `api.store.check-in-app-purchase-active`
-- JWKS path `/inappfeatures/jwks`
+- `in-app-purchase.update` (scheduled task name)
+- `Shopware\Core\Framework\Store\InAppPurchase` (`isActive()`, `getJWTByExtension()`)
+- `https://api.shopware.com/inappfeatures/jwks`
+- `api.store.active-in-app-purchases`, `api.store.check-in-app-purchase-active`
 
 ## Gotchas
 
-- Plugins are inherently less secure for IAP: their open code is more vulnerable to spoofing and tampering than an app server check.
-- The docs also name a refresh endpoint `/api/_action/in-app-purchases/refresh`; no such route exists in the installed 6.7.13.0 core, storefront or administration code — use the scheduled task command instead.
-- The two `/api/store/...` routes require an Admin API source with an integration (app); other context sources throw.
+- Plugins are inherently less secure for IAP: their open code is easier to spoof or tamper with than an app server check.
+- The docs name a manual refresh endpoint `/api/_action/in-app-purchases/refresh`; no such route exists in the 6.7.15.1 core, storefront or administration source — use the scheduled-task command instead.
 
-## Version notes
-
-- In-App Purchases are available since Shopware 6.6.9.0.
-
-## Code check (6.7.13.0)
-- confirmed `InAppPurchaseUpdateTask::getTaskName()` — returns `in-app-purchase.update` — vendor/shopware/core/Framework/Store/InAppPurchase/InAppPurchaseUpdateTask.php:18
+## Code check (6.7.15.1)
+- confirmed `in-app-purchase.update` — task name of `InAppPurchaseUpdateTask` — vendor/shopware/core/Framework/Store/InAppPurchase/InAppPurchaseUpdateTask.php:18
 - confirmed `InAppPurchaseUpdateTask::getDefaultInterval()` — daily — vendor/shopware/core/Framework/Store/InAppPurchase/InAppPurchaseUpdateTask.php:21
-- confirmed `scheduled-task:run-single` — console command — vendor/shopware/core/Framework/MessageQueue/Command/RunSingleScheduledTaskCommand.php:15
-- confirmed `/inappfeatures/jwks` — JWKS fetched from the store API client — vendor/shopware/core/Framework/Store/InAppPurchase/Services/KeyFetcher.php:66
-- confirmed `api.store.active-in-app-purchases` — GET route for the calling app — vendor/shopware/core/Framework/Store/InAppPurchase/Api/InAppPurchasesController.php:35
-- confirmed `api.store.check-in-app-purchase-active` — POST, requires `identifier` — vendor/shopware/core/Framework/Store/InAppPurchase/Api/InAppPurchasesController.php:46
-- confirmed `InAppPurchase::isActive()` — per extension and identifier — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
-- unverified `/api/_action/in-app-purchases/refresh` — route not found in core, storefront or administration sources
+- confirmed `/inappfeatures/jwks` — JWKS fetched from the store API — vendor/shopware/core/Framework/Store/InAppPurchase/Services/KeyFetcher.php:66
+- confirmed `in-app-purchases` — JWT appended to signed app requests — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:47
+- confirmed `InAppPurchase::getJWTByExtension()` — per-extension JWT — vendor/shopware/core/Framework/Store/InAppPurchase.php:60
+- confirmed `InAppPurchase::isActive()` — checks an identifier per extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
+- confirmed `api.store.active-in-app-purchases` — GET route — vendor/shopware/core/Framework/Store/InAppPurchase/Api/InAppPurchasesController.php:35
+- confirmed `api.store.check-in-app-purchase-active` — POST route, requires `identifier` — vendor/shopware/core/Framework/Store/InAppPurchase/Api/InAppPurchasesController.php:46
+- absent `/api/_action/in-app-purchases/refresh` — no route with this path in the installed code

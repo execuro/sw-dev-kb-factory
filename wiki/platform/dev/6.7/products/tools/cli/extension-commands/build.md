@@ -5,99 +5,74 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/extension-commands/build.html
-sourceHash: 64a4b816bda5c94b7525a9334b67cca3f23158e8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli extension build", "shopware-cli extension package", ".shopware-extension.yml", "shopwareVersionConstraint", "extraBundles", "enable_es_build_for_admin", "SHOPWARE_PROJECT_ROOT", "checksum.json", "shopware-bundle", "getAdditionalBundles", "--release", "esbuild", "extension zip archive", "changelog"]
-summary: "shopware-cli extension build/package: esbuild, .shopware-extension.yml build/zip options, checksum.json, release mode, changelog, overwrites."
-lastBuilt: 2026-09-15
+sourceHash: d0992371d1c1c9ee6d6dbfe86a0f44fa82ab1b69
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli extension build", "shopware-cli extension package", "shopwareVersionConstraint", "extraBundles", "enable_es_build_for_admin", "npm_strict", "checksum.json", "SHOPWARE_PROJECT_ROOT", "--release", "getAdditionalBundles", "shopware-bundle", "esbuild", "extension zip archive", "build assets"]
+summary: shopware-cli extension build/package compile extension assets and create a store-ready ZIP; build/zip/changelog keys in .config/shopware-extension.yml.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/tools/cli/configuration.md"]
 ---
 ## What it is
 
-How Shopware CLI compiles an extension's Administration/Storefront assets (`shopware-cli extension build`) and creates a distributable ZIP (`shopware-cli extension package`), configured through `.shopware-extension.yml` in the extension root.
+Shopware CLI commands to compile an extension's Administration/Storefront assets (`shopware-cli extension build`) and to produce a distributable ZIP (`shopware-cli extension package`), so the extension can be uploaded to the Shopware Store or a shop without rebuilding Storefront and Administration there. Options live in `.config/shopware-extension.yml` (see [configuration file lookup](platform/dev/6.7/products/tools/cli/configuration.md)).
 
 ## When to use
 
-Releasing an extension to the Shopware Store or uploading it to a Shopware 6 instance without rebuilding Storefront and Administration there — the extension must ship compiled assets.
+Before releasing an extension, in CI pipelines that build ZIPs, or when an extension has multiple bundles, is itself a bundle, or needs faster esbuild-based bundling.
 
 ## Key steps / config
 
-### Build assets
-
-`shopware-cli extension build <path>` reads the `shopware/core` requirement from `composer.json` or `manifest.xml` and builds with the lowest compatible Shopware version. Override (build only, not installation):
+1. Build assets: `shopware-cli extension build <path>`. The CLI reads the `shopware/core` requirement from `composer.json` or `manifest.xml` and builds against the lowest compatible Shopware version. Override (build only, not installation) with `build.shopwareVersionConstraint`, or set `SHOPWARE_PROJECT_ROOT` to an existing Shopware project to build with that installation.
+2. Multiple bundles (plugin implements `getAdditionalBundles`): list them under `build.extraBundles` (`path`, optional `name`; name defaults to the directory name).
+3. Extension that is a bundle: Composer `type` `shopware-bundle` plus `extra.shopware-bundle-name`; `shopware-cli project ci` then detects and builds it too.
+4. Package: `shopware-cli extension package <path>` copies to a temp dir, builds assets, deletes unneeded files, zips into the current directory. Uses the latest git tag by default; `--disable-git` uses the working tree, `--git-commit` picks a tag/commit.
+5. Release build: `shopware-cli extension package <path> --release` strips secrets and generates the changelog when `changelog.enabled: true`.
+6. Overwrites: `--overwrite-version=1.0.0`, `--overwrite-app-backend-url=https://example.com`, `--overwrite-app-backend-secret=MySecret`.
 
 ```yaml
+# .config/shopware-extension.yml
 build:
   shopwareVersionConstraint: '6.6.9.0'
-  extraBundles:          # plugins returning bundles from getAdditionalBundles
-    - path: src/Foo      # name defaults to directory name
+  extraBundles:
     - path: src/Foo
       name: Foo
-```
-
-Set `SHOPWARE_PROJECT_ROOT` to a Shopware 6 project to build with that installation instead.
-
-Extension that is itself a bundle: composer `"type": "shopware-bundle"` plus `"extra": { "shopware-bundle-name": "MyBundle" }`. `shopware-cli project ci` detects such bundles automatically.
-
-### esbuild and other zip options
-
-```yaml
-build:
   zip:
-    assets:
-      enable_es_build_for_admin: true
-      enable_es_build_for_storefront: true
-      npm_strict: true        # install only runtime dependencies
-    composer:
-      enabled: false
-    pack:
-      excludes:
-        paths: [<path>]
-    checksum:
-      ignore: [src/Resources/config/services.php]
-```
-
-With esbuild, content-hashed files (`<name>-<hash>.js`) are emitted next to unhashed ones; no config needed.
-
-### Package
-
-- `shopware-cli extension package <path>` — copies to a temp dir, builds, deletes known unnecessary files, writes the ZIP to the current directory and generates `checksum.json`.
-- Defaults to the latest released git tag; `--disable-git` uses the current source, `--git-commit` picks a tag/commit.
-- `--release` strips secrets and generates changelog files from Git commits when enabled:
-
-```yaml
+    assets: { enable_es_build_for_admin: true, enable_es_build_for_storefront: true, npm_strict: true }
+    composer: { enabled: false }
+    pack: { excludes: { paths: [<path>] } }
+    checksum: { ignore: [src/Resources/config/services.php] }
 changelog:
   enabled: true
   pattern: '^NEXT-\d+'
-  variables:
-    ticket: '^(NEXT-\d+)\s'
-  template: |   # Go template looping over .Commits
+  variables: { ticket: '^(NEXT-\d+)\s' }
+  template: <go template looping over .Commits>
 ```
-
-- Overwrites: `--overwrite-version=1.0.0`, `--overwrite-app-backend-url=<url>`, `--overwrite-app-backend-secret=<secret>` (the latter two change `manifest.xml`).
 
 ## Essential identifiers
 
-- `shopware-cli extension build`, `shopware-cli extension package`
-- `.shopware-extension.yml`, `SHOPWARE_PROJECT_ROOT`, `checksum.json`, `--release`, `--disable-git`, `--git-commit`
-- `Shopware\Core\Framework\Bundle::getAdditionalBundles()`, `Shopware\Core\Framework\Plugin::executeComposerCommands()`
+- `shopware-cli extension build`, `shopware-cli extension package`, `shopware-cli project ci`
+- `build.zip.checksum.ignore`, `checksum.json`, `changelog.template`
+- `--release`, `--disable-git`, `--git-commit`
 
 ## Gotchas
 
-- esbuild builds standalone: anything imported from Shopware core files must be copied into the extension.
-- An existing `.vite/manifest.json` is overwritten on each esbuild build.
-- Composer bundling into the ZIP was needed before 6.5; for plugins targeting 6.5+ it is disabled automatically — use `executeComposerCommands`.
-- `npm_strict` requires runtime packages in `dependencies`, tooling in `devDependencies`.
+- esbuild builds run fully standalone: anything you import from Shopware must be copied into the extension.
+- With esbuild, hashed `<name>-<hash>.js` files are emitted next to unhashed ones; an existing `.vite/manifest.json` is overwritten on each build.
+- `npm_strict` requires runtime packages in `dependencies` and tooling in `devDependencies`; it then skips needless `npm install`/`npm ci`.
+- Composer dependency bundling is automatically off for plugins targeting 6.5+; use `executeComposerCommands` instead.
 
 ## Version notes
 
-- 6.7+: `.vite/manifest.json` and `.vite/entrypoints.json` reference hashed filenames, so browser/CDN caches invalidate on change.
-- Below 6.7: unhashed files continue to be loaded.
+- Shopware 6.7+: `.vite/manifest.json` and `.vite/entrypoints.json` reference the hashed esbuild files, so caches invalidate automatically. Below 6.7 the unhashed files are still loaded.
+- Before 6.5, bundling Composer dependencies into the ZIP was required.
 
-## Code check (6.7.13.0)
-- confirmed `Bundle::getAdditionalBundles()` — takes AdditionalBundleParameters, returns list of bundles, default empty — vendor/shopware/core/Framework/Bundle.php:93
-- confirmed `Plugin::executeComposerCommands()` — default false; true makes Shopware run composer require on install — vendor/shopware/core/Framework/Plugin.php:92
-- unverified `shopware-bundle` — composer type/extra key not referenced in vendor/shopware/core; consumed by shopware-cli
-- unverified `.shopware-extension.yml` — shopware-cli config file, out of scope
-- unverified `checksum.json` — generated by shopware-cli; no reference in vendor/shopware/core
-- unverified `SHOPWARE_PROJECT_ROOT` — shopware-cli environment variable, out of scope
-- unverified `enable_es_build_for_admin` — shopware-cli option, out of scope
+## Code check (6.7.15.1)
+- confirmed `Plugin::executeComposerCommands()` — defaults to false; true makes Shopware run `composer require` on install — vendor/shopware/core/Framework/Plugin.php:92
+- confirmed `Bundle::getAdditionalBundles()` — returns `[]` by default, overridden to register extra bundles — vendor/shopware/core/Framework/Bundle.php:101
+- confirmed `manifest.xml` — a ZIP is detected as an app if its top-level folder holds `manifest.xml` — vendor/shopware/core/Framework/Plugin/PluginZipDetector.php:62
+- confirmed `composer.json` — a ZIP is a plugin if the top-level folder has `composer.json` and no `manifest.xml` — vendor/shopware/core/Framework/Plugin/PluginZipDetector.php:45
+- unverified `shopware-cli extension package` — Go-based shopware-cli, out of scope of vendor/shopware
+- unverified `shopwareVersionConstraint` — shopware-cli config key, out of scope
+- unverified `enable_es_build_for_admin` — shopware-cli config key, out of scope
+- unverified `SHOPWARE_PROJECT_ROOT` — read by shopware-cli; not found in vendor/shopware roots
+- unverified `shopware-bundle-name` — composer extra read by shopware-cli; not found in vendor/shopware core

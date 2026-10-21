@@ -1,47 +1,51 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/hosting/configurations/observability/logging.md
-sourceHash: d2393dd8d9e44708de6d8cfcf0c797faac52668c
-sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/observability/logging.html
 title: Logging
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["monolog", "monolog.yaml", "business_event_handler_buffer", "business_events", "var/log", "log levels", "logging", "flow events", "sent e-mails", "mail log", "fingers_crossed", "log file"]
-summary: "Shopware Monolog logging: prod monolog.yaml, log levels, var/log, and logging sent mails and flow events via business_event_handler_buffer."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/observability/logging.html
+sourceHash: c84737de15b52b4bcdbd6ae8221c7be06a65d89e
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["monolog", "monolog.yaml", "shopware.logger", "error_code_log_levels", "exclude_exception", "exclude_events", "file_rotation_count", "enforce_throw_exception", "LOGGER_ENFORCE_THROW_EXCEPTION", "ExceptionLogger", "business_event_handler_buffer", "log levels", "var/log"]
+summary: Monolog logging in Shopware, shopware.logger options (log levels per error code, exclusions, rotation, enforced throw) and flow-event logging.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware logs errors and debug information with Monolog. Log files are written to the `var/log` directory of the installation.
+Shopware logs errors and debug information through Monolog. Log files go to `var/log` of the installation. Monolog itself is configured in `config/packages/prod/monolog.yaml`; Shopware adds its own filtering and tuning options under `shopware.logger` in `config/packages/shopware.yaml`.
 
 ## When to use
 
-When configuring log output or log levels for a hosted shop, or when you need a record of sent e-mails and other flow (business) events.
+- Reduce noise from expected exceptions or business events, or lower/raise the level of specific Shopware error codes.
+- Change how many rotated log files are kept.
+- Debug swallowed exceptions in production.
+- Log all sent e-mails and other flow (business) events.
 
 ## Key steps / config
 
-1. Configure Monolog in `config/packages/prod/monolog.yaml`. The core default for `prod`:
+Shopware logger options (`config/packages/shopware.yaml`):
 
 ```yaml
-monolog:
-    handlers:
-        main:
-            type: fingers_crossed
-            action_level: error
-            handler: nested
-        nested:
-            type: rotating_file
-            path: "%kernel.logs_dir%/%kernel.environment%.log"
-            level: error
-        console:
-            type: console
-            process_psr_3_messages: false
-            channels: ["!event", "!doctrine"]
+shopware:
+  logger:
+    error_code_log_levels:
+      CHECKOUT__CUSTOMER_AUTH_BAD_CREDENTIALS: notice
+    exclude_exception:
+      - App\Exception\ExpectedException
+    exclude_events:
+      - app.noisy.event
+    file_rotation_count: 30
 ```
 
-2. To log all sent e-mails and other flow events, set the level of the `business_event_handler_buffer` handler to `info`:
+- `error_code_log_levels` — map of error code to level; changes severity of `ShopwareHttpException` records by error code.
+- `exclude_exception` — exact exception classes whose records are dropped.
+- `exclude_events` — business event names whose records are suppressed.
+- Both exclusion lists extend Shopware's defaults (core ships e.g. `Symfony\Component\HttpKernel\Exception\NotFoundHttpException` and `user.recovery.request`, `customer.recovery.request`).
+- `file_rotation_count` — number of rotated log files retained (core default `14`).
+- `enforce_throw_exception` (env `LOGGER_ENFORCE_THROW_EXCEPTION=1`, default false) — code paths using `ExceptionLogger` rethrow after logging even in `prod`. Outside `prod` they always rethrow.
+
+Log all sent e-mails and flow events by lowering the business event buffer handler level:
 
 ```yaml
 monolog:
@@ -50,26 +54,29 @@ monolog:
       level: info
 ```
 
-`business_event_handler_buffer` is a `buffer` handler on the `business_events` channel that forwards to `business_event_handler`, a service handler backed by `Shopware\Core\Framework\Log\Monolog\DoctrineSQLHandler` (writes to the database log).
-
 ## Essential identifiers
 
-- `config/packages/prod/monolog.yaml`
-- `var/log`
-- `business_event_handler_buffer`, `business_event_handler`, channel `business_events`
-- `Shopware\Core\Framework\Log\Monolog\DoctrineSQLHandler`
-- Log levels: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`
+- `shopware.logger.error_code_log_levels`, `shopware.logger.exclude_exception`, `shopware.logger.exclude_events`, `shopware.logger.file_rotation_count`, `shopware.logger.enforce_throw_exception`
+- `LOGGER_ENFORCE_THROW_EXCEPTION`
+- `ExceptionLogger` (`Shopware\Core\Framework\Log\ExceptionLogger`)
+- `ShopwareHttpException`
+- `business_event_handler_buffer` (Monolog handler, channel `business_events`)
+- Monolog levels: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`
 
 ## Gotchas
 
-- Lowering `business_event_handler_buffer` to `info` costs performance.
-- In `prod`, the `main` handler is `fingers_crossed` with `action_level: error`, so lower-level messages only reach the log file when an error occurs in the same request.
-- Events listed under `shopware.logger.exclude_events` (by default `user.recovery.request`, `customer.recovery.request`) are filtered from the main handler by `ExcludeFlowEventHandler`.
+- Use exclusions sparingly — they can hide actionable failures.
+- `enforce_throw_exception` changes runtime behaviour (exceptions propagate instead of being logged only); intended for diagnostics.
+- Setting `business_event_handler_buffer` to `info` costs performance.
 
-## Code check (6.7.13.0)
-- confirmed `business_event_handler_buffer` — buffer handler on `business_events` channel — vendor/shopware/core/Framework/DependencyInjection/services.xml:50
-- confirmed `business_event_handler` — service handler using DoctrineSQLHandler — vendor/shopware/core/Framework/DependencyInjection/services.xml:59
-- confirmed `monolog.handlers.main` — prod default fingers_crossed, action_level error — vendor/shopware/core/Framework/Resources/config/packages/prod/monolog.yaml:3
-- confirmed `monolog.handlers.nested` — rotating_file under kernel.logs_dir — vendor/shopware/core/Framework/Resources/config/packages/prod/monolog.yaml:7
-- confirmed `shopware.logger.exclude_events` — passed to ExcludeFlowEventHandler — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:517
-- confirmed `ExcludeFlowEventHandler` — decorates monolog.handler.main — vendor/shopware/core/Framework/DependencyInjection/services.xml:680
+## Code check (6.7.15.1)
+- confirmed `shopware.logger.file_rotation_count` — integer node, default 14 — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:698
+- confirmed `shopware.logger.exclude_exception` — scalar list node — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:701
+- confirmed `shopware.logger.exclude_events` — scalar list node — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:704
+- confirmed `shopware.logger.error_code_log_levels` — keyed scalar map — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:707
+- confirmed `shopware.logger.enforce_throw_exception` — boolean, default false — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:711
+- confirmed `LOGGER_ENFORCE_THROW_EXCEPTION` — env var bound to enforce_throw_exception — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:549
+- confirmed `ExceptionLogger::logOrThrowException()` — logs, then rethrows if enforced or env is not prod — vendor/shopware/core/Framework/Log/ExceptionLogger.php:21
+- confirmed `business_event_handler_buffer` — buffer handler on channel business_events — vendor/shopware/core/Framework/DependencyInjection/services.php:199
+- confirmed `CHECKOUT__CUSTOMER_AUTH_BAD_CREDENTIALS` — CustomerException error code — vendor/shopware/core/Checkout/Customer/CustomerException.php:49
+- confirmed `ShopwareHttpException` — abstract base HTTP exception — vendor/shopware/core/Framework/ShopwareHttpException.php:29

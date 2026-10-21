@@ -6,60 +6,65 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2025-01-31-move-flow-execution-after-business-process.html
 sourceHash: 9a2982a1ce1898deec706eaf8422702e63f1ce6a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["FLOW_EXECUTION_AFTER_BUSINESS_PROCESS", "FlowDispatcher", "BufferedFlowExecutionTriggersListener", "BufferedFlowQueue", "BufferedFlowExecutor", "KernelEvents::TERMINATE", "WorkerMessageHandledEvent", "ConsoleEvents::TERMINATE", "flow builder", "flow execution", "deferred flows", "feature flag", "adr"]
-summary: "ADR: flows buffered in memory, run after the unit of work (kernel/console terminate, worker message handled); flag FLOW_EXECUTION_AFTER_BUSINESS_PROCESS"
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["flow builder", "flow execution", "FLOW_EXECUTION_AFTER_BUSINESS_PROCESS", "FlowDispatcher", "BufferedFlowExecutionTriggersListener", "BufferedFlowQueue", "BufferedFlowExecutor", "KernelEvents::TERMINATE", "WorkerMessageHandledEvent", "ConsoleEvents::TERMINATE", "deferred flows", "feature flag", "adr"]
+summary: "ADR: with FLOW_EXECUTION_AFTER_BUSINESS_PROCESS (default from 6.8), flows are buffered in memory and run after the request, message or command ends."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2025-01-31, area Core) moving Flow Builder execution out of the business process (checkout, product update, etc.) so that flows run after the triggering unit of work has finished. The behaviour is experimental and gated by the feature flag `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS`.
+An architecture decision record (2025-01-31, area Core, tagged experimental) that moves flow execution out of the business process (checkout, product update, any user-triggered event) and runs flows after that unit of work has finished. It only takes effect when the feature flag `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` is enabled.
 
 ## When to use
 
-- You maintain a plugin that relies on flows (or flow actions such as mail sending) being executed synchronously during the business process — the ADR states such plugins have to be updated.
-- You are debugging why a flow action runs later than the event that triggered it, or why a flow error no longer aborts the request.
+- Your plugin relies on a flow action having run before the triggering business process returns (e.g. reading data written by a flow in the same request).
+- You debug flows and see them executing in a terminate/handled listener instead of inside the event dispatch.
+- You want to understand why a failing flow no longer aborts a checkout.
 
 ## Key steps / config
 
-Problem with the old approach: flows ran directly from a decorator of Symfony's `EventDispatcher` (`Shopware\Core\Content\Flow\Dispatching\FlowDispatcher`), so a fatal error in a flow cancelled the business process, expensive actions (mails) slowed it down, and stack traces were bloated.
+Problems with in-process flow execution, per the ADR:
 
-Decision:
-1. Flows are "queued" in memory instead of executed inline (with the flag on, `FlowDispatcher::dispatch()` builds a buffered flow and pushes it to `BufferedFlowQueue`).
-2. They are executed as soon as the execution environment signals that a unit of work finished:
-   - Web: `KernelEvents::TERMINATE`
-   - Queue: `WorkerMessageHandledEvent`
-   - CLI: `ConsoleEvents::TERMINATE`
-3. In the installed code these three events are subscribed by `BufferedFlowExecutionTriggersListener`, which calls `BufferedFlowExecutor::executeBufferedFlows()` when the queue is not empty.
+- A fatal error in any flow cancels the in-progress business process.
+- Flows such as mail sending slow down the business process although they are not needed to complete it.
+- Flows run from a decorator of Symfony's `EventDispatcher`, which bloats stack traces and complicates debugging.
 
-Enabling: the flag is declared in core `feature.yaml` with `default: false`, `major: true`, `toggleable: true`; set it like any feature flag (e.g. env var `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS=1`). The code also activates the buffered path when `v6.8.0.0` is active.
+Decision: flows are queued in memory and executed once the execution environment signals the end of a unit of work:
 
-Rejected alternative: handling flow executions as queue messages — simpler, but harder to debug and introduces an unpredictable delay, even with a high-priority queue.
+1. Web: after a controller action → `KernelEvents::TERMINATE`
+2. Queue: after a queued message is processed → `WorkerMessageHandledEvent`
+3. CLI: after a command is executed → `ConsoleEvents::TERMINATE`
+
+How the installed code does it:
+
+- `Shopware\Core\Content\Flow\Dispatching\FlowDispatcher` (decorates the event dispatcher) checks `Feature::isActive('FLOW_EXECUTION_AFTER_BUSINESS_PROCESS') || Feature::isActive('v6.8.0.0')`. If active, it creates a buffered flow via `FlowFactory::createBuffered()` and queues it in `BufferedFlowQueue` instead of calling the flow executor directly.
+- `BufferedFlowExecutionTriggersListener` subscribes to the three events above (only when the flag or `v6.8.0.0` is active) and calls `BufferedFlowExecutor::executeBufferedFlows()` when the queue is not empty.
+- Enable the flag in the feature configuration: it is declared in `feature.yaml` with `default: false`, `major: true`, `toggleable: true`.
+
+The rejected alternative was dispatching flows as queue messages: simpler, but harder to debug and with an unpredictable delay even on a high-priority queue.
 
 ## Essential identifiers
 
-- `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` (feature flag)
-- `Shopware\Core\Content\Flow\Dispatching\FlowDispatcher`
-- `Shopware\Core\Content\Flow\Dispatching\BufferedFlowExecutionTriggersListener`
-- `BufferedFlowQueue`, `BufferedFlowExecutor`
+- `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` — feature flag
+- `FlowDispatcher`, `BufferedFlowQueue`, `BufferedFlowExecutor`, `BufferedFlowExecutionTriggersListener`
 - `KernelEvents::TERMINATE`, `WorkerMessageHandledEvent`, `ConsoleEvents::TERMINATE`
 
 ## Gotchas
 
-- Flows can no longer fail the business process — but code that expects flow side effects (e.g. a sent mail or a written entity) to exist right after dispatching the event will break.
-- The interface for registering flows does not change.
-- Total execution time is not expected to increase significantly; business-process performance is expected to improve.
-- `BufferedFlowExecutionTriggersListener` is `@internal` — not intended for decoration or replacement.
+- Plugins relying on flows being executed during the business process must be updated.
+- Flows can no longer fail the business process; the interface for registering flows does not change.
+- Total execution time is not expected to increase significantly; business process performance is expected to improve.
+- `FlowDispatcher` and `BufferedFlowExecutionTriggersListener` are `@internal` and `@final` — not for decoration or replacement.
 
 ## Version notes
 
-The flag description in 6.7 says the behaviour "will become the default for next major 6.8"; the code already treats an active `v6.8.0.0` flag as enabling it.
+- 6.7: opt-in via the flag (default off). The flag description states it becomes the default in 6.8, and the code already treats `v6.8.0.0` as enabling it.
 
-## Code check (6.7.13.0)
-- confirmed `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` — declared default false, major, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:34
-- confirmed `FlowDispatcher::dispatch()` — queues buffered flow when flag or v6.8.0.0 active — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:41
-- confirmed `BufferedFlowQueue::queueFlow()` — called from FlowDispatcher in buffered path — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:60
-- confirmed `KernelEvents::TERMINATE` — web trigger for buffered flows — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:36
-- confirmed `WorkerMessageHandledEvent` — queue trigger for buffered flows — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:37
-- confirmed `ConsoleEvents::TERMINATE` — CLI trigger for buffered flows — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:38
-- confirmed `BufferedFlowExecutor::executeBufferedFlows()` — invoked when queue not empty — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:48
+## Code check (6.7.15.1)
+- confirmed `FLOW_EXECUTION_AFTER_BUSINESS_PROCESS` — declared default false, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:34
+- confirmed `FlowDispatcher::dispatch()` — reads the flag (or v6.8.0.0) and buffers flows — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:41
+- confirmed `BufferedFlowQueue` — buffered flow is queued instead of executed — vendor/shopware/core/Content/Flow/Dispatching/FlowDispatcher.php:60
+- confirmed `KernelEvents::TERMINATE` — trigger for web requests — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:36
+- confirmed `WorkerMessageHandledEvent` — trigger for queue messages — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:37
+- confirmed `ConsoleEvents::TERMINATE` — trigger for CLI commands — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:38
+- confirmed `BufferedFlowExecutor` — executes buffered flows when the queue is non-empty — vendor/shopware/core/Content/Flow/Dispatching/BufferedFlowExecutionTriggersListener.php:48

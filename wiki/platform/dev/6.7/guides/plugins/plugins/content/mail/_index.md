@@ -6,39 +6,31 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/content/mail/
 sourceHash: 59bfa6a0c97d3d34b94405ea8cd9a633854d395a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["mail", "email", "mail template", "mail_template", "mail_template_type", "MailService", "MailBeforeValidateEvent", "MailTemplateTypes", "transactional email", "order notification", "newsletter", "e-mail vorlage"]
-summary: Overview of Shopware mail plugin guides - adding data to mail templates and shipping custom mail templates for transactional and customer emails.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["mail", "email", "mail template", "mail_template", "mail_template_type", "MailService", "AbstractMailService", "MailBeforeValidateEvent", "template data", "transactional email", "order notification", "plugin"]
+summary: Section overview for Shopware 6.7 plugin mail guides - adding data to mail templates and shipping custom mail templates with a plugin.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section overview for Shopware mail handling in plugins. Shopware mail lets you add mail data and configure mail templates for the e-mail communication of the shop: transactional emails, order notifications, customer communication, marketing campaigns and newsletters. Templates can be tied to specific events or triggers so customers get timely, personalised messages.
-
-Mail templates hold the content and formatting of an email — text, images, logos and dynamic variables — which keeps branding consistent across outgoing emails.
+Section index for the plugin guides about Shopware mails. Plugins can add data to the variables available in mail templates and ship their own mail templates (text, images, logos and dynamic variables) for transactional emails, order notifications, customer communication and newsletters, each tied to a specific event or trigger.
 
 ## When to use
 
-Read the guides in this section when a plugin must either ship its own mail template (or mail template type) or make additional data available as variables inside existing mail templates, e.g. to keep customers informed about order updates or promotions.
+Start here when a plugin must change what data an outgoing Shopware mail can render, or must install its own mail template instead of relying on a merchant creating it in the Administration. The two child guides cover:
 
-## Key steps / config
-
-In the installed core the relevant building blocks are:
-
-- Templates are stored in the `mail_template` entity with translations in `mail_template_translation`; each template belongs to a `mail_template_type` (technical names such as `contact_form` are listed as constants in `Shopware\Core\Content\MailTemplate\MailTemplateTypes`).
-- Sending goes through `Shopware\Core\Content\Mail\Service\MailService`, which dispatches `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent` carrying the mail data and template data — the usual hook for adding template variables.
+- Adding data to mails: decorate the mail service or subscribe to the event fired before mail validation, to extend the template data.
+- Adding mail templates: insert rows into the mail template tables from a plugin database migration.
 
 ## Essential identifiers
 
-- `mail_template`, `mail_template_translation`, `mail_template_type`
-- `Shopware\Core\Content\Mail\Service\MailService`
-- `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent`
-- `Shopware\Core\Content\MailTemplate\MailTemplateTypes`
+- `Shopware\Core\Content\Mail\Service\MailService` (extends `AbstractMailService`) - sends mails, receives the template data as last `send()` argument.
+- `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent` - dispatched at the start of `MailService::send()`.
+- Tables `mail_template`, `mail_template_translation`, `mail_template_type`, `mail_template_type_translation`.
 
-## Code check (6.7.13.0)
-- confirmed `mail_template` — MailTemplateDefinition entity name — vendor/shopware/core/Content/MailTemplate/MailTemplateDefinition.php:28
-- confirmed `mail_template_type` — MailTemplateTypeDefinition entity name — vendor/shopware/core/Content/MailTemplate/Aggregate/MailTemplateType/MailTemplateTypeDefinition.php:27
-- confirmed `mail_template_translation` — translation entity name — vendor/shopware/core/Content/MailTemplate/Aggregate/MailTemplateTranslation/MailTemplateTranslationDefinition.php:19
-- confirmed `MailTemplateTypes::MAILTYPE_CONTACT_FORM` — value contact_form — vendor/shopware/core/Content/MailTemplate/MailTemplateTypes.php:90
-- confirmed `MailService` — extends AbstractMailService — vendor/shopware/core/Content/Mail/Service/MailService.php:37
-- confirmed `MailBeforeValidateEvent` — created in MailService::send() — vendor/shopware/core/Content/Mail/Service/MailService.php:67
+## Code check (6.7.15.1)
+- confirmed `MailService` — core implementation of the mail service — vendor/shopware/core/Content/Mail/Service/MailService.php:67
+- confirmed `AbstractMailService::send()` — abstract send with `$templateData` last parameter — vendor/shopware/core/Content/Mail/Service/AbstractMailService.php:21
+- confirmed `MailBeforeValidateEvent` — dispatched first in `send()` — vendor/shopware/core/Content/Mail/Service/MailService.php:99
+- confirmed `mail_template` — entity name of `MailTemplateDefinition` — vendor/shopware/core/Content/MailTemplate/MailTemplateDefinition.php:31
+- confirmed `mail_template_type` — entity name of `MailTemplateTypeDefinition` — vendor/shopware/core/Content/MailTemplate/Aggregate/MailTemplateType/MailTemplateTypeDefinition.php:27

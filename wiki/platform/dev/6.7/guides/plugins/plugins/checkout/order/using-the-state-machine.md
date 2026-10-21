@@ -5,65 +5,79 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/checkout/order/using-the-state-machine.html
-sourceHash: 73e26eacc93c4e50bd3832543fc74ca24365dc44
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["StateMachineRegistry", "Transition", "getAvailableTransitions", "OrderTransactionStateHandler", "StateMachineTransitionActions", "stateId", "order_transaction", "order_delivery", "order state", "payment status", "delivery status", "state transition"]
-summary: "Change order, order_transaction and order_delivery states via StateMachineRegistry::transition() with a Transition; list allowed transitions."
-lastBuilt: 2026-09-15
+sourceHash: 4a74919943a7266e147c276441422613fb8e7745
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["StateMachineRegistry", "Transition", "getAvailableTransitions", "OrderTransactionStateHandler", "state-machine:dump", "FORCE_TRANSITION", "SetOrderStateAction", "stateId", "order_transaction", "order_delivery", "order state", "payment status", "delivery status", "state transition"]
+summary: Change order, order_transaction and order_delivery states via StateMachineRegistry::transition(), list allowed transitions, dump graphs, force transitions.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md"]
 ---
 ## What it is
 
-How to change the three order-related states in Shopware with the state machine: the order state (`order`), the order transaction/payment state (`order_transaction`) and the order delivery state (`order_delivery`). Allowed moves between states are called transitions; you cannot jump from any state to any other (e.g. not to "refunded" before "paid").
+How to change the three order-related states in code with `Shopware\Core\System\StateMachine\StateMachineRegistry`: the order state (`order`), the transaction/payment state (`order_transaction`) and the delivery state (`order_delivery`). States can only move along defined `transitions`.
 
 ## When to use
 
-- A plugin must mark an order as in progress, a payment as paid/refunded, or a delivery as shipped.
-- You need to know which transitions are currently allowed for an entity.
+A plugin must set an order to in progress, mark a payment paid/refunded, mark a delivery shipped, inspect which transitions are currently allowed, or (for recovery tooling) force a state.
 
 ## Key steps / config
 
-1. Inject `Shopware\Core\System\StateMachine\StateMachineRegistry` into your service via the [DI container](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md).
-2. Call `transition(Transition $transition, Context $context)` with a `Shopware\Core\System\StateMachine\Transition` and `Shopware\Core\Framework\Context`. `Transition` constructor arguments: entity name (use `OrderDefinition::ENTITY_NAME`, `OrderTransactionDefinition::ENTITY_NAME`, `OrderDeliveryDefinition::ENTITY_NAME`), entity id, transition action name, state field name (`stateId` in all three core definitions). An optional internal comment follows.
+1. Inject `Shopware\Core\System\StateMachine\StateMachineRegistry` via the [Dependency Injection container](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md).
+2. Call `transition(Transition $transition, Context $context)`. `Shopware\Core\System\StateMachine\Transition` takes:
+   - entity name — use `OrderDefinition::ENTITY_NAME`, `OrderTransactionDefinition::ENTITY_NAME` or `OrderDeliveryDefinition::ENTITY_NAME`;
+   - entity ID (order, order transaction or order delivery ID);
+   - transition (action) name;
+   - state field name — `stateId` in all three default definitions;
+   - optional fifth argument: an internal comment (`?string`, default `null`).
 
 ```php
 $this->stateMachineRegistry->transition(new Transition(
-    OrderDeliveryDefinition::ENTITY_NAME,
-    $orderDeliveryId,
-    'ship',
+    OrderTransactionDefinition::ENTITY_NAME,
+    '<Order transaction ID here>',
+    'process',
     'stateId'
 ), $context);
 ```
 
-3. Transition action names (constants in `StateMachineTransitionActions`):
+3. Transition names per state machine:
    - Order: `reopen` (open), `process` (in_progress), `cancel` (cancelled), `complete` (completed).
-   - Order transaction: `reopen`, `fail`, `authorize`, `refund_partially`, `refund`, `process` (in_progress), `paid`, `paid_partially`, `remind`, `cancel`.
-   - Order delivery: `reopen`, `ship`, `ship_partially`, `cancel`, `retour` (returned), `retour_partially`.
-4. List allowed transitions from the current state: `getAvailableTransitions(string $entityName, string $entityId, string $stateFieldName, Context $context)` returns an array of possible actions (an open order yields `cancel` and `process`).
-5. To find a delivery id from an order id, search `order_delivery.repository` with `new EqualsFilter('orderId', $orderId)` and `searchIds(...)->firstId()`, or load the order with `new Criteria([$orderId])`, `addAssociation('deliveries')` and use `getDeliveries()->first()->getId()`.
-6. For payment states only, `OrderTransactionStateHandler` offers one method per transition taking `(string $transactionId, Context $context)`: `reopen`, `fail`, `process`, `processUnconfirmed`, `paid`, `paidPartially`, `refund`, `refundPartially`, `cancel`, `remind`, `authorize`, `chargeback`.
+   - Transaction: `reopen`, `fail`, `authorize`, `refund_partially`, `refund`, `process` (in_progress), `paid`, `paid_partially`, `remind`, `cancel`.
+   - Delivery: `reopen`, `ship`, `ship_partially`, `cancel`, `retour`, `retour_partially`.
+4. Allowed transitions from the current state: `getAvailableTransitions(string $entityName, string $entityId, string $stateFieldName, Context $context)` returns an array of possible actions (an open order yields `cancel` and `process`).
+5. Inspect a machine as a Graphviz DOT graph (includes extensions' states/transitions):
+   `bin/console state-machine:dump order.state | dot -Tpng > order.png` — other names: `order_delivery.state`, `order_transaction.state`.
+6. Forcing (recovery only): `$context->addState(SetOrderStateAction::FORCE_TRANSITION);` (`Shopware\Core\Content\Flow\Dispatching\Action\SetOrderStateAction`), call `transition()` with the target state's technical name (e.g. `in_progress`), and remove the state in a `finally` block with `$context->removeState(...)`.
+7. Finding a delivery ID from an order ID: search `order_delivery.repository` with `new Criteria()` + `EqualsFilter('orderId', $orderId)` and `searchIds(...)->firstId()`, or load the order with `new Criteria([$orderId])`, `addAssociation('deliveries')` and use `getDeliveries()->first()->getId()`.
+8. Transaction helper: `Shopware\Core\Checkout\Order\Aggregate\OrderTransaction\OrderTransactionStateHandler` exposes per-state methods taking `(string $transactionId, Context $context)`: `reopen`, `fail`, `process`, `processUnconfirmed`, `paid`, `paidPartially`, `refund`, `refundPartially`, `cancel`, `remind`, `authorize`, `chargeback`.
 
 ## Essential identifiers
 
-- `Shopware\Core\System\StateMachine\StateMachineRegistry` — `transition()`, `getAvailableTransitions()`
+- `Shopware\Core\System\StateMachine\StateMachineRegistry::transition()` / `::getAvailableTransitions()`
 - `Shopware\Core\System\StateMachine\Transition`
-- `StateMachineTransitionActions`, `OrderTransactionStateHandler`
-- Entity names `order`, `order_transaction`, `order_delivery`; state field `stateId`
+- `Shopware\Core\Framework\Context`
+- `OrderDefinition::ENTITY_NAME` (`order`), `OrderTransactionDefinition::ENTITY_NAME` (`order_transaction`), `OrderDeliveryDefinition::ENTITY_NAME` (`order_delivery`)
+- `SetOrderStateAction::FORCE_TRANSITION`
+- `OrderTransactionStateHandler`
+- `bin/console state-machine:dump`
 
 ## Gotchas
 
-- An order can have several deliveries or transactions; `first()` may pick the wrong one — add filters or sorting (e.g. to get the latest delivery).
-- The docs use action `do_pay` (`StateMachineTransitionActions::ACTION_DO_PAY`) for open to in_progress on transactions; it is deprecated for 6.8.0 — use `process` (`ACTION_PROCESS`).
-- The docs list `OrderTransactionStateHandler::payPartially()`; it is deprecated for 6.8.0 — use `paidPartially()`.
+- You cannot jump between arbitrary states (e.g. `refunded` requires `paid` first); illegal transitions throw.
+- Forced mode bypasses guards and business rules. In the installed code it is only consulted when the given name is not a regular action from the current state; it then looks up a state whose technical name equals the name. Always remove the context state afterwards.
+- `first()` on deliveries/transactions may not return the one you want when an order has several — add filters or sorting.
 
-## Code check (6.7.13.0)
-- confirmed `StateMachineRegistry::transition()` — takes Transition and Context — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:117
-- confirmed `StateMachineRegistry::getAvailableTransitions()` — entityName, entityId, stateFieldName, context — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:98
-- confirmed `Transition::__construct()` — entityName, entityId, transitionName, stateFieldName, optional internalComment — vendor/shopware/core/System/StateMachine/Transition.php:10
+## Version notes
+
+- 6.7.0.0 renamed the transaction action `do_pay` to `process`; `do_pay` and `StateMachineTransitionActions::ACTION_DO_PAY` are deprecated and removed in 6.8.0.
+
+## Code check (6.7.15.1)
+- confirmed `StateMachineRegistry::transition()` — takes `Transition` and `Context` — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:124
+- confirmed `StateMachineRegistry::getAvailableTransitions()` — entity name, id, state field, context — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:105
+- corrected `Transition::__construct()` — docs: four parameters; code adds optional `internalComment` — vendor/shopware/core/System/StateMachine/Transition.php:10
 - deprecated `StateMachineTransitionActions::ACTION_DO_PAY` — removed in 6.8.0, use ACTION_PROCESS — vendor/shopware/core/System/StateMachine/Aggregation/StateMachineTransition/StateMachineTransitionActions.php:16
-- confirmed `StateMachineTransitionActions::ACTION_PROCESS` — value process — vendor/shopware/core/System/StateMachine/Aggregation/StateMachineTransition/StateMachineTransitionActions.php:20
-- deprecated `OrderTransactionStateHandler::payPartially()` — use paidPartially — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionStateHandler.php:122
-- confirmed `OrderTransactionStateHandler::paidPartially()` — replacement method — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionStateHandler.php:137
-- confirmed `OrderDefinition::ENTITY_NAME` — value order — vendor/shopware/core/Checkout/Order/OrderDefinition.php:58
-- confirmed `OrderDeliveryDefinition::ENTITY_NAME` — value order_delivery — vendor/shopware/core/Checkout/Order/Aggregate/OrderDelivery/OrderDeliveryDefinition.php:35
-- confirmed `stateId` — StateMachineStateField property name on order transaction — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionDefinition.php:69
+- confirmed `StateMachineTransitionActions::ACTION_PROCESS` — value `process` — vendor/shopware/core/System/StateMachine/Aggregation/StateMachineTransition/StateMachineTransitionActions.php:20
+- confirmed `SetOrderStateAction::FORCE_TRANSITION` — value `force_transition` — vendor/shopware/core/Content/Flow/Dispatching/Action/SetOrderStateAction.php:28
+- confirmed `FORCE_TRANSITION` — checked only after no regular destination matched — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:383
+- confirmed `state-machine:dump` — console command name — vendor/shopware/core/System/StateMachine/Command/WorkflowDumpCommand.php:18
+- confirmed `OrderTransactionStateHandler::paidPartially()` — helper method exists — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionStateHandler.php:137
+- confirmed `OrderTransactionDefinition::ENTITY_NAME` — value `order_transaction` — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionDefinition.php:34

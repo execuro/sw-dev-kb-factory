@@ -1,31 +1,35 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/making-api-requests.md
-title: Making API Requests
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/services-utilities/making-api-requests.html
+id: platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/making-api-requests.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md
+  - platform/dev/6.7/concepts/api/_index.md
 sourceHash: d16c607c1c4c48450db348f2f0a028f92db27cbb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ApiService", "Shopware.Classes", "getApiBasePath", "getBasicHeaders", "ApiService.handleResponse", "Application.addServiceProvider", "httpClient", "loginService", "api service", "http request", "custom endpoint", "axios", "inject"]
-summary: Custom Administration API service extending Shopware.Classes.ApiService, registered via Application.addServiceProvider and injected into components.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/api/_index.md", "platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/services-utilities/making-api-requests.html
+title: Making API Requests
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["ApiService", "Shopware.Classes", "addServiceProvider", "getBasicHeaders", "getApiBasePath", "handleResponse", "httpClient", "loginService", "inject", "api service", "http request", "custom endpoint", "administration plugin"]
+summary: Admin plugin API service extending Shopware.Classes.ApiService, registered via addServiceProvider and injected into components.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a plugin creates its own Administration API service class by extending `ApiService` (from `Shopware.Classes`), registers it in the service container, and calls it from components to reach custom backend endpoints. Prerequisites: a plugin and a custom Administration module or component ([add custom module](platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md)).
+How an Administration plugin creates its own API service class to send HTTP requests to Shopware API endpoints (typically custom backend routes of the plugin), registers it in the service container, and injects it into components.
 
 ## When to use
 
-When Administration code must call plugin-specific backend routes (e.g. under `_action/my-plugin`) with the logged-in user's authentication. For standard entities, inject `repositoryFactory` and use `repositoryFactory.create('product')` with a `Shopware.Data.Criteria` instead.
+You need a plugin's Administration module or component to talk to a custom backend endpoint (for example an `_action/my-plugin` controller) or extend what the Admin API offers. Prerequisites: a plugin and a custom Administration module or component (see platform/dev/6.7/guides/plugins/plugins/administration/module-component-management/add-custom-module.md). For the backend side see platform/dev/6.7/concepts/api/_index.md.
 
 ## Key steps / config
 
-1. `<plugin root>/src/Resources/app/administration/src/api/my-api-service.js`:
+1. Create `<plugin root>/src/Resources/app/administration/src/api/my-api-service.js` with a class extending `ApiService` from `Shopware.Classes`:
 
 ```javascript
 const { ApiService } = Shopware.Classes;
+
 class MyApiService extends ApiService {
     constructor(httpClient, loginService, apiEndpoint = '_action/my-plugin') {
         super(httpClient, loginService, apiEndpoint);
@@ -39,9 +43,9 @@ class MyApiService extends ApiService {
 export default MyApiService;
 ```
 
-POST/DELETE/query-param variants follow the same shape (`httpClient.post(route, data, { headers })`, `params: { term, limit }`).
+   POST/DELETE work the same with `this.httpClient.post(route, data, { headers })` / `.delete(route, { headers })`; query parameters go in a `params` object next to `headers`.
 
-2. `src/api/index.js` registers the provider; import it from `main.js` with `import './api';`:
+2. Register it in `<plugin root>/src/Resources/app/administration/src/api/index.js`:
 
 ```javascript
 Shopware.Application.addServiceProvider('myApiService', (container) => {
@@ -50,37 +54,33 @@ Shopware.Application.addServiceProvider('myApiService', (container) => {
 });
 ```
 
-3. In a component: `inject: ['myApiService']`, then `await this.myApiService.getMyData()` inside `try/catch`, reporting via the `notification` mixin (`createNotificationSuccess`, `createNotificationError`).
-
-Base class API in 6.7:
-- `constructor(httpClient, loginService, apiEndpoint, contentType = 'application/vnd.api+json')`
-- `getApiBasePath(id?, prefix = '')` returns `[prefix/]apiEndpoint[/id]`
-- `getBasicHeaders(additionalHeaders = {})` returns `Accept` (the content type), `Authorization` (token from `loginService.getToken()`), `Content-Type: application/json`, plus `sw-language-id` when the API context has a language; extra headers can be passed as the argument.
-- `ApiService.handleResponse(response)` returns `response.data` (parsed from JSON:API when the response content type is `application/vnd.api+json`), or the whole response when `data` is empty.
-
-For uploads, post a `FormData` with `'Content-Type': 'multipart/form-data'` merged over the basic headers.
+3. Import it from the plugin's admin entry `src/main.js` with `import './api';`.
+4. In a component, add `inject: ['myApiService']` and call e.g. `await this.myApiService.getMyData()` inside `try/catch`; the source pairs this with `Mixin.getByName('notification')` and `createNotificationSuccess` / `createNotificationError`.
+5. Custom headers: `getBasicHeaders()` accepts an object of extra headers and merges it over the defaults (`this.getBasicHeaders({ 'X-Custom-Header': 'custom-value' })`); spreading `...this.getBasicHeaders()` into a new object also works.
+6. File uploads: append the file to a `FormData` and post it with `'Content-Type': 'multipart/form-data'` overriding the default header.
+7. For standard entities, use `inject: ['repositoryFactory']`, `this.repositoryFactory.create('product')` and a `new Shopware.Data.Criteria()` instead of a custom service.
 
 ## Essential identifiers
 
-- `Shopware.Classes.ApiService`
-- `getApiBasePath`, `getBasicHeaders`, `ApiService.handleResponse`
-- `Shopware.Application.addServiceProvider`, `Application.getContainer('init')`
-- `httpClient`, `loginService`
-- `Mixin.getByName('notification')`
+- `Shopware.Classes.ApiService` — base class; constructor `(httpClient, loginService, apiEndpoint, contentType = 'application/vnd.api+json')`
+- `getApiBasePath(id?, prefix = '')` — returns the endpoint, optionally with `/<id>` and a `<prefix>/`
+- `getBasicHeaders(additionalHeaders = {})`
+- `ApiService.handleResponse(response)` (static)
+- `Shopware.Application.addServiceProvider(name, provider)`, `Application.getContainer('init').httpClient`, `container.loginService`
 
 ## Gotchas
 
-- `handleResponse` does not handle HTTP errors: it only unwraps/parses the data. Failed requests reject from `httpClient`; inspect `error.response` (status/data), `error.request` (no response) or `error.message` in the component.
-- The docs list "API version headers" among the basic headers; the installed `getBasicHeaders` sets none — it sets `Accept`, `Authorization`, `Content-Type` and optionally `sw-language-id`.
+- The source says `getBasicHeaders()` adds "API version headers". The installed code sets `Accept` (the service's content type), `Authorization` (token from `loginService`), `Content-Type: application/json`, and `sw-language-id` when `Shopware.Context.api.languageId` is set. It sets no API version header.
+- `handleResponse()` only parses JSON:API when the response `content-type` is `application/vnd.api+json`. Otherwise it returns `response.data`, or the whole response when `data` is null/undefined. It does not throw on HTTP errors itself. Failures reach you as rejected promises from `httpClient`, where you can inspect `error.response`, `error.request` or `error.message`.
 
-## Code check (6.7.13.0)
-- confirmed `ApiService` — exposed under Shopware.Classes — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:280
-- confirmed `ApiService::constructor()` — httpClient, loginService, apiEndpoint, contentType default — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:35
-- confirmed `ApiService::getApiBasePath()` — builds prefix/endpoint/id — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:50
-- corrected `ApiService::getBasicHeaders()` — docs: includes API version headers — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:67
-- corrected `ApiService::handleResponse()` — docs: handles common HTTP errors; code only unwraps/parses data — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:89
-- confirmed `addServiceProvider` — registers `service.<name>` factory — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:169
-- confirmed `initContainer.httpClient` — init container holds httpClient — vendor/shopware/administration/Resources/app/administration/src/app/main.ts:126
-- confirmed `loginService` — lives in the service container — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:347
-- confirmed `createNotificationSuccess` — notification mixin method — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:20
-- unverified `Shopware.Data.Criteria` — not checked in this pass
+## Code check (6.7.15.1)
+- confirmed `ApiService` — base class for REST API services — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:24
+- confirmed `contentType` — fourth constructor argument, default `application/vnd.api+json` — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:39
+- confirmed `ApiService::getApiBasePath()` — builds endpoint path with optional id and prefix — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:50
+- corrected `ApiService::getBasicHeaders()` — docs: auth, content-type and API version headers; code: Accept, Authorization, Content-Type, sw-language-id, plus merged extras — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:67
+- confirmed `ApiService::handleResponse()` — static; parses JSON:API by content type — vendor/shopware/administration/Resources/app/administration/src/core/service/api.service.ts:89
+- confirmed `Classes` — global object exposes `ApiService` on `Shopware.Classes` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:291
+- confirmed `addServiceProvider` — registers a provider as `service.<name>` in the DI container — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:170
+- confirmed `httpClient` — init container provides the HTTP client — vendor/shopware/administration/Resources/app/administration/src/app/init/index.ts:54
+- confirmed `notification` — mixin providing `createNotificationSuccess`/`createNotificationError` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:15
+- confirmed `createNotificationSuccess` — mixin method — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:22

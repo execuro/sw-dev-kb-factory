@@ -6,37 +6,39 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-10-20-test-structure.html
 sourceHash: 69e70b8da314e95da07a47816ce52bc5980550be
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["[component name].spec.js|ts", ".spec.ts", ".spec.js", "sw-cms-el-config-image", "administration tests", "colocated tests", "test file location", "unit test naming", "vue component tests", "adr"]
-summary: "ADR: administration spec files sit next to the component they test, named [component name].spec.ts or .js; the central test folder is not loaded."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["test structure", "adr", "administration", "jest", "spec.js", "spec.ts", "colocated tests", "unit tests", "sw-cms-el-config-image", "wrapTestComponent", "test file naming", "typescript"]
+summary: "ADR 2022-10-20: Administration Jest tests live next to the component they test as [component name].spec.js|ts instead of a central test folder."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2022-10-20, area administration) that moves administration unit tests out of the central folder `src/Administration/Resources/app/administration/test` and next to the components they test.
+An architecture decision record (area: administration, 2022-10-20) that moves Administration unit tests out of the single central folder `src/Administration/Resources/app/administration/test` and into the same folder as the component each test covers.
 
 ## When to use
 
-When adding or locating a test for an administration component or module file, or when deciding how to name a new spec file.
+When writing or locating a Jest test for an Administration component or module, and when deciding where a new spec file goes and how to name it.
 
 ## Key steps / config
 
-1. Put the spec file in the same directory as the component it tests (standard Vue community practice).
-2. Name it after the component: `[component name].spec.js|ts` (the brackets are not part of the name). TypeScript (`.spec.ts`) is preferred.
-3. ADR example: the test for `sw-cms-el-config-image` goes to `src/Administration/Resources/app/administration/src/module/sw-cms/component/sw-cms-el-config-image/sw-cms-el-config-image.spec.js`. In 6.7 that component is registered from `src/module/sw-cms/elements/image/config/`, so its colocated spec belongs in that directory.
+- Place the spec file in the same directory as the component it tests (the usual Vue-community layout). The central `test` folder no longer holds component tests; test files are not loaded from it.
+- Name the file after the component: `[component name].spec.js|ts` (the brackets are not part of the name), for example `sw-cms-sidebar.spec.js` next to the `sw-cms-sidebar` component in `src/module/sw-cms/component/sw-cms-sidebar/`.
+- Use `.js` or `.ts`; TypeScript is preferred for new tests.
+- In the installed code, specs mount the component under test by its registered name via `wrapTestComponent('<component-name>', { ... })`.
 
 ## Essential identifiers
 
-- `[component name].spec.js|ts`
-- `src/Administration/Resources/app/administration/src/` (component and spec location)
+- `src/Administration/Resources/app/administration/test` — the former central test folder
+- `[component name].spec.js` / `[component name].spec.ts` — required file-name pattern
+- `wrapTestComponent` — helper the colocated specs use to mount a component
 
 ## Gotchas
 
-- Test files are no longer loaded from the old `test` folder; a spec placed there is not picked up.
-- Solves two problems: searching for the matching test while changing a component, and not being able to see which components have tests.
-- Spec files are not shipped in the installed administration package, so a colocated spec cannot be looked up in a Composer installation.
+- The motivation stated by the ADR: with one central folder you had to search for the matching test when changing a component, and you could not see which components had tests at all.
+- The ADR's example path `src/module/sw-cms/component/sw-cms-el-config-image/sw-cms-el-config-image.spec.js` does not exist in 6.7. The `sw-cms-el-config-image` component lives in `src/module/sw-cms/elements/image/config/`, and its colocated spec there is named `config.spec.js` (after the folder, not the component), so the naming rule is not applied uniformly to element config components.
 
-## Code check (6.7.13.0)
-- corrected `sw-cms-el-config-image` — docs: component under module/sw-cms/component/sw-cms-el-config-image/; registered from elements/image/config — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/elements/image/index.ts:12
-- confirmed `sw-cms-el-config-image` — used as configComponent of the image CMS element — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/elements/image/index.ts:27
-- unverified `[component name].spec.js|ts` — spec files and test runner config are not part of the installed vendor/shopware administration src
+## Code check (6.7.15.1)
+- corrected `sw-cms-el-config-image` — docs: test at `component/sw-cms-el-config-image/sw-cms-el-config-image.spec.js`; actual spec is `elements/image/config/config.spec.js` — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/elements/image/config/config.spec.js:10
+- confirmed `sw-cms-el-config-image` — registered from `./config` in the image element module — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/elements/image/index.ts:12
+- confirmed `sw-cms-sidebar` — spec `sw-cms-sidebar.spec.js` sits beside the component and follows the naming rule — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/component/sw-cms-sidebar/sw-cms-sidebar.spec.js:90
+- confirmed `wrapTestComponent` — colocated specs mount the component by registered name — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/elements/image/config/config.spec.js:10

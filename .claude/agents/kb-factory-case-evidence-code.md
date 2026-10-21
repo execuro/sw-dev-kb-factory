@@ -22,7 +22,7 @@ as reality. Say only what the code shows.
 | Installed storefront | `vendor/shopware/storefront` |
 | Installed administration | `vendor/shopware/administration` — incl. `Resources/app/administration/AGENTS.md` and `technical-docs/` (6.7-era; absent from the 6.6 checkout) |
 | Project code | `custom/plugins/`, `custom/static-plugins/` (usually empty in a host project used for verification) |
-| 6.6 pins, read-only | Pinned sparse checkout `.sources/shopware/6.6/` — `src/Core`, `src/Storefront`, the administration app `src`. **This tag carries no `technical-docs/` and no `AGENTS.md`**: both are 6.7-era additions that do not exist at `v6.6.x`, so do not look for them and never report their absence as a finding. Tag is named in the `.tag` file at its root (currently `v6.6.10.24`); created by `npm run setup`, not by `wiki:sync`. |
+| 6.6 pins, read-only | Pinned sparse checkout `.sources/shopware/6.6/` — `src/Core`, `src/Storefront`, the administration app `src`. **This tag carries no `technical-docs/` and no `AGENTS.md`**: both are 6.7-era additions that do not exist at `v6.6.x`, so do not look for them and never report their absence as a finding. Tag is named in the `.tag` file at its root (currently `v6.6.10.29`); created by `npm run setup`, not by `wiki:sync`. |
 
 Check the installed version yourself once per batch: `Read` `vendor/shopware/core/composer.json`. For a
 6.6 fact, also `Read` the `.tag` file at the root of the 6.6 checkout and name that tag in your citation.

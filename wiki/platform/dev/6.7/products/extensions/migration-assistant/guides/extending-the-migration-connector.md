@@ -1,73 +1,64 @@
 ---
-id: platform/dev/6.7/products/extensions/migration-assistant/guides/extending-the-migration-connector.md
-title: Extending the Migration Connector
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/guides/extending-the-migration-connector.html
+id: platform/dev/6.7/products/extensions/migration-assistant/guides/extending-the-migration-connector.md
 sourceHash: db67643412481d2fbdcc2cc19005d8b3821d2c88
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["migration connector", "SwagMigrationConnector", "api gateway migration", "AbstractRepository", "AbstractApiService", "ControllerReturnStruct", "Shopware_Controllers_Api_Rest", "ApiReader", "getApiRoute", "shopware.migration.reader", "BundleReader", "shopware 5 api"]
-summary: "Extend the SW5 SwagMigrationConnector with a BundleRepository, BundleService and API controller, plus an ApiReader in SW6 to migrate bundles via API."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/guides/extending-the-migration-connector.html
+title: Extending the Migration Connector
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["SwagMigrationConnector", "SwagMigrationAssistant", "migration connector", "AbstractRepository", "AbstractApiService", "ControllerReturnStruct", "ApiReader", "ShopwareApiGateway", "getApiRoute", "shopware.migration.reader", "shopware 5 api", "SwagAdvDevBundle"]
+summary: Expose SW5 plugin data (SwagAdvDevBundle) via a SwagMigrationConnector API controller and read it in Shopware 6 with an ApiReader.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Example of extending the Shopware 5 Migration Connector plugin (`SwagMigrationConnector`) so `SwagAdvDevBundle` bundle data can be migrated to Shopware 6 through the API gateway, not only the local gateway.
+A guide for extending the Shopware 5 Migration Connector plugin (`SwagMigrationConnector`) so bundle data of `SwagAdvDevBundle` can be migrated to Shopware 6 via the API gateway, not only the local gateway. It builds on the `SwagMigrationBundleExample` plugin from "Extending a Shopware Migration Profile".
 
 ## When to use
 
-You already extended the Shopware migration profile for plugin data (`SwagMigrationBundleExample` with the Migration Assistant in Shopware 6) and need the same data when the source shop is connected via API.
+Your Shopware 5 plugin data is already migratable via the local gateway and you also need it over the API gateway. Prerequisites: `SwagAdvDevBundle` and the Migration Connector in Shopware 5; your own plugin, the Migration Assistant (`SwagMigrationAssistant`) and `SwagMigrationBundleExample` in Shopware 6.
 
 ## Key steps / config
 
-**Shopware 5 side:**
+Shopware 5 side (connector extension):
 
-1. **Repository** — `SwagMigrationBundleApiExample\Repository\BundleRepository extends SwagMigrationConnector\Repository\AbstractRepository`: `fetch($offset = 0, $limit = 250)` uses `fetchIdentifiers('s_bundles', ...)` and `addTableSelection()` (prefixes table columns); `fetchBundleProducts(array $ids)` reads `s_bundle_products`.
+1. **Repository** — `SwagMigrationBundleApiExample\Repository\BundleRepository extends SwagMigrationConnector\Repository\AbstractRepository` with `fetch($offset = 0, $limit = 250)` (uses `fetchIdentifiers('s_bundles', ...)` and `addTableSelection()`, which prefixes all columns) and `fetchBundleProducts(array $ids)` on `s_bundle_products`. Register with a parent:
+   ```php
+   $services->set('swag_migration_bundle_api_example.bundle_repository', SwagMigrationBundleApiExample\Repository\BundleRepository::class)
+       ->parent(SwagMigrationConnector\Repository\AbstractRepository::class);
+   ```
+2. **Service** — `BundleService extends SwagMigrationConnector\Service\AbstractApiService`, constructor takes an `ApiRepositoryInterface`; `getBundles($offset, $limit)` fetches bundles and products, strips the `bundles` prefix via `mapData($bundles, [], ['bundles'])`, attaches products and returns `cleanupResultSet($bundles)`. Service id `swag_migration_bundle_api_example.bundle_service`, arg `service('swag_migration_bundle_api_example.bundle_repository')`.
+3. **API controller** — `Shopware_Controllers_Api_SwagMigrationBundles extends Shopware_Controllers_Api_Rest`; `indexAction()` reads `offset`/`limit` (default 250) request params, calls `getBundles()` and assigns `(new ControllerReturnStruct($bundles, empty($bundles)))->jsonSerialize()` to the view.
 
-```php
-$services->set('swag_migration_bundle_api_example.bundle_repository', SwagMigrationBundleApiExample\Repository\BundleRepository::class)
-    ->parent(SwagMigrationConnector\Repository\AbstractRepository::class);
-```
+Shopware 6 side (in `SwagMigrationBundleExample`):
 
-2. **Service** — `SwagMigrationBundleApiExample\Service\BundleService extends SwagMigrationConnector\Service\AbstractApiService` (constructor: `ApiRepositoryInterface`). `getBundles($offset = 0, $limit = 250)` strips the `bundles` prefix with `mapData()`, attaches `products`, returns `cleanupResultSet()`. Service id `swag_migration_bundle_api_example.bundle_service`, argument the repository service.
-3. **API controller** — `Shopware_Controllers_Api_SwagMigrationBundles extends Shopware_Controllers_Api_Rest`; `indexAction()` reads `offset`/`limit`, calls `getBundles()`, assigns `ControllerReturnStruct($bundles, empty($bundles))->jsonSerialize()` to the view.
-
-**Shopware 6 side (`SwagMigrationBundleExample`):**
-
-4. **API reader** — only defines the route:
-
-```php
-class BundleReader extends ApiReader
-{
-    public function supports(MigrationContextInterface $migrationContext): bool
-    { /* Shopware profile + API gateway + bundle entity */ }
-
-    protected function getApiRoute(): string { return 'SwagMigrationBundles'; }
-}
-```
-
-```php
-$services->set(SwagMigrationBundleExample\Profile\Shopware\Gateway\Api\BundleReader::class)
-    ->parent(SwagMigrationAssistant\Profile\Shopware\Gateway\Api\Reader\ApiReader::class)
-    ->tag('shopware.migration.reader');
-```
+4. **API reader** — `BundleReader extends SwagMigrationAssistant\Profile\Shopware\Gateway\Api\Reader\ApiReader`; `supports()` requires `ShopwareProfileInterface`, `ShopwareApiGateway::GATEWAY_NAME` and `BundleDataSet::getEntity()`; `getApiRoute()` returns `'SwagMigrationBundles'`. Register:
+   ```php
+   $services->set(SwagMigrationBundleExample\Profile\Shopware\Gateway\Api\BundleReader::class)
+       ->parent(SwagMigrationAssistant\Profile\Shopware\Gateway\Api\Reader\ApiReader::class)
+       ->tag('shopware.migration.reader');
+   ```
 
 ## Essential identifiers
 
-- `SwagMigrationConnector\Repository\AbstractRepository`, `SwagMigrationConnector\Service\AbstractApiService`, `ControllerReturnStruct`
-- `Shopware_Controllers_Api_Rest`, route `SwagMigrationBundles`
-- `SwagMigrationAssistant\Profile\Shopware\Gateway\Api\Reader\ApiReader`, `getApiRoute()`, tag `shopware.migration.reader`
+- `SwagMigrationConnector\Repository\AbstractRepository`, `ApiRepositoryInterface`, `SwagMigrationConnector\Service\AbstractApiService`, `ControllerReturnStruct`
+- `Shopware_Controllers_Api_SwagMigrationBundles`, API route `SwagMigrationBundles`
+- `ApiReader`, `getApiRoute()`, `ShopwareApiGateway`, tag `shopware.migration.reader`
 
 ## Gotchas
 
-- The source declares the reader in namespace `SwagMigrationBundleExample\Profile\Shopware\Gateway\Api\Reader` but registers `SwagMigrationBundleExample\Profile\Shopware\Gateway\Api\BundleReader`; keep the service id equal to the real class.
+- The reader class is declared in namespace `...\Gateway\Api\Reader`, but the service registration in the guide uses `SwagMigrationBundleExample\Profile\Shopware\Gateway\Api\BundleReader` (no `Reader` segment) — align the service id with the actual class name.
+- The repository and controller run on Shopware 5 and use its legacy DBAL/controller APIs.
+- Full example: `swag-docs-extending-shopware-migration-connector` in the `shopwareArchive` GitHub organisation.
 
-## Code check (6.7.13.0)
-- confirmed `SwagMigrationAssistant` — core only references the plugin by name; its classes are not under vendor/shopware — vendor/shopware/administration/Resources/app/administration/src/module/sw-first-run-wizard/view/sw-first-run-wizard-data-import/index.js:33
-- unverified `SwagMigrationConnector\Repository\AbstractRepository` — Shopware 5 plugin, not in vendor/shopware
-- unverified `SwagMigrationConnector\Service\AbstractApiService` — Shopware 5 plugin, not in vendor/shopware
-- unverified `SwagMigrationConnector\Service\ControllerReturnStruct` — Shopware 5 plugin, not in vendor/shopware
-- unverified `Shopware_Controllers_Api_Rest` — Shopware 5 core class, out of scope
-- unverified `SwagMigrationAssistant\Profile\Shopware\Gateway\Api\Reader\ApiReader` — SwagMigrationAssistant not installed, out of scope
-- unverified `shopware.migration.reader` — plugin service tag, SwagMigrationAssistant not installed, out of scope
+## Code check (6.7.15.1)
+- confirmed `SwagMigrationAssistant` — core Administration only references it as an installable plugin name — vendor/shopware/administration/Resources/app/administration/src/module/sw-first-run-wizard/view/sw-first-run-wizard-data-import/index.js:26
+- unverified `SwagMigrationConnector\Repository\AbstractRepository` — Shopware 5 connector plugin, out of scope
+- unverified `SwagMigrationConnector\Service\AbstractApiService` — Shopware 5 connector plugin, out of scope
+- unverified `ControllerReturnStruct` — Shopware 5 connector plugin, out of scope
+- unverified `Shopware_Controllers_Api_Rest` — Shopware 5 core, out of scope
+- unverified `ApiReader` — SwagMigrationAssistant plugin, out of scope
+- unverified `ShopwareApiGateway` — SwagMigrationAssistant plugin, out of scope
+- unverified `shopware.migration.reader` — DI tag defined by SwagMigrationAssistant, out of scope

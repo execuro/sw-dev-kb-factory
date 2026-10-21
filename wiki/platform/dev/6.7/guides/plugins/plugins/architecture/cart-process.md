@@ -1,33 +1,41 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/architecture/cart-process.md
-title: Cart Extension Architecture
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/architecture/cart-process.html
+id: platform/dev/6.7/guides/plugins/plugins/architecture/cart-process.md
 sourceHash: 1c6aab500f098d8f7f6452ac5877bf3dd7476cdd
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cart extension rules", "CartDataCollectorInterface", "CartProcessorInterface", "CartDataCollection", "LineItemFactoryInterface", "QuantityPriceCalculator", "price calculator", "cart recalculation", "no queries in process", "cart collector", "cart processor", "store api cart routes"]
-summary: "Cart extension rules: load data once in collectors, no DB queries in processors, line item factories, core price calculators, Store API routes."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/architecture/cart-process.html
+title: Cart Extension Architecture
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["CartDataCollectorInterface", "CartProcessorInterface", "CartDataCollection", "LineItemFactoryInterface", "LineItemFactoryHandler", "QuantityPriceCalculator", "shopware.cart.processor", "shopware.cart.collector", "cart extension", "cart recalculation", "price calculation", "line item factory", "store api cart routes"]
+summary: Mandatory rules for cart plugins - collectors load data once, processors never query, price calculators, line item factories, Store API routes.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The architectural contract for plugins extending the cart. The cart is recalculated several times per request to resolve dependencies between line items, so extensions must be deterministic and must keep data loading separate from calculation.
+The architectural contract for extending the Shopware cart. The cart is recalculated several times per request to resolve dependencies between line items, so custom cart extensions must stay deterministic and cheap per pass.
 
 ## When to use
 
-Writing a cart data collector, cart processor, custom line item type or price adjustment in a plugin, or reviewing one for performance problems.
+Before writing a cart collector, cart processor, custom line item type, price adjustment, or a cart-related Store API endpoint in a plugin.
 
 ## Key steps / config
 
-Design principles: cart processing is multi-pass and must stay deterministic; data loading is separated from calculation; price logic is centralized and reusable.
+Design principles: cart processing is multi-pass and must remain deterministic; data loading is separated from calculation; price logic is centralised and reusable.
 
-1. **Load external data in a collector.** Implement `Shopware\Core\Checkout\Cart\CartDataCollectorInterface::collect(CartDataCollection $data, Cart $original, SalesChannelContext $context, CartBehavior $behavior): void`. Check whether the data is already present in `CartDataCollection` (`Shopware\Core\Checkout\Cart\LineItem\CartDataCollection`) and only query what is missing, then append it there. Register with the `shopware.cart.collector` tag.
-2. **Modify calculated items in a processor.** Implement `Shopware\Core\Checkout\Cart\CartProcessorInterface::process(CartDataCollection $data, Cart $original, Cart $toCalculate, SalesChannelContext $context, CartBehavior $behavior): void`. Read only from `$data`; never run database queries here. Register with the `shopware.cart.processor` tag.
-3. **Create line items via a factory.** Implement `Shopware\Core\Checkout\Cart\LineItemFactoryHandler\LineItemFactoryInterface` (`supports()`, `create()`, `update()`), tagged `shopware.cart.line_item.factory`; the core collects these in `LineItemFactoryRegistry`.
-4. **Calculate prices with core calculators** from the `Shopware\Core\Checkout\Cart\Price` namespace, e.g. `QuantityPriceCalculator`, `PercentagePriceCalculator`, `AbsolutePriceCalculator`.
-5. **Expose cart functions over Store API routes** in the `Shopware\Core\Checkout\Cart\SalesChannel` namespace (e.g. `CartItemAddRoute`, `CartLoadRoute`).
+1. **Load external data in a collector.** Implement `Shopware\Core\Checkout\Cart\CartDataCollectorInterface` and tag the service `shopware.cart.collector`. Its `collect(CartDataCollection $data, Cart $original, SalesChannelContext $context, CartBehavior $behavior): void` must check whether the data is already present in `CartDataCollection` (class `Shopware\Core\Checkout\Cart\LineItem\CartDataCollection`) and only load and append what is missing, so repeated passes do not repeat queries.
+2. **Modify calculated items in a processor.** Implement `Shopware\Core\Checkout\Cart\CartProcessorInterface` and tag the service `shopware.cart.processor` (optionally with a `priority`). `process(CartDataCollection $data, Cart $original, Cart $toCalculate, SalesChannelContext $context, CartBehavior $behavior): void` must never execute database queries — it runs multiple times per request; read everything from `$data`.
+3. **Create line items through a factory.** Line item creation goes through a factory in the `Shopware\Core\Checkout\Cart\LineItemFactoryHandler` namespace: implement `LineItemFactoryInterface` (`supports()`, `create()`, `update()`) and tag it `shopware.cart.line_item.factory`; core resolves factories via `LineItemFactoryRegistry`.
+4. **Calculate prices with core calculators.** All price calculations use the calculator classes in the `Shopware\Core\Checkout\Cart\Price` namespace (e.g. `QuantityPriceCalculator`, `AbsolutePriceCalculator`, `PercentagePriceCalculator`) instead of custom price arithmetic.
+5. **Expose cart functions via Store API.** Cart-related functionality is mapped to Store API routes in the `Shopware\Core\Checkout\Cart\SalesChannel` namespace (e.g. `AbstractCartLoadRoute`, `AbstractCartItemAddRoute`).
+
+```php
+class MyCollector implements CartDataCollectorInterface
+{
+    public function collect(CartDataCollection $data, Cart $original, SalesChannelContext $context, CartBehavior $behavior): void { /* load once, $data->set(...) */ }
+}
+```
 
 ## Essential identifiers
 
@@ -35,23 +43,24 @@ Design principles: cart processing is multi-pass and must stay deterministic; da
 - `Shopware\Core\Checkout\Cart\CartProcessorInterface::process()`
 - `Shopware\Core\Checkout\Cart\LineItem\CartDataCollection`
 - `Shopware\Core\Checkout\Cart\LineItemFactoryHandler\LineItemFactoryInterface`
-- `shopware.cart.collector`, `shopware.cart.processor`, `shopware.cart.line_item.factory`
-- `Shopware\Core\Checkout\Cart\Price\QuantityPriceCalculator`
-- `Shopware\Core\Checkout\Cart\SalesChannel`
+- `Shopware\Core\Checkout\Cart\Price` (calculator namespace)
+- `Shopware\Core\Checkout\Cart\SalesChannel` (Store API route namespace)
+- Service tags: `shopware.cart.collector`, `shopware.cart.processor`, `shopware.cart.line_item.factory`
 
 ## Gotchas
 
-- `process()` runs on every recalculation pass; a query inside it multiplies database load per request.
-- The docs call `Shopware\Core\Checkout\Cart\Price` a class and `LineItemFactoryHandler` a class; both are namespaces in 6.7. The docs also name `CartDataCollection` without its namespace — it lives under `Cart\LineItem`, not `Cart`.
+- A query inside `process()` is executed on every recalculation pass of the request.
+- The docs call `Shopware\Core\Checkout\Cart\Price` a class; it is a namespace holding several calculator classes.
+- `CartDataCollection` lives in the `...\Cart\LineItem` namespace, not directly in `...\Cart`.
 
-## Code check (6.7.13.0)
-- confirmed `CartDataCollectorInterface::collect()` — collector contract — vendor/shopware/core/Checkout/Cart/CartDataCollectorInterface.php:12
-- confirmed `CartProcessorInterface::process()` — processor contract — vendor/shopware/core/Checkout/Cart/CartProcessorInterface.php:12
-- confirmed `CartDataCollection` — located in Cart\LineItem namespace — vendor/shopware/core/Checkout/Cart/LineItem/CartDataCollection.php:12
-- confirmed `MAX_ITERATION` — cart recalculated up to 7 times while rules/cart change — vendor/shopware/core/Checkout/Cart/CartRuleLoader.php:34
-- corrected `LineItemFactoryInterface` — docs: a LineItemFactoryHandler class — vendor/shopware/core/Checkout/Cart/LineItemFactoryHandler/LineItemFactoryInterface.php:15
-- confirmed `shopware.cart.line_item.factory` — tag collected for the factory registry — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:429
-- confirmed `shopware.cart.collector` — tagged iterator of collectors — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:342
-- confirmed `shopware.cart.processor` — tagged iterator of processors — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:341
-- corrected `QuantityPriceCalculator` — docs: calculators stored inside a Price class; Price is a namespace — vendor/shopware/core/Checkout/Cart/Price/QuantityPriceCalculator.php:14
-- confirmed `CartItemAddRoute` — Store API cart route in Cart\SalesChannel — vendor/shopware/core/Checkout/Cart/SalesChannel/CartItemAddRoute.php:26
+## Code check (6.7.15.1)
+- confirmed `CartDataCollectorInterface::collect()` — signature with CartDataCollection, original Cart, context, behavior — vendor/shopware/core/Checkout/Cart/CartDataCollectorInterface.php:12
+- confirmed `CartProcessorInterface::process()` — receives `$original` and `$toCalculate` carts — vendor/shopware/core/Checkout/Cart/CartProcessorInterface.php:12
+- corrected `CartDataCollection` — docs: implied in `Shopware\Core\Checkout\Cart`; class is in `Shopware\Core\Checkout\Cart\LineItem` — vendor/shopware/core/Checkout/Cart/LineItem/CartDataCollection.php:3
+- corrected `LineItemFactoryHandler` — docs: "a LineItemFactoryHandler class"; it is a namespace, contract is `LineItemFactoryInterface` — vendor/shopware/core/Checkout/Cart/LineItemFactoryHandler/LineItemFactoryInterface.php:15
+- confirmed `shopware.cart.line_item.factory` — tag collected by the factory registry — vendor/shopware/core/Checkout/DependencyInjection/cart.php:612
+- confirmed `shopware.cart.processor` — processor service tag, optional priority — vendor/shopware/core/Checkout/DependencyInjection/cart.php:147
+- confirmed `shopware.cart.collector` — collector service tag — vendor/shopware/core/Checkout/DependencyInjection/cart.php:148
+- corrected `Shopware\Core\Checkout\Cart\Price` — docs: "stored inside the ... Price class"; it is a namespace — vendor/shopware/core/Checkout/Cart/Price/QuantityPriceCalculator.php:3
+- confirmed `QuantityPriceCalculator::calculate()` — core price calculator — vendor/shopware/core/Checkout/Cart/Price/QuantityPriceCalculator.php:25
+- confirmed `Shopware\Core\Checkout\Cart\SalesChannel` — namespace of cart Store API routes — vendor/shopware/core/Checkout/Cart/SalesChannel/AbstractCartLoadRoute.php:3

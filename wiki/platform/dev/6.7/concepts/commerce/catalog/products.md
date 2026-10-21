@@ -6,59 +6,64 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/catalog/products.html
 sourceHash: 16773012de3021c2237b9abf45e2faaf7f4b8bce
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["product", "ProductDefinition", "product variant", "parent_id", "properties", "options", "property group option", "ProductCategoryDefinition", "ProductOptionDefinition", "ProductPropertyDefinition", "configurator", "ProductConfiguratorLoader", "MeasurementUnits", "packaging dimensions", "inheritance"]
-summary: Product concept - product data, categories, properties vs variant-defining options, parent/child variants with inheritance, packaging units, configurator.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["product", "product variant", "variants", "properties", "options", "property group", "property_group_option", "product_option", "product_property", "product_category", "configurator", "parent_id", "packaging dimensions", "measurement units", "ProductDefinition"]
+summary: Shopware 6.7 product concept - properties vs variant-defining options, parent/child variants with inheritance, categories, packaging units, configurator.
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Concept page for products, the sellable entities (physical and digital) in Shopware: their relation to categories and property groups, how variants are modelled, packaging dimensions, and the variant configurator.
+Concept page for products, the sellable entities (physical and digital) of a shop, and the entities they relate to: categories, property groups/options and variants. Each product can be made available in one or more sales channels.
 
 ## When to use
 
-Modelling a catalog (variants, properties, categories), deciding between properties and options, or working with product dimensions and variant selection in Store API clients.
+When modelling a catalog, deciding between properties and options, building variant handling, or reasoning about shipping dimensions. Very large catalogs (millions of products) need environment tuning, since load depends on the number of categories, sales channels and properties.
 
 ## Key steps / config
 
-- **Product details**: general data such as name, product number, manufacturer, prices.
-- **Sales channels**: a product can be made available in one or more sales channels. Very large catalogs (millions of products) need tuning, depending on the number of categories, sales channels and properties.
-- **Categories**: hierarchical tree used as navigation; a product can be in many categories (`categories` association via mapping `ProductCategoryDefinition`, columns `product_id`/`category_id`).
-- **Properties** (`properties`, mapping `ProductPropertyDefinition`): property group options describing facts usually shared by all variants — *non variant defining* (series, washing instructions, country of manufacture). Shown on the detail page, in listings, usable as filters.
-- **Options** (`options`, mapping `ProductOptionDefinition`): property group options that differ between variants — *variant defining* (size, color, volume). Both properties and options relate product to `property_group_option`, but only options constitute variants.
-- **Variants**: product is self-referencing (`parentId` / `ParentFkField`, `children`); child variants inherit field values from the parent.
-- **Packaging dimensions**: `weight` stored in kg; `width`, `length`, `height` stored in mm. Display units can differ per sales channel context (6.7.1.0+).
-- **Configurator**: for Store API-scoped requests of a variant product, Shopware assembles a configurator of all property groups and variants (`ProductConfiguratorLoader`) so Storefront or Composable Frontends can render variant selection.
+**Product data:** general details (name, product number, manufacturer, prices); a product can sit in multiple categories (mapping table `product_category`).
 
-Relationship skeleton:
+**Properties vs. options** — both relate `product` to `property_group_option` (which belongs to a `property_group`), but through different mapping tables:
+- **Properties** (`product_property`, association `properties`): non variant-defining facts that variants usually share (series/collection, washing instructions, manufacturing country). Shown in a table on the detail page, in listings, and usable as filters. Inherited by variants.
+- **Options** (`product_option`, association `options`): variant-defining facts that differ between variants (size, colour, volume).
+
+**Variants:** `product` is self-referencing via `parent_id`; a child is a variant of its parent and inherits field values from it.
 
 ```
-product ─< product_category >─ category
-product ─< product_option   >─ property_group_option >─ property_group
-product ─< product_property >─ property_group_option
-product.parent_id → product.id   (variants)
+product (id, parent_id)
+  ├─ product_category (product_id, category_id) → category
+  ├─ product_option   (product_id, property_group_option_id)
+  └─ product_property (product_id, property_group_option_id)
+property_group_option (id, property_group_id) → property_group
 ```
+
+**Packaging dimensions:** `weight` stored in kilograms; `width`, `length`, `height` in millimetres. Display units are configurable per sales channel context (storefront and APIs).
+
+**Configurator:** for a Store API-scoped request on a variant product, Shopware assembles a configurator object with all property groups and the corresponding variants, so clients (Storefront, Composable Frontends) can render variant selection. The available options are held in `product_configurator_setting` (association `configuratorSettings`).
 
 ## Essential identifiers
 
-- `ProductDefinition` (entity `product`), fields `parentId`, `weight`, `width`, `height`, `length`
-- Associations `categories`, `properties`, `options`, `children`
-- `ProductCategoryDefinition`, `ProductOptionDefinition`, `ProductPropertyDefinition`
+- `Shopware\Core\Content\Product\ProductDefinition` (`product`), `ProductEntity`
+- `product_category`, `product_option`, `product_property`, `product_configurator_setting`
+- `PropertyGroupDefinition`, `PropertyGroupOptionDefinition`
 - `ProductConfiguratorLoader`
-- `MeasurementUnits` (`DEFAULT_LENGTH_UNIT = 'mm'`, `DEFAULT_WEIGHT_UNIT = 'kg'`)
+
+## Gotchas
+
+- Properties and options point at the same `property_group_option` entity; only options define variants. Picking the wrong one breaks variant generation or filtering.
 
 ## Version notes
 
-- Configurable measurement display units exist only from Shopware 6.7.1.0; before that values are always metric and displayed as stored.
+- Configurable measurement units exist from Shopware 6.7.1.0. Before that, values are always stored and displayed in the metric system.
 
-## Code check (6.7.13.0)
-- confirmed `ProductDefinition` — product entity definition — vendor/shopware/core/Content/Product/ProductDefinition.php:83
-- confirmed `ParentFkField` — self-reference for variants — vendor/shopware/core/Content/Product/ProductDefinition.php:155
-- confirmed `weight` — inherited float field — vendor/shopware/core/Content/Product/ProductDefinition.php:196
-- confirmed `length` — inherited float field — vendor/shopware/core/Content/Product/ProductDefinition.php:199
-- confirmed `options` — ManyToMany via ProductOptionDefinition, variant options — vendor/shopware/core/Content/Product/ProductDefinition.php:273
-- confirmed `properties` — ManyToMany via ProductPropertyDefinition, inherited — vendor/shopware/core/Content/Product/ProductDefinition.php:275
-- confirmed `categories` — ManyToMany via ProductCategoryDefinition — vendor/shopware/core/Content/Product/ProductDefinition.php:277
-- confirmed `MeasurementUnits::DEFAULT_LENGTH_UNIT` — default mm — vendor/shopware/core/Content/MeasurementSystem/MeasurementUnits.php:13
-- confirmed `MeasurementUnits::DEFAULT_WEIGHT_UNIT` — default kg — vendor/shopware/core/Content/MeasurementSystem/MeasurementUnits.php:15
-- confirmed `ProductConfiguratorLoader` — builds variant configurator — vendor/shopware/core/Content/Product/SalesChannel/Detail/ProductConfiguratorLoader.php:20
+## Code check (6.7.15.1)
+- confirmed `ProductDefinition::ENTITY_NAME` — entity `product` — vendor/shopware/core/Content/Product/ProductDefinition.php:85
+- confirmed `ParentFkField` — product is self-referencing (variants) — vendor/shopware/core/Content/Product/ProductDefinition.php:155
+- confirmed `weight` — float field, inherited — vendor/shopware/core/Content/Product/ProductDefinition.php:199
+- confirmed `options` — many-to-many via `ProductOptionDefinition` — vendor/shopware/core/Content/Product/ProductDefinition.php:276
+- confirmed `properties` — many-to-many via `ProductPropertyDefinition`, inherited — vendor/shopware/core/Content/Product/ProductDefinition.php:278
+- confirmed `product_option` — mapping entity name — vendor/shopware/core/Content/Product/Aggregate/ProductOption/ProductOptionDefinition.php:22
+- confirmed `product_property` — mapping entity name — vendor/shopware/core/Content/Product/Aggregate/ProductProperty/ProductPropertyDefinition.php:22
+- confirmed `configuratorSettings` — association to `ProductConfiguratorSettingDefinition` — vendor/shopware/core/Content/Product/ProductDefinition.php:260
+- confirmed `ProductConfiguratorLoader` — builds Store API configurator — vendor/shopware/core/Content/Product/SalesChannel/Detail/ProductConfiguratorLoader.php:19
+- confirmed `MeasurementUnits` — measurement unit struct (6.7 measurement system) — vendor/shopware/core/Content/MeasurementSystem/MeasurementUnits.php:9

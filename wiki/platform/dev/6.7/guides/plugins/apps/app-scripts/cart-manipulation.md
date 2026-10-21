@@ -6,98 +6,94 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-scripts/cart-manipulation.html
 sourceHash: 07b516a3c4e753d7bb9b3eedb5f6addbd4457f92
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cart hook", "app scripts", "services.cart", "CartFacade", "calculate", "discount", "services.cart.price.create", "products.add", "states", "errors", "take", "payload", "rule builder", "ruleIds", "surcharge"]
-summary: App scripts on the cart hook - services.cart API to add products/discounts, price definitions, split items, payload, cart errors, states and rule checks.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/resources/references/app-reference/script-reference/cart-manipulation-script-services-reference.md", "platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md", "platform/dev/6.7/concepts/framework/rule-system/_index.md", "platform/dev/6.7/guides/plugins/apps/lifecycle/configuration.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cart manipulation", "cart hook", "app scripts", "services.cart", "services.cart.discount", "services.cart.products.add", "services.cart.calculate", "services.cart.price.create", "services.cart.errors", "services.cart.states", "take", "line item payload", "cart processor", "rule builder", "discount"]
+summary: Modify the cart from app scripts on the cart hook - add/remove/split line items, discounts, price definitions, payload, states, errors, rule checks.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/resources/references/app-reference/script-reference/cart-manipulation-script-services-reference.md
+  - platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md
+  - platform/dev/6.7/concepts/commerce/checkout-concept/cart.md
+  - platform/dev/6.7/guides/plugins/apps/lifecycle/configuration.md
 ---
 ## What it is
 
-How an app modifies the cart with app scripts registered on the `cart` hook (see [hooks reference](platform/dev/6.7/resources/references/app-reference/script-reference/script-hooks-reference.md)). Cart scripts act as an additional cart processor and get a fluent `services.cart` API for reading and changing the cart. Available since 6.4.8.0.
+How an app modifies the cart with app scripts registered on the `cart` hook. These scripts act as an additional cart processor in the [cart concept](platform/dev/6.7/concepts/commerce/checkout-concept/cart.md) and get a `cart` service (`services.cart`) with a fluent API for reading and changing the cart. App scripts require Shopware 6.4.8.0+.
 
 ## When to use
 
-An app must add products or discounts, split line items, attach line-item metadata, block checkout with errors, or show notices, based on cart contents, app config or matched rules.
+When an app needs to add products or discounts, split or annotate line items, block checkout with errors, or apply changes only when a Rule Builder rule matches. Scripts live in `Resources/scripts/cart/*.twig` and run on every cart calculation (item added, shipping/payment method changed, …). Full service list: [cart manipulation script services reference](platform/dev/6.7/resources/references/app-reference/script-reference/cart-manipulation-script-services-reference.md).
 
 ## Key steps / config
 
-Scripts live in `Resources/scripts/cart/*.twig` and run on every cart calculation (item added, shipping or payment method changed, ...).
-
-**Recalculation.** Totals are recalculated automatically after the whole script. If later logic needs updated prices, call `{% do services.cart.calculate() %}`; it reruns the full process step.
-
-**Idempotency.** The script runs many times per cart. Guard actions:
+**Recalculate when needed.** Totals are only recalculated automatically after the whole script finished. If later logic needs updated prices:
 
 ```twig
-{% if not services.cart.has('my-custom-discount') %}
-    {% do services.cart.discount('my-custom-discount', 'percentage', 10, 'A custom discount') %}
-{% endif %}
+{% do services.cart.products.add(productId) %}
+{% do services.cart.calculate() %}
 ```
 
-or track a vendor-prefixed state: `services.cart.states.has('swag-my-state')` (also `states.add(...)`, `states.remove(...)`).
+`calculate()` reruns the full `process` step.
 
-**Price definitions.** Prices are gross/net per currency. Sources:
-- custom field of type `<price name="test_price_field">` in the manifest's `<custom-fields>` ([custom fields](platform/dev/6.7/guides/plugins/apps/custom-data/custom-fields.md));
-- `<input-field type="price">` in `Resources/config/config.xml` ([app configuration](platform/dev/6.7/guides/plugins/apps/lifecycle/configuration.md)), read with `services.config.app('myCustomPrice')` — null-check it if it has no default;
-- manual definition via the factory:
+**Be idempotent.** The script runs many times per cart. Guard actions with `services.cart.has('my-custom-discount')`, or track a vendor-prefixed custom state via `services.cart.states.has('swag-my-state')` (states facade also offers `add` / `remove`) to perform and revert actions.
 
-```twig
-{% set price = services.cart.price.create({
-    'default': { 'gross': 19.99, 'net': 19.99 },
-    'USD': { 'gross': 24.99, 'net': 21.37 },
-}) %}
-```
+**Price definitions** (gross/net per currency):
+- Manual: `services.cart.price.create({ 'default': { 'gross': 19.99, 'net': 19.99 }, 'EUR': {…}, 'USD': {…} })`
+- From app config: `services.cart.price.create(services.config.app('myCustomPrice'))` — null-check it when the config field has no default.
+- Price fields can be declared as a `<price name="…">` field in a `<custom-field-set>` of the manifest, or as `<input-field type="price">` in `Resources/config/config.xml`.
 
-**Line items.**
+**Line items:**
 - Add product: `services.cart.products.add(productId)` or `services.cart.products.add(productId, 4)`.
-- Absolute discount: `services.cart.discount('my-custom-discount', 'absolute', discountPrice, 'my.custom.discount.label'|trans)` — `discountPrice` from `price.create(...)`.
+- Absolute discount: `services.cart.discount('my-custom-discount', 'absolute', discountPrice, 'my.custom.discount.label'|trans)` — `discountPrice` from `price.create`.
 - Relative discount: `services.cart.discount('my-custom-discount', 'percentage', 10, 'A custom 10% discount')`.
-- Remove: `services.cart.remove(id)` (product id or discount key).
-- Split: `existingLineItem.take(2, newLineItemId)` returns the split item without adding it; add it with `services.cart.products.add(newLineItem)`.
-- Payload: `lineItem.payload.set('custom-payload', myValue)`; read `lineItem.payload['custom-payload']`.
+- Arguments: id/key, type, value, label (hard-coded string or `|trans` snippet).
+- Remove: `services.cart.remove(id)` — product id or discount id.
+- Split: `existingLineItem.take(2, newLineItemId)` on an item from `services.cart.products.get(productId)`; returns the split item, which must be added explicitly with `services.cart.products.add(newLineItem)`.
+- Payload: `services.cart.get(lineItemId).payload.set('custom-payload', myValue)`; read with `lineItem.payload['custom-payload']`.
 
-**Errors and notices.** `services.cart.errors.error('my-error-message', 'error-id')` blocks checkout (args: snippet key, optional id, optional parameters array); `errors.warning(...)` and `errors.notice(...)` only inform; `errors.remove('error-id')`.
+**Errors and notifications:** `services.cart.errors.error('my-error-message', 'error-id')` blocks checkout (args: snippet key, optional id, optional parameters array); `services.cart.errors.remove('error-id')` removes it. `warning(...)` and `notice(...)` use the same signature but do not block checkout.
 
-**Rule-based scripts.** Add a rule picker to the app config and check the context's matched rules ([rule system](platform/dev/6.7/concepts/framework/rule-system/_index.md)):
-
-```xml
-<component name="sw-entity-single-select">
-    <name>exampleRule</name>
-    <entity>rule</entity>
-</component>
-```
+**Rule-based scripts:** add an `sw-entity-single-select` component with `<entity>rule</entity>` to the app config, then:
 
 ```twig
 {% set ruleId = services.config.app('exampleRule') %}
-{% if ruleId and ruleId in hook.context.ruleIds %} ... {% endif %}
+{% if ruleId and ruleId in hook.context.ruleIds %}
+    {# perform action #}
+{% else %}
+    {# revert action #}
+{% endif %}
 ```
 
 ## Essential identifiers
 
-- `cart` hook, `Resources/scripts/cart/`
-- `services.cart.calculate()`, `has()`, `remove()`, `discount()`, `items`, `products`, `price`, `states`, `errors`
-- `services.cart.price.create()` (currency key `default` or ISO code / currency id)
-- `products.add()`, `products.get()`, `take()`, `payload.set()`
-- `errors.error()`, `errors.warning()`, `errors.notice()`, `errors.remove()`
-- `states.has()`, `states.add()`, `states.remove()`
-- `services.config.app()`, `hook.context.ruleIds`
-- discount types `percentage`, `absolute`
+- Hook `cart`; script path `Resources/scripts/cart/`
+- `services.cart.calculate()`, `has()`, `get()`, `remove()`, `discount()`
+- `services.cart.products.add()` / `products.get()`, `items.count`
+- `services.cart.price.create()`
+- `services.cart.states.has()` / `add()` / `remove()`
+- `services.cart.errors.error()` / `warning()` / `notice()` / `remove()`
+- Line item `take()`, `payload.set()`
+- `hook.context.ruleIds`, `services.config.app()`
 
 ## Gotchas
 
-- After `calculate()`, collections such as `products()`, `items()`, `price()` are new instances; references held from before are outdated.
-- An absolute discount needs a price collection that includes the default currency (`'default'` key); otherwise the discount throws. A percentage discount rejects a price collection. Types other than `percentage`/`absolute` throw.
-- Use your vendor prefix in custom state names; they must be unique.
-- `services.cart.price` returns the current cart price, which may be stale until `calculate()`; it also exposes `create()`.
+- After `calculate()`, properties such as `products()`, `items()`, `price()` are recreated; references held in variables from before are stale.
+- `take()` does not add the new line item to the cart.
+- State names must be unique — always vendor-prefix them.
+- Discounts and other actions must check for prior execution because the script reruns on every recalculation.
 
-## Code check (6.7.13.0)
-- confirmed `CartHook::HOOK_NAME` — `cart`, becomes `cart-<source>` if the cart has a source — vendor/shopware/core/Checkout/Cart/Hook/CartHook.php:25
-- confirmed `CartFacade::calculate()` — recalculates; also called automatically after the script — vendor/shopware/core/Checkout/Cart/Facade/CartFacade.php:75
-- confirmed `DiscountTrait::discount()` — `discount(key, type, float|PriceCollection value, label)` — vendor/shopware/core/Checkout/Cart/Facade/Traits/DiscountTrait.php:36
-- confirmed `Defaults::CURRENCY` — absolute discount requires default-currency price — vendor/shopware/core/Checkout/Cart/Facade/Traits/DiscountTrait.php:70
-- confirmed `PriceFactoryTrait::create()` — keys are currency id or ISO code — vendor/shopware/core/Checkout/Cart/Facade/Traits/PriceFactoryTrait.php:23
-- confirmed `default` — price key `default` mapped to the default currency — vendor/shopware/core/Checkout/Cart/Facade/ScriptPriceStubs.php:131
-- confirmed `ProductsFacade::add()` — `add(product, int $quantity = 1)` — vendor/shopware/core/Checkout/Cart/Facade/ProductsFacade.php:80
-- confirmed `ItemFacade::take()` — `take(int $quantity, ?string $key = null)` — vendor/shopware/core/Checkout/Cart/Facade/ItemFacade.php:55
-- confirmed `ErrorsFacade::error()` — `error(key, ?id, parameters)`; warning/notice same shape — vendor/shopware/core/Checkout/Cart/Facade/ErrorsFacade.php:35
-- confirmed `StatesFacade::has()` — variadic state check — vendor/shopware/core/Checkout/Cart/Facade/StatesFacade.php:48
+## Version notes
+
+- App scripts (and the `cart` hook) exist since Shopware 6.4.8.0.
+
+## Code check (6.7.15.1)
+- confirmed `CartHook::HOOK_NAME` — cart — vendor/shopware/core/Checkout/Cart/Hook/CartHook.php:25
+- confirmed `CartFacade::calculate()` — manual recalculation — vendor/shopware/core/Checkout/Cart/Facade/CartFacade.php:75
+- confirmed `CartFacade::states()` — states facade — vendor/shopware/core/Checkout/Cart/Facade/CartFacade.php:113
+- confirmed `ProductsFacade::add()` — product id or item, quantity default 1 — vendor/shopware/core/Checkout/Cart/Facade/ProductsFacade.php:80
+- confirmed `DiscountTrait::discount()` — key, type, value (float or PriceCollection), label — vendor/shopware/core/Checkout/Cart/Facade/Traits/DiscountTrait.php:36
+- confirmed `PriceFactoryTrait::create()` — price.create, used by CartPriceFacade — vendor/shopware/core/Checkout/Cart/Facade/Traits/PriceFactoryTrait.php:23
+- confirmed `ItemFacade::take()` — quantity, optional key; returns split item — vendor/shopware/core/Checkout/Cart/Facade/ItemFacade.php:55
+- confirmed `ItemFacade::getPayload()` — returns ArrayFacade with set() — vendor/shopware/core/Checkout/Cart/Facade/ItemFacade.php:122
+- confirmed `ErrorsFacade::error()` — key, optional id, optional parameters — vendor/shopware/core/Checkout/Cart/Facade/ErrorsFacade.php:35
+- confirmed `ErrorsFacade::notice()` — same signature, non-blocking — vendor/shopware/core/Checkout/Cart/Facade/ErrorsFacade.php:67

@@ -6,24 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/data-handling/versioning-entities.html
 sourceHash: b4fd04e7ea4981b30e5d176dd179c09132402a9f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["VersionField", "ReferenceVersionField", "createVersion", "merge", "createWithVersionId", "version_id", "parent_version_id", "entity versioning", "drafts", "dal version", "composite primary key", "EntityRepository"]
-summary: Make a custom DAL entity versionable - version_id column, VersionField/ReferenceVersionField, createVersion, versioned Context and merge.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/framework/data-abstraction-layer.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["entity versioning", "drafts", "VersionField", "ReferenceVersionField", "version_id", "parent_version_id", "createVersion", "merge", "createWithVersionId", "versioned context", "DAL", "migration"]
+summary: Make a custom DAL entity version-aware - version_id column and VersionField, createVersion/merge on the repository, versioned Context.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/concepts/framework/data-abstraction-layer.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-How to add versioning to a custom DAL entity so that multiple versions of one record (e.g. drafts) can exist side by side and later be merged into the live version. Builds on [Adding custom complex data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md); concept background in [Data abstraction layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md).
+How to make a custom entity version-aware in the Data Abstraction Layer, so multiple versions of a record can exist side by side (for example drafts), and how to create, edit and merge a version. Concept background: [Data Abstraction Layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md). Builds on [Adding custom complex data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md) and needs a plugin ([Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)).
 
 ## When to use
 
-- Your plugin entity needs draft/preview versions that do not affect the live record until merged.
-- A versioned entity has foreign keys (including a self-referencing `parent_id` for [inheritance](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md)) that must point at a specific version.
+When your plugin's entity needs draft/live versions, or an entity with foreign keys (e.g. a self-referencing parent) has to be versioned.
 
 ## Key steps / config
 
-1. **Migration** - add a `version_id` column; together with `id` it replaces the primary key:
+1. **Migration** - add `version_id`; together with `id` it replaces the primary key:
 
 ```sql
 ALTER TABLE `swag_example`
@@ -32,23 +31,14 @@ ALTER TABLE `swag_example`
     DROP INDEX `PRIMARY`;
 ```
 
-2. **Definition** - add `Shopware\Core\Framework\DataAbstractionLayer\Field\VersionField` (no constructor arguments; it maps storage `version_id` to property `versionId`) in `defineFields()`:
+2. **Definition** - add `Shopware\Core\Framework\DataAbstractionLayer\Field\VersionField` to `defineFields()` (`new VersionField()`, no arguments). It maps `version_id`/`versionId` and is flagged `PrimaryKey` + `Required`. The repository treats a definition as version-aware only when it has a `versionId` field.
+3. **Create a version** - `$versionId = $repository->createVersion($id, $context)` (optional `$name`, `$versionId` arguments) returns the new version id.
+4. **Write to it** - `$versionContext = $context->createWithVersionId($versionId)`; pass `$versionContext` to `update()`. Searching with the original `$context` still returns the live record; searching with `$versionContext` returns the changed one.
+5. **Merge** - `$repository->merge($versionId, $context)` applies the version's changes to the version of `$context` (live), then deletes the versioned records. Afterwards the change is found without a versioned context.
 
-```php
-return new FieldCollection([
-    new VersionField(),
-    // ...
-]);
-```
+### Versioning with foreign keys
 
-3. **Create, update and merge a version** (service with `swag_example.repository` injected):
-   - `$versionId = $repo->createVersion($id, $context);` returns the new version id. Optional extra args: `?string $name`, `?string $versionId`.
-   - `$versionContext = $context->createWithVersionId($versionId);`
-   - `$repo->update([...], $versionContext);` writes only to that version.
-   - `search(new Criteria([$id]), $context)` still returns the live record; the same search with `$versionContext` returns the modified version.
-   - `$repo->merge($versionId, $context);` makes the version live. The docs say this deletes all versions before the merged one, so the merged data is then found with the normal context.
-
-4. **Foreign keys on versioned entities** - each FK needs a matching version column, and the constraint covers both columns:
+Foreign keys must be versioned too. For an inherited `parent_id`, add `parent_version_id` and a composite constraint:
 
 ```sql
 ADD `parent_version_id` BINARY(16) NOT NULL,
@@ -56,33 +46,27 @@ CONSTRAINT `fk.swag_example.parent_id` FOREIGN KEY (`parent_id`, `parent_version
     REFERENCES `swag_example` (`id`, `version_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ```
 
-   In the definition add `Shopware\Core\Framework\DataAbstractionLayer\Field\ReferenceVersionField`:
-
-```php
-new VersionField(),
-(new ReferenceVersionField(self::class, 'parent_version_id')),
-```
+In the definition add `Shopware\Core\Framework\DataAbstractionLayer\Field\ReferenceVersionField`: `new ReferenceVersionField(self::class, 'parent_version_id')`. The first argument is the referenced definition, the second the storage name; if omitted, the storage name defaults to `<entity_name>_version_id`. See [Field inheritance](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md).
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\DataAbstractionLayer\Field\VersionField`
 - `Shopware\Core\Framework\DataAbstractionLayer\Field\ReferenceVersionField`
+- `version_id`, `parent_version_id`
 - `EntityRepository::createVersion()`, `EntityRepository::merge()`
 - `Context::createWithVersionId()`
-- columns `version_id`, `parent_version_id`
 
 ## Gotchas
 
-- `VersionField` is always required for a versioned entity; without it the DAL does not know the entity has versions.
-- `ReferenceVersionField`'s second argument is optional: when omitted, the storage name defaults to `<entity_name>_version_id`, so pass `'parent_version_id'` explicitly for a self-reference named after `parent`.
-- Writing with the original context after `createVersion` changes the live record, not the draft; always pass the versioned context for draft writes.
+- `createVersion()` and `merge()` throw if the definition is not version-aware (no `VersionField`).
+- `merge()` throws when the version id equals the context's own version id, and when another merge of the same version holds the lock.
+- The docs say merging deletes "all versions before the merged version"; the installed code merges the given version into the context's version and deletes that version's cloned records.
 
-## Code check (6.7.13.0)
-- confirmed `VersionField` — no-arg constructor, maps `version_id`/`versionId` — vendor/shopware/core/Framework/DataAbstractionLayer/Field/VersionField.php:12
-- confirmed `ReferenceVersionField::__construct()` — `(string $definition, ?string $storageName = null)` — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ReferenceVersionField.php:19
-- confirmed `$storageName` — defaults to entity name plus `_version_id` — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ReferenceVersionField.php:28
-- confirmed `EntityRepository::createVersion()` — returns string version id, optional name/versionId args — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:161
-- confirmed `EntityRepository::merge()` — `(string $versionId, Context $context): void` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:172
-- confirmed `Context::createWithVersionId()` — returns a new Context — vendor/shopware/core/Framework/Context.php:172
-- confirmed `EntityRepository::update()` — `(array $data, Context $context)` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:99
-- confirmed `EntityRepository::search()` — `(Criteria $criteria, Context $context)` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:62
+## Code check (6.7.15.1)
+- confirmed `VersionField` — no-arg constructor, `version_id` with PrimaryKey and Required flags — vendor/shopware/core/Framework/DataAbstractionLayer/Field/VersionField.php:14
+- confirmed `ReferenceVersionField` — args `(definition, ?storageName)`, default `<entity>_version_id` — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ReferenceVersionField.php:11
+- confirmed `EntityRepository::createVersion()` — returns version id, requires version-aware definition — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:174
+- confirmed `EntityRepository::merge()` — requires version-aware definition — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:185
+- corrected `VersionManager::merge()` — docs: deletes all versions before the merged one; code merges into the context version and deletes the merged version's clones — vendor/shopware/core/Framework/DataAbstractionLayer/VersionManager.php:167
+- confirmed `Context::createWithVersionId()` — returns a new Context with that version — vendor/shopware/core/Framework/Context.php:173
+- confirmed `EntityDefinition::isVersionAware()` — true when fields contain `versionId` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:394

@@ -6,62 +6,56 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/php/05-http-client.html
 sourceHash: fd1226bd07b16289ef160914eb6aefd3575b1934
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ClientFactory", "SimpleHttpClient", "ShopResolver", "ShopRepositoryInterface", "AppConfiguration", "createClient", "resolveShop", "psr-18", "http client", "app php sdk", "admin api request", "oauth2 token", "mock client"]
-summary: "Shopware App PHP SDK HTTP client: resolve the shop, create a PSR-18 client via ClientFactory (auto OAuth2 token), SimpleHttpClient helpers, mocking in tests."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ClientFactory", "createClient", "SimpleHttpClient", "ShopResolver", "ShopRepository", "/api/_info/version", "/api/_action/sync", "/api/oauth/token", "psr-18", "admin api client", "oauth2 token", "app php sdk"]
+summary: PHP App SDK ClientFactory::createClient() builds a PSR-18 client with automatic OAuth2 token for a shop; SimpleHttpClient adds get/post/put/patch/delete.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The App PHP SDK (`shopware/app-php-sdk`) ships an HTTP client for sending requests from an app backend to a Shopware shop's Admin API. The client is bound to a resolved Shop entity and automatically fetches the shop's OAuth2 token and adds it to each request.
+The PHP App SDK's HTTP client for calling a shop's Admin API from the app backend. It fetches the shop's OAuth2 token automatically and adds it to each request.
 
 ## When to use
 
-When an app server needs to call the Admin API of the shop that sent a request (webhook, action button, lifecycle call) or of a shop loaded by ID from the shop repository.
+Your app backend needs to read or write data in a registered shop (e.g. query the version, run a sync).
 
 ## Key steps / config
 
-1. Obtain the Shop entity: either resolve it from the incoming PSR-7 request with `\Shopware\App\SDK\Shop\ShopResolver` (constructed with a repository implementing `\Shopware\App\SDK\Shop\ShopRepositoryInterface`, e.g. modeled on `FileShopRepository`), or load it by ID from the `ShopRepository`. Symfony HttpFoundation requests must be converted to PSR-7 first.
-2. Create the client with `Shopware\App\SDK\HttpClient\ClientFactory`:
+1. Get the shop: from the current request via `$shopResolver->resolveShop($psrRequest)` (`\Shopware\App\SDK\Shop\ShopResolver`), or by ID from the `ShopRepository`.
+2. Create the PSR-18 client:
 
 ```php
-$shop = (new \Shopware\App\SDK\Shop\ShopResolver($repository))->resolveShop($psrRequest);
-$httpClient = (new Shopware\App\SDK\HttpClient\ClientFactory())->createClient($shop);
+$clientFactory = new Shopware\App\SDK\HttpClient\ClientFactory();
+$httpClient = $clientFactory->createClient($shop);
 $response = $httpClient->sendRequest($psrHttpRequest);
 ```
 
-3. Optionally wrap it in `\Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient`, a wrapper around the PSR-18 `ClientInterface`:
+3. Optionally wrap it in `\Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient($httpClient)`, which offers `get`, `post`, `put`, `patch`, `delete`. Its response has `getHeader()`, `ok()` (true when 200 <= status < 300) and `json()` (decoded body).
+4. Example targets: `GET /api/_info/version`, `POST /api/_action/sync`. The sync body is a map of operations, each with `entity`, `action` and `payload`:
 
-```php
-$simpleClient = new \Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient($httpClient);
-$response = $simpleClient->get('https://shop.com/api/_info/version');
-$response->ok();   // true when 200 <= status < 300
-$body = $response->json();
-$simpleClient->post('https://shop.com/api/_action/sync', ['entity' => 'product', 'payload' => [/* ... */]]);
+```json
+{ "write-product": { "entity": "product", "action": "upsert", "payload": [ { "id": "...", "name": "Foo" } ] } }
 ```
 
-`put`, `patch` and `delete` work the same way; responses also expose `getHeader()`.
-
-4. Testing: `createClient()` accepts a PSR-18 `ClientInterface` as second argument, so a mock client can replace the real transport: `$clientFactory->createClient($shop, $myMockClient)`.
+5. Testing: pass a mock PSR-18 `ClientInterface` as the second argument — `$clientFactory->createClient($shop, $myMockClient);`.
 
 ## Essential identifiers
 
-- `Shopware\App\SDK\HttpClient\ClientFactory` / `createClient($shop, ?ClientInterface)`
-- `Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient` (`get`, `post`, `put`, `patch`, `delete`; response `ok()`, `json()`, `getHeader()`)
-- `Shopware\App\SDK\Shop\ShopResolver::resolveShop()`
-- `Shopware\App\SDK\Shop\ShopRepositoryInterface`
-- `AppConfiguration`
+- `Shopware\App\SDK\HttpClient\ClientFactory` — `createClient($shop, ?ClientInterface)`
+- `\Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient` — `get`, `post`, `put`, `patch`, `delete`; response `ok()`, `json()`
+- Admin API routes `/api/oauth/token`, `/api/_info/version`, `/api/_action/sync`
 
 ## Gotchas
 
-- The source's prose refers to `ClientFactory::factory` for the mock-client argument, but its code example calls `createClient($shop, $myMockClient)`; the SDK itself is not part of the installed Shopware packages, so this could not be checked here.
-- The SDK expects PSR-7 requests; convert Symfony HttpFoundation requests before calling `resolveShop()`.
+- The source's sync example posts a flat object (`entity`, `offset`, `total`, `payload`). Shopware 6.7.15.1 iterates the top-level keys as operations and rejects a non-array value with "Invalid payload format. Expected an array of operations." — wrap the operation under a key and give it an `action`.
+- The testing section names `ClientFactory::factory` in prose, while its code calls `createClient`; the code example is what the SDK calls.
 
-## Code check (6.7.13.0)
-- unverified `Shopware\App\SDK\HttpClient\ClientFactory` — lives in shopware/app-php-sdk, outside the checked vendor roots
-- unverified `Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient` — app-php-sdk, out of scope
-- unverified `Shopware\App\SDK\Shop\ShopResolver` — app-php-sdk, out of scope
-- unverified `Shopware\App\SDK\Shop\ShopRepositoryInterface` — app-php-sdk, out of scope
-- confirmed `/api/_info/version` — GET route exists in core Admin API — vendor/shopware/core/Framework/Api/Controller/InfoController.php:222
-- confirmed `/api/_action/sync` — POST route exists in core Admin API — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
-- confirmed `/api/oauth/token` — shop-side OAuth2 token endpoint the client authenticates against — vendor/shopware/core/Framework/Api/Controller/AuthController.php:33
+## Code check (6.7.15.1)
+- unverified `Shopware\App\SDK\HttpClient\ClientFactory` — shopware/app-php-sdk package, outside the checked roots
+- unverified `\Shopware\App\SDK\HttpClient\SimpleHttpClient\SimpleHttpClient` — app-php-sdk package, out of scope
+- unverified `ClientFactory::factory` — docs prose name, app-php-sdk package, out of scope
+- confirmed `/api/oauth/token` — Admin API token route the client authenticates against — vendor/shopware/core/Framework/Api/Controller/AuthController.php:38
+- confirmed `/api/_info/version` — GET route api.info.shopware.version — vendor/shopware/core/Framework/Api/Controller/InfoController.php:229
+- confirmed `/api/_action/sync` — POST route api.action.sync — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
+- corrected `SyncController::sync()` — docs: flat body with entity/offset/total/payload; code expects a map of operation arrays — vendor/shopware/core/Framework/Api/Controller/SyncController.php:44
+- confirmed `SyncOperation::createFromArray()` — reads entity, action, payload, criteria per operation — vendor/shopware/core/Framework/Api/Sync/SyncOperation.php:122

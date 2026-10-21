@@ -6,66 +6,51 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/deployments/
 sourceHash: 676988cb38d2e93947a1dc89939a5c9345c85b9f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["deployment", "deployments", "ci/cd", "build artifacts", "rollback", "maintenance mode", "deployment helper", "plugin deployment", "composer", "extension zip", "app backend", "webhooks", "release strategy", "blue/green"]
-summary: Shopware 6 deployment principles for custom projects, plugins and apps - build once in CI, externalized config, maintenance mode, roll-forward, webhooks.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["deployment", "deployment helper", "ci/cd", "build artifacts", "maintenance mode", "rollback", "roll forward", "composer", "plugin migrations", "extension zip", "app backend", "webhooks", "blue/green"]
+summary: Deployment principles for Shopware 6 - build once in CI, roll forward, maintenance mode for schema changes, Composer plugins, app backend/webhook rules.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md", "platform/dev/6.7/guides/development/testing/ci.md", "platform/dev/6.7/products/tools/cli/extension-commands/build.md"]
 ---
 ## What it is
 
-Overview page of the Shopware 6 deployment guides: core principles for deploying Shopware to your own infrastructure, and pointers to building Administration/Storefront assets without a database so CI/CD pipelines produce repeatable releases.
+Overview of the deployment section: core principles for deploying Shopware 6 and building Administration and Storefront assets without a database, so CI/CD pipelines and releases are repeatable.
 
 ## When to use
 
-When designing a deployment pipeline for a Shopware project, a custom or Store plugin, or an app with an external backend, and you need the baseline practices before diving into the Deployment Helper or database-less builds.
+When designing a deployment pipeline for a custom Shopware project, for custom or Store plugins, or for apps with external backends.
 
 ## Key steps / config
 
-Best practices (all project types):
+General best practices:
 
-- Build artifacts once in CI (see platform/dev/6.7/guides/development/testing/ci.md) and deploy those artifacts.
-- Keep configuration and secrets outside the codebase.
-- Make database changes predictable; separate build-time from runtime concerns.
+- Build artifacts once in [CI](platform/dev/6.7/guides/development/testing/ci.md) and deploy those artifacts.
+- Keep configuration and secrets outside the codebase; make database changes predictable; separate build-time from runtime concerns.
 
 Cross-cutting practices:
 
 - Roll forward by default; keep rollbacks minimal, database-aware, version-pinned and rehearsed.
-- Enable maintenance mode for schema-changing releases; run health checks and smoke tests post-deploy before leaving maintenance.
-- Tag releases consistently across source code, build artifacts and Store metadata; retain build logs and deployment reports.
+- Enable maintenance mode for schema-changing releases; run health checks and smoke tests after deploy before leaving maintenance mode (core ships `sales-channel:maintenance:enable` / `sales-channel:maintenance:disable`).
+- Tag releases consistently across source, build artifacts and Store metadata; retain build logs and deployment reports.
 
-Custom projects:
-
-- Follow the ordered flow of the [Deployment Helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md) and integrate it into the automation pipeline; keep environment config and secrets out of the repository.
+Custom projects: follow the ordered flow of the [Deployment helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md) and integrate it into the automation pipeline.
 
 Custom/Store plugins:
 
-- Manage extensions via Composer where possible (versioned, reproducible installs).
-- For Store submission or custom distribution, build versioned ZIP artifacts in CI with the [extension build command](platform/dev/6.7/products/tools/cli/extension-commands/build.md); install and activate via CLI or deployment automation.
-- Run plugin migrations during deployment; keep update steps idempotent so retries are safe.
-- Avoid manual post-deployment tweaks for Store plugins.
+- Manage extensions via Composer where possible for versioned, reproducible installs.
+- For Store submission or custom distribution, build versioned ZIP artifacts in CI with the [Extension build command](platform/dev/6.7/products/tools/cli/extension-commands/build.md), then install and activate them via CLI (e.g. `plugin:install --activate`) or automation.
+- Run plugin migrations during deployment; keep update steps idempotent so retries are safe. Avoid manual post-deployment tweaks for Store plugins.
 
-Apps (external backends and webhooks):
+Apps:
 
-- Deploy app backends like any web service; use blue/green or canary so webhook handling is not interrupted.
-- Keep manifest versions aligned with deployed code.
-- Register webhooks for new events before emitting them.
+- Deploy app backends like any web service; use blue/green or canary releases so webhook handling is not interrupted.
+- Keep manifest versions aligned with deployed code; register webhooks before emitting new events.
 - Externalize credentials and endpoints; make webhook handlers retry-safe and multi-tenant capable.
 
-## Essential identifiers
-
-- Deployment Helper (standalone deploy-time tool)
-- `plugin:install` (CLI install of plugins)
-- `sales-channel:maintenance:enable` / `sales-channel:maintenance:disable` (per-sales-channel maintenance mode)
-
-## Gotchas
-
-- Webhooks for newly introduced app events must be registered before the events are emitted, otherwise deliveries are lost.
-- Non-idempotent plugin update steps break safe retries of a failed deployment.
-
-## Code check (6.7.13.0)
-- confirmed `plugin:install` — core CLI command for installing plugins — vendor/shopware/core/Framework/Plugin/Command/Lifecycle/PluginInstallCommand.php:25
-- confirmed `sales-channel:maintenance:enable` — core command toggling maintenance mode per sales channel — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceEnableCommand.php:21
-- confirmed `sales-channel:maintenance:disable` — counterpart command — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceDisableCommand.php:12
-- unverified `Deployment Helper` — separate package, outside the checked core/storefront/administration roots
-- unverified `extension build command` — Shopware CLI (Go tool), out of scope
+## Code check (6.7.15.1)
+- confirmed `sales-channel:maintenance:enable` — maintenance mode command — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceEnableCommand.php:21
+- confirmed `sales-channel:maintenance:disable` — leaves maintenance mode — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceDisableCommand.php:13
+- confirmed `plugin:install` — install command, with `--activate` option — vendor/shopware/core/Framework/Plugin/Command/Lifecycle/PluginInstallCommand.php:28
+- confirmed `plugin:zip-import` — imports a plugin ZIP artifact — vendor/shopware/core/Framework/Plugin/Command/PluginZipImportCommand.php:23
+- confirmed `plugin:update:all` — installs all available plugin updates — vendor/shopware/core/Framework/Plugin/Command/Lifecycle/PluginUpdateAllCommand.php:21
+- unverified `Extension build command` — part of shopware-cli, outside the checked roots

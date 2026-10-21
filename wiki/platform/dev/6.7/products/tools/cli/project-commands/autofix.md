@@ -5,80 +5,73 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/project-commands/autofix.html
-sourceHash: "ac9ca8a65599898bb4ac63356de12f9e4fdad0e4"
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli project autofix flex", "shopware-cli project autofix composer-plugins", "symfony flex", "SHOPWARE_PACKAGIST_TOKEN", "--no-interaction", "--dry-run", "custom/plugins", "composer migration", "path repository", "packages.shopware.com", "project migration", "autofixer"]
-summary: "shopware-cli project autofix flex (legacy to Symfony Flex) and composer-plugins (custom/plugins to Composer), headless mode and SHOPWARE_PACKAGIST_TOKEN."
-lastBuilt: 2026-09-15
+sourceHash: ac9ca8a65599898bb4ac63356de12f9e4fdad0e4
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli project autofix flex", "shopware-cli project autofix composer-plugins", "symfony flex migration", "custom/plugins", "composer plugins", "SHOPWARE_PACKAGIST_TOKEN", "packages.shopware.com", "path repository", "--no-interaction", "--dry-run", "headless", "migrate plugins to composer"]
+summary: shopware-cli project autofix - flex migrates a 6.4-style project to Symfony Flex; composer-plugins moves custom/plugins extensions to Composer.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/extension-management.md"]
 ---
 ## What it is
 
-Shopware CLI's built-in auto fixers for project migrations: converting a pre-6.5 project to Symfony Flex, and migrating extensions cloned into `custom/plugins` to Composer-managed packages.
+Built-in Shopware CLI auto fixers for project migrations: `project autofix flex` converts a legacy (Shopware 6.4 and earlier) project structure to Symfony Flex, and `project autofix composer-plugins` converts extensions cloned into `custom/plugins` into Composer-managed extensions.
 
 ## When to use
 
-- Upgrading a Shopware 6.4-or-earlier project (no Symfony Flex) to 6.5+.
-- Replacing manually cloned store extensions with Composer management (see [extension management](platform/dev/6.7/guides/hosting/installation-updates/extension-management.md)).
+- Upgrading a project from 6.4 or earlier to 6.5+ and its structure is still pre-Flex.
+- Extensions were copied/cloned into `custom/` and should instead be managed by Composer (version knowledge, dependency resolution, updates). See [extension management](platform/dev/6.7/guides/hosting/installation-updates/extension-management.md).
 
 ## Key steps / config
 
-### Migrate to Symfony Flex
+Symfony Flex migration (back up the project first):
 
 ```bash
 shopware-cli project autofix flex
 ```
 
-Moves configuration files to their Flex locations, deletes unnecessary configuration files, and updates `composer.json` and `bin/console` to use the new configuration files. Take a backup first.
+It moves configuration files to the Flex locations, deletes unnecessary configuration files, and updates `composer.json` and `bin/console` to use the new configuration files.
 
-### Migrate custom/plugins extensions to Composer
+Composer migration:
 
 ```bash
 shopware-cli project autofix composer-plugins
-```
-
-For each extension in `custom/`, it prefers a repository-backed install matching the locally installed version:
-
-- Shopware Store plugins: required from `packages.shopware.com` if a valid `SHOPWARE_PACKAGIST_TOKEN` is available and the version exists there; local copy removed after `require` succeeds.
-- Extensions available at the exact version from Packagist or another configured Composer repository: required from there; local copy removed.
-- Other extensions with a Composer package name: registered as Composer path repositories (files stay in place; no repository-driven updates).
-- Extensions without a Composer package name: skipped.
-
-No path argument; it works on the closest Shopware project from the current directory.
-
-Modes:
-- In a terminal: interactive wizard.
-- With `--no-interaction` or no TTY (CI): headless.
-
-```bash
+# headless / CI
 export SHOPWARE_PACKAGIST_TOKEN=your-token-here
 shopware-cli project autofix composer-plugins --no-interaction
+# print the plan only (headless mode only)
 shopware-cli project autofix composer-plugins --no-interaction --dry-run
 ```
 
-`--dry-run` prints the migration plan without modifying the project (headless mode only).
+Per extension in `custom/`, the command prefers a repository-backed install matching the locally installed version:
+
+1. Shopware Store plugins: required from `packages.shopware.com` when a valid `SHOPWARE_PACKAGIST_TOKEN` is set and that version exists there; local copy removed after `require` succeeds.
+2. Extensions available at the exact version on Packagist or another configured Composer repository: required from there; local copy removed.
+3. Other extensions with a Composer package name: registered as Composer path repositories — files stay in place, Composer manages them, but no repository-driven updates.
+4. Extensions without a Composer package name: skipped.
+
+Modes: interactive wizard in a terminal; headless with `--no-interaction` or when no terminal is attached (typical CI). The command takes no path argument — it works on the closest Shopware project found from the current directory.
+
+Token source: Shopware Account > Shops > Licenses > "..." on any extension > Install via Composer.
 
 ## Essential identifiers
 
 - `shopware-cli project autofix flex`
 - `shopware-cli project autofix composer-plugins`
 - `--no-interaction`, `--dry-run`
-- `SHOPWARE_PACKAGIST_TOKEN`
+- `SHOPWARE_PACKAGIST_TOKEN`, `packages.shopware.com`
+- `custom/plugins`, `composer.json`, `bin/console`
 
 ## Gotchas
 
-- `project autofix flex` deletes configuration files — back up the project.
-- Without `SHOPWARE_PACKAGIST_TOKEN`, headless runs skip the Store lookup; Store plugins then fall back to path repositories when possible and stop receiving updates from `packages.shopware.com`.
-- Token location: Shopware Account "Shops" > "Licenses" > "..." on any extension > "Install via Composer".
+- `project autofix flex` deletes files — have a backup.
+- Without `SHOPWARE_PACKAGIST_TOKEN`, a headless run skips the Store lookup; Packagist/other repositories are still checked and unresolved extensions fall back to path repositories, so Store plugins stop receiving updates from `packages.shopware.com`. Set the token in CI.
+- `--dry-run` only applies in headless mode.
 
-## Version notes
-
-- Shopware 6.4 and earlier used a project structure without Symfony Flex; 6.5+ expects Flex.
-
-## Code check (6.7.13.0)
-- confirmed `custom/plugins` — core's kernel plugin loader defaults the plugin directory to this path — vendor/shopware/core/Framework/Plugin/KernelPluginLoader/KernelPluginLoader.php:50
-- confirmed `custom/plugins/` — core treats plugins under this path as locally installed — vendor/shopware/core/Framework/Plugin/PluginEntity.php:145
-- unverified `project autofix flex` — implemented in shopware-cli (Go), out of scope
-- unverified `project autofix composer-plugins` — implemented in shopware-cli (Go), out of scope
-- unverified `SHOPWARE_PACKAGIST_TOKEN` — read by shopware-cli, not referenced in vendor/shopware
-- unverified `--dry-run` — shopware-cli flag, out of scope
+## Code check (6.7.15.1)
+- confirmed `custom/plugins` — default plugin directory of the kernel plugin loader — vendor/shopware/core/Framework/Plugin/KernelPluginLoader/KernelPluginLoader.php:50
+- confirmed `PluginFinder::COMPOSER_TYPE` — Composer-installed plugins are discovered by this package type — vendor/shopware/core/Framework/Plugin/KernelPluginLoader/ComposerPluginLoader.php:31
+- confirmed `shopware-platform-plugin` — value of the Composer plugin type constant — vendor/shopware/core/Framework/Plugin/Util/PluginFinder.php:20
+- confirmed `ComposerPluginLoader` — kernel loader for Composer-managed plugins — vendor/shopware/core/Framework/Plugin/KernelPluginLoader/ComposerPluginLoader.php:15
+- unverified `shopware-cli project autofix flex` — Go CLI command, outside the Shopware package roots
+- unverified `shopware-cli project autofix composer-plugins` — Go CLI command, out of scope
+- unverified `SHOPWARE_PACKAGIST_TOKEN` — read by shopware-cli only, out of scope

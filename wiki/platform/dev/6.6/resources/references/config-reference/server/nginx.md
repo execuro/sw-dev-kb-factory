@@ -3,44 +3,63 @@ id: platform/dev/6.6/resources/references/config-reference/server/nginx.md
 title: Nginx
 docType: developer
 version: "6.6"
-versions:
-  - "6.6"
+versions: ["6.6"]
 sourceUrl: https://developer.shopware.com/docs/v6.6/resources/references/config-reference/server/nginx.html
-sourceHash: a1521c4336826a30e5987d19bcabbd505db02bf7
-keywords: ["nginx", "fastcgi", "webserver config", "public folder", "document root", "try_files", "fastcgi_pass", "shopware-installer.phar.php", "recovery", "cache-control", "server block", "server config"]
-summary: "Reference nginx server block for Shopware: document root, PHP fastcgi, static asset caching and installer/recovery routes."
-lastBuilt: 2026-09-15
+sourceHash: 5b49327c8a57ee72bce421c120dca2ec5c712e6d
+keywords: ["nginx", "server block", "fastcgi_pass", "try_files", "shopware-installer.phar.php", "client_max_body_size", "open_file_cache", "Content-Security-Policy", "recovery/install", "recovery/update", "web server", "svg csp"]
+summary: "Reference Nginx server block for Shopware 6.6: public root, installer and recovery routes, asset caching, blocked dotfiles and PHP, CSP for HTML and SVG."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Reference nginx server block configuration for running a Shopware installation. The document root must always point to the `public` folder.
+The reference Nginx `server` block for serving Shopware 6.6. It sets the root to `public`, routes the web installer and recovery tool, caches static assets, blocks sensitive paths and forwards PHP to FastCGI.
+
+## When to use
+
+When configuring or reviewing Nginx for a Shopware 6.6 shop, or updating an existing config to receive the CSP protection for stored HTML and SVG files.
 
 ## Key steps / config
 
-Key elements of the sample `server {}` block:
+The document root must always point to the `public` folder. Replace `__DOCUMENT_ROOT__`.
 
 ```text
 server {
     listen 80;
+    index index.php index.html;
+    server_name localhost;
+    client_max_body_size 128M;
     root __DOCUMENT_ROOT__/public;
-
-    location /shopware-installer.phar.php { ... }
-    location ~ /\. { deny all; }
-    location ~ ^/(media|thumbnail|theme|bundles|sitemap).*\.php$ { deny all; }
-    location /recovery/install { ... }
-    location /recovery/update/ { ... }
-    location ~* ^.+\.(?:css|...|xml)$ { try_files $uri /index.php$is_args$args; }
-    location / { try_files $uri /index.php$is_args$args; }
-    location ~ \.php$ { fastcgi_pass 127.0.0.1:9000; ... }
+    ...
 }
 ```
 
-Notable directives: dot-files and `.php` files under `media|thumbnail|theme|bundles|sitemap` are denied; static assets (`css|cur|js|jpeg|gif|ico|png|svg|webp|html|woff|woff2|xml`) get `expires 1y` and `Cache-Control "public, must-revalidate, proxy-revalidate"`; `.svg` responses also get `Content-Security-Policy "script-src 'none'"`; PHP requests go through `fastcgi_pass 127.0.0.1:9000` with `fastcgi_split_path_info` and 300s proxy timeouts.
+Locations in the block:
+
+- `/shopware-installer.phar.php` and `^/shopware-installer\.phar\.php/.+\.(?:css|js|png|svg|woff)$` use `try_files $uri /shopware-installer.phar.php$is_args$args;` for install and update.
+- `~ /\.` and `~ ^/(media|thumbnail|theme|bundles|sitemap).*\.php$` use `deny all;` (dotfiles and PHP in public directories).
+- `/recovery/install` falls back to `/recovery/install/index.php$is_args$args`; `/recovery/update/` rewrites to `/recovery/update/index.php` when the file does not exist.
+- `~* ^/(media|thumbnail)/.*[.]html$` serves stored HTML with `try_files $uri =404;`, `expires 1y` and the CSP header.
+- `~ ^/(theme|media|thumbnail|bundles|css|fonts|js|recovery|sitemap)/` and the static extension location set `expires 1y`, `Cache-Control "public, must-revalidate, proxy-revalidate"` and `open_file_cache max=3000 inactive=120s` with `open_file_cache_valid 45s`, `open_file_cache_min_uses 2`, `open_file_cache_errors off`.
+- SVG locations add the CSP header.
+- `location /` uses `try_files $uri /index.php$is_args$args;`.
+- `~ \.php$` uses `fastcgi_split_path_info`, `include fastcgi.conf`, `fastcgi_param HTTP_PROXY ""`, `fastcgi_buffers 8 16k`, `fastcgi_buffer_size 32k`, 300s proxy and send timeouts, `client_body_buffer_size 128k` and `fastcgi_pass 127.0.0.1:9000;`.
+
+CSP value used for HTML and SVG:
+
+```text
+script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
+```
 
 ## Essential identifiers
 
 - `root __DOCUMENT_ROOT__/public`
-- `try_files $uri /index.php$is_args$args`
+- `client_max_body_size 128M`
 - `fastcgi_pass 127.0.0.1:9000`
-- `location /recovery/install`, `location /recovery/update/`
-- `location /shopware-installer.phar.php`
+- `try_files $uri /index.php$is_args$args`
+- `/shopware-installer.phar.php`, `/recovery/install`, `/recovery/update/`
+- `add_header Content-Security-Policy`
+
+## Gotchas
+
+- Document root not on `public` breaks functionality.
+- Because `add_header` is declared per location, nested locations such as the SVG one repeat `Cache-Control` and the CSP header themselves.

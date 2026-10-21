@@ -6,24 +6,24 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/shopping-lists/
 sourceHash: 709eb3215819f5dcd10317f1a4fc62ee8a690151
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopping lists", "shopping list", "b2b components", "b2b", "commercial", "SwagCommercial", "product list", "quantity tracking", "wishlist", "b2b_components_shopping_list"]
-summary: Overview of the B2B Components Shopping lists feature - customers create, edit and organize product lists with quantities for repeated purchasing.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopping lists", "shopping list", "b2b components", "b2b", "commercial", "saved lists", "purchase list", "item categorization", "item quantity", "list management"]
+summary: "B2B Components Shopping lists: create, edit and organize item lists with categories, quantity tracking and purchased marks."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page of the *Shopping lists* B2B component (part of the Shopware Commercial B2B Components). The component lets users create, edit and organize shopping lists of products, with quantity tracking per item and the ability to mark items as purchased, so recurring or event-specific purchases can be prepared in advance.
+*Shopping lists* is a B2B Components feature (part of the commercial B2B offering, not the open-source core). It lets users create, edit and organize their own shopping lists. The overview page names these capabilities:
+
+- categorizing the items on a list,
+- tracking the quantity of each item,
+- marking items as purchased,
+
+so that users can keep track of what they need to buy and do not forget essential items. The page is the section index for the Shopping lists component documentation; it describes the feature only and does not name classes, entities, routes or configuration.
 
 ## When to use
 
-Start here when working with B2B shopping lists; the section continues with the entity/schema concept page and the Store API / pricing guide for the same component.
+Read this page to find out what the Shopping lists component covers before going to its sub-pages, for example when a B2B customer needs recurring lists of items (a regular weekly order or the items for a one-off event) that they can maintain and track over time.
 
-## Gotchas
-
-- The shopping list implementation is not part of the open-source core packages; it ships with the commercial plugin. The installed core only references its table name (usage-data allow list), so behavior cannot be verified against `vendor/shopware`.
-
-## Code check (6.7.13.0)
-- confirmed `b2b_components_shopping_list` — core usage-data allow list knows the entity table (fields `id`, `active`) — vendor/shopware/core/System/UsageData/usage-data-allow-list.json:2092
-- confirmed `SwagCommercial` — commercial plugin listed as a translated plugin in core — vendor/shopware/core/System/Resources/translation.yaml:8
-- unverified `Shopping lists` — feature implementation lives in the commercial plugin, not installed under vendor/shopware
+## Code check (6.7.15.1)
+- unverified `Shopping lists` — B2B Components feature ships in the commercial extension, not in vendor/shopware core, storefront or administration; the source names no identifiers

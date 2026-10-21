@@ -2,42 +2,38 @@
 id: platform/func/extensions/3d-preview-generator.md
 title: 3d Preview Generator
 docType: functional
-version: "6.5"
-versions: ["6.5", "6.6", "6.7"]
+version: "6.7"
+versions: ["6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/extensions/3d-preview-generator
-sourceHash: f6e4634b9245e97887e9f7284217b6540ac75daeb31c0d2eedf5fedad6152c2f
+sourceHash: ceaeaccb579de668fca4e59b1f8375b59aa9288e3fb964ca8885508c7f59891d
 revision:
   current: true
-  range: "current"
-  swMax: null
-  swMin: null
-keywords: ["3D Preview Generator", ".glb", "glb file", "preview image", "media manager", "gallery slider", "Shopware Intelligence+", "AWS", "rendering service", "service registry", "product detail page", "product listing"]
-summary: "Shopware service that auto-generates static preview images for uploaded .glb 3D files, shown in the storefront and media manager."
-lastBuilt: "2026-09-15"
+  range: "6.7.1.0 - 6.7.13.1"
+  swMax: "6.7.13.1"
+  swMin: "6.7.1.0"
+keywords: ["3D Pipeline", "3D Pipeline Service", "3D optimization", "preview generation", "RapidPipeline", "glb", "Shopware Intelligence+", "media folder", "3D viewer", "3D files", "preview image", "3D preview generator"]
+summary: "3D Pipeline Service: optimizes uploaded 3D files and creates previews per media folder; needs Intelligence+ and 6.7.14.0 or later."
+lastBuilt: 2026-10-20
 ---
-
 ## What it is
 
-The 3D Preview Generator is a Shopware service that automatically creates a static preview image for `.glb` 3D files, so 3D content displays as visually as other media types in the storefront and the admin media manager.
+The 3D Pipeline is a Shopware service that optimizes 3D files for web use and generates preview images. When enabled for a media folder, uploaded 3D files are processed in the background by a service based on RapidPipeline. Previews can appear in product listings, product detail pages and the Media Manager.
 
 ## When to use
 
-When merchants upload 3D product models (`.glb`) and want a static preview shown in the product listing, on the product detail page gallery, or in the media manager, without manual configuration.
+When 3D files (for example `.glb`) should load faster in the storefront 3D viewer and need preview images without manual work.
 
 ## Key steps / config
 
-- Requires an active Shopware Intelligence+ subscription.
-- Upload a `.glb` file — directly on the product or via the media manager — and preview generation starts automatically in the background; no configuration is required.
-- The preview appears in the Media Manager and, in the storefront, e.g. on the product detail page's gallery slider thumbnails.
-- Technical flow: the `.glb` file is temporarily transmitted to a secure rendering service running in a protected AWS cloud environment (end-to-end encryption, strict access restrictions), rendered into a static 2D preview image, then transferred back and saved into Shopware's media.
-- On updating an existing installation, previews are **not** automatically generated for existing `.glb` files. To create them: re-upload the file (media manager or product), or trigger generation manually via a custom script or plugin (e.g. a Symfony command or repository service call).
-
-## Essential identifiers
-
-`.glb` file format, Shopware Intelligence+ subscription, service registry (data-processing consent)
+- The option is only visible with an active Shopware Intelligence+ subscription.
+- Enable or disable it with the "3D optimization" option in the settings of the media folder.
+- Example workflow: upload a `.glb` under Content > Media, the service optimizes it and generates a preview, a notification appears when ready, the preview shows in the Media Manager and, for example, in product detail gallery thumbnails.
 
 ## Gotchas
 
-- Without re-upload or a manual trigger, existing 3D files remain visible without a preview in both storefront and admin after an update.
-- Depending on system configuration, consent to data processing by Shopware services may be required first, granted via the service registry.
-- The function is active by default and currently offers no additional settings.
+- Preview images are not generated retroactively for existing `.glb` files after an update. Re-upload the file (Media Manager or in the product), or trigger generation with a custom script or plugin, for example a Symfony command or a repository service call. Without this, existing 3D files stay visible without a preview.
+- Files are processed by the third party RapidPipeline, which does not store or otherwise use them.
+
+## Version notes
+
+The 3D Pipeline is compatible with Shopware 6.7.14.0 and later.

@@ -6,65 +6,61 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-03-25-initial-state-id-loader.html
 sourceHash: 29f90121ca46b0f4c660b7446dc3995bff93e0d2
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["InitialStateIdLoader", "Shopware\\Core\\System\\StateMachine\\Loader\\InitialStateIdLoader", "state-machine-initial-state-ids", "OrderStates::STATE_MACHINE", "OrderDeliveryStates::STATE_MACHINE", "OrderTransactionStates::STATE_MACHINE", "state machine", "initial state id", "order state", "checkout performance", "cache invalidation", "adr"]
-summary: "ADR: InitialStateIdLoader resolves a state machine's initial state id from a cached technical_name map instead of loading the full StateMachine entity."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["InitialStateIdLoader", "StateMachineRegistry", "getInitialState", "state-machine-initial-state-ids", "CACHE_KEY", "OrderStates::STATE_MACHINE", "OrderDeliveryStates::STATE_MACHINE", "OrderTransactionStates::STATE_MACHINE", "initial state", "state machine", "order state", "checkout performance", "cache invalidation"]
+summary: "ADR: InitialStateIdLoader returns cached initial state ids per state machine, replacing the heavy StateMachineRegistry::getInitialState lookup."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2022) about performance: determining the initial state id of a state machine used to load the whole state machine with all transitions and states. It was replaced by a small cached service, `Shopware\Core\System\StateMachine\Loader\InitialStateIdLoader`, which returns only the id.
+An architecture decision record (2022-03-25) introducing `Shopware\Core\System\StateMachine\Loader\InitialStateIdLoader`, a small cached service that returns the initial state id of a state machine by its technical name. It replaced `\Shopware\Core\System\StateMachine\StateMachineRegistry::getInitialState`, which loaded the complete `StateMachine` object (all `transitions` with their `fromStateMachineState`/`toStateMachineState` and all `states`) only to read one id.
 
 ## When to use
 
-- Your code (e.g. a custom order/checkout flow) needs the initial state id for `order.state`, `order_delivery.state` or `order_transaction.state` (or any other state machine) when creating records.
-- You see a stale initial state after changing a state machine's initial state and want to know how the cache is invalidated.
+When code needs the initial state id of `order.state`, `order_delivery.state` or `order_transaction.state` (or any other state machine) — for example when creating an order, delivery or transaction during checkout. During checkout all three are needed, which is why the old lookup caused unnecessary database load.
 
 ## Key steps / config
 
-1. Inject `Shopware\Core\System\StateMachine\Loader\InitialStateIdLoader` (registered as a service in core) and call `get()` with the state machine's technical name:
+1. Inject `InitialStateIdLoader` (service id = FQCN). Its constructor takes a `Doctrine\DBAL\Connection` and a Symfony `CacheInterface`; the constructor is `@internal`, so rely on DI.
+2. Call `get(string $name): string` with the state machine's technical name:
 
 ```php
-$this->initialStateIdLoader->get(OrderStates::STATE_MACHINE);            // 'order.state'
-$this->initialStateIdLoader->get(OrderDeliveryStates::STATE_MACHINE);    // 'order_delivery.state'
-$this->initialStateIdLoader->get(OrderTransactionStates::STATE_MACHINE); // 'order_transaction.state'
+$this->initialStateIdLoader->get(OrderStates::STATE_MACHINE);
+$this->initialStateIdLoader->get(OrderDeliveryStates::STATE_MACHINE);
+$this->initialStateIdLoader->get(OrderTransactionStates::STATE_MACHINE);
 ```
 
-   Core's `OrderConverter` uses exactly these three calls during checkout.
-2. How it works: `get(string $name): string` returns from an in-memory array if present; otherwise it loads a map `technical_name => initial_state_id` (hex, lower case) from the cache under the key `state-machine-initial-state-ids` (`InitialStateIdLoader::CACHE_KEY`). On cache miss it runs a single query:
+3. Internally the loader keeps an in-memory `$ids` map; on a miss it loads all ids at once from the cache key `state-machine-initial-state-ids` (`InitialStateIdLoader::CACHE_KEY`), filled by:
 
 ```sql
 SELECT technical_name, LOWER(HEX(`initial_state_id`)) as initial_state_id FROM state_machine
 ```
 
-3. The class implements Symfony's `ResetInterface`; `reset()` clears the in-memory map between requests/messages.
-4. Cache invalidation: `CacheInvalidationSubscriber::invalidateInitialStateIdLoader()` invalidates `InitialStateIdLoader::CACHE_KEY` whenever an entity-written event contains primary keys of the `state_machine` entity.
+4. The cache entry is invalidated whenever a DAL write touches the `state_machine` entity (`CacheInvalidationSubscriber::invalidateInitialStateIdLoader`, listening on `EntityWrittenContainerEvent`). The loader implements `ResetInterface`; `reset()` clears the in-memory map between requests.
 
 ## Essential identifiers
 
 - `Shopware\Core\System\StateMachine\Loader\InitialStateIdLoader`
-- `InitialStateIdLoader::get(string $name): string`
-- `InitialStateIdLoader::CACHE_KEY` = `state-machine-initial-state-ids`
+- `InitialStateIdLoader::get()`, `InitialStateIdLoader::CACHE_KEY` (`state-machine-initial-state-ids`)
 - `OrderStates::STATE_MACHINE`, `OrderDeliveryStates::STATE_MACHINE`, `OrderTransactionStates::STATE_MACHINE`
+- `CacheInvalidationSubscriber::invalidateInitialStateIdLoader()`
 
 ## Gotchas
 
-- `get()` indexes the map directly; an unknown technical name is not guarded against (no fallback value).
-- Writing to `state_machine` through the DAL triggers invalidation; changing the table directly via SQL bypasses it.
-- The ADR describes the old approach, `\Shopware\Core\System\StateMachine\StateMachineRegistry::getInitialState`, which loaded the full `StateMachine` with `transitions` (including `fromStateMachineState`/`toStateMachineState`) and `states`. It was deprecated for `v6.5.0.0`; in the installed 6.7 code `StateMachineRegistry` no longer declares it. Only the entity getter `StateMachineEntity::getInitialState()` remains, which requires the association to be loaded.
+- `get()` returns the array entry directly; an unknown technical name is not guarded and does not return null.
+- Changing a state machine's initial state outside the DAL (raw SQL) bypasses the written event, so the cached ids stay stale until the cache is cleared.
 
 ## Version notes
 
-- Deprecation of the registry method was announced for `v6.5.0.0`; all core usages were switched to `InitialStateIdLoader`.
+The ADR deprecated `StateMachineRegistry::getInitialState` for `v6.5.0.0` and replaced all core usages. In 6.7.15.1 the registry no longer has this method; only the entity getter `StateMachineEntity::getInitialState()` (an association accessor) remains.
 
-## Code check (6.7.13.0)
-- confirmed `InitialStateIdLoader` — class implements ResetInterface — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:11
-- confirmed `InitialStateIdLoader::CACHE_KEY` — value state-machine-initial-state-ids (now final) — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:13
-- confirmed `InitialStateIdLoader::get()` — returns id string by technical name — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:34
-- confirmed `InitialStateIdLoader::reset()` — clears in-memory ids — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:29
-- confirmed `InitialStateIdLoader::load()` — cached fetchAllKeyValue over state_machine — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:50
-- confirmed `CacheInvalidationSubscriber::invalidateInitialStateIdLoader()` — invalidates CACHE_KEY on state_machine writes — vendor/shopware/core/Framework/Adapter/Cache/CacheInvalidationSubscriber.php:86
-- confirmed `OrderStates::STATE_MACHINE` — value order.state — vendor/shopware/core/Checkout/Order/OrderStates.php:10
-- confirmed `OrderDeliveryStates::STATE_MACHINE` — value order_delivery.state — vendor/shopware/core/Checkout/Order/Aggregate/OrderDelivery/OrderDeliveryStates.php:10
-- confirmed `OrderTransactionStates::STATE_MACHINE` — value order_transaction.state — vendor/shopware/core/Checkout/Order/Aggregate/OrderTransaction/OrderTransactionStates.php:10
-- confirmed `StateMachineEntity::getInitialState()` — only remaining getInitialState, an entity getter, not on StateMachineRegistry — vendor/shopware/core/System/StateMachine/StateMachineEntity.php:84
+## Code check (6.7.15.1)
+- confirmed `InitialStateIdLoader` — implements `ResetInterface` — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:11
+- confirmed `InitialStateIdLoader::CACHE_KEY` — `'state-machine-initial-state-ids'`, now `final public const` — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:13
+- confirmed `InitialStateIdLoader::get()` — `get(string $name): string` with in-memory map — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:34
+- confirmed `InitialStateIdLoader::reset()` — clears the `$ids` map — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:29
+- confirmed `initial_state_id` — same SQL against `state_machine` as in the ADR — vendor/shopware/core/System/StateMachine/Loader/InitialStateIdLoader.php:51
+- confirmed `CacheInvalidationSubscriber::invalidateInitialStateIdLoader()` — invalidates `CACHE_KEY` on `state_machine` writes — vendor/shopware/core/Framework/Adapter/Cache/CacheInvalidationSubscriber.php:86
+- confirmed `invalidateInitialStateIdLoader` — registered on `EntityWrittenContainerEvent`, priority 2017 — vendor/shopware/core/Framework/DependencyInjection/cache.php:221
+- confirmed `OrderStates::STATE_MACHINE` — core order creation uses the loader — vendor/shopware/core/Checkout/Cart/Order/OrderConverter.php:130
+- corrected `StateMachineEntity::getInitialState()` — docs: `StateMachineRegistry::getInitialState` deprecated; in 6.7 the registry method is gone and only this entity getter remains — vendor/shopware/core/System/StateMachine/StateMachineEntity.php:84

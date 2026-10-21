@@ -6,63 +6,59 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/e2e-playwright/language-agnostic-testing.html
 sourceHash: 7bcd4c00e60515c5310871e45405691eda006b96
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["translate()", "Translate", "LanguageHelper", "BUNDLED_RESOURCES", "baseNamespaces", "TranslationKey", "TranslateFn", "mergeTests", "LANG", "@shopware-ag/acceptance-test-suite", "translation keys", "localized e2e tests", "i18n", "locale"]
-summary: "ATS language-agnostic Playwright tests - translate() and Translate fixture, area:module:section.key keys, LANG switching, custom translation fixtures."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["@shopware-ag/acceptance-test-suite", "translate()", "Translate fixture", "LanguageHelper", "BUNDLED_RESOURCES", "TranslationKey", "TranslateFn", "mergeTests", "LANG", "playwright.config.ts", "translation keys", "localized acceptance tests", "i18n e2e tests", "locale switching"]
+summary: Acceptance Test Suite translation keys, translate()/Translate fixture, LANG env switching, locale files and custom translation fixtures for Playwright tests.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Language agnostic testing in `@shopware-ag/acceptance-test-suite` (ATS): tests and page objects use translation keys instead of hard-coded UI strings and adapt to the locale selected via environment variables.
+Language agnostic testing in `@shopware-ag/acceptance-test-suite` (ATS) lets Playwright acceptance tests use translation keys instead of hard-coded UI strings; the locale is picked from environment variables, so one test runs against German or English UIs.
 
 ## When to use
 
-Writing acceptance tests or page objects that must pass for more than one Administration/Storefront language, or adding project-specific translations on top of the ATS bundled ones.
+- Writing ATS page objects or tests whose locators match visible text.
+- Running the suite against a non-English shop language.
+- Adding project-specific translations on top of the bundled ATS resources.
 
 ## Key steps / config
 
-1. In page objects, use `translate()` (from `services/LanguageHelper`) inside constructors: `page.getByRole('button', { name: translate('administration:category:actions.createCategory') })`.
-2. In tests, request the `Translate` fixture: `const saveText = Translate('administration:category:general.save');`.
-3. Switch language with an env var: `LANG=de-DE npx playwright test` (English `en` is the default).
-4. Keys follow `area:module:section.key`; translations live in JSON per language and area, e.g. `locales/en/administration/category.json`:
+1. Page objects: `import { translate } from '../../services/LanguageHelper';` and call it inside the constructor, e.g. `page.getByRole('button', { name: translate('administration:category:actions.createCategory') })`.
+2. Tests: use the `Translate` fixture — `async ({ AdminPage, Translate }) => { const saveText = Translate('administration:category:general.save'); ... }`.
+3. Keys follow `area:module:section.key` (e.g. `storefront:account:fields.firstName`, `storefront:checkout:payment.invoice`).
+4. Locale files per language and area, e.g. `locales/en/administration/category.json`, `locales/de/storefront/account.json`:
+   ```json
+   { "general": { "save": "...", "cancel": "..." }, "actions": { "createCategory": "..." } }
+   ```
+5. Switch language: `LANG=de-DE npm run test` / `LANG=en-GB npm run test` (default), or `LANG=de-DE npx playwright test`.
 
-```json
-{ "general": { "save": "Save", "cancel": "Cancel" },
-  "actions": { "createCategory": "Create category" } }
-```
+### Custom translations in your own project
 
-5. Custom project translations:
-   - `npm install @shopware-ag/acceptance-test-suite @playwright/test` and `npm install -D @types/node`.
-   - `locales/index.ts` imports JSON files `with { type: 'json' }` and exports `LOCALE_RESOURCES` (keys like `'administration/common'` per `en`/`de`) and `enNamespaces` (nested `administration.common`).
-   - `fixtures/CustomTranslation.ts`: import `test as base`, `LanguageHelper`, `TranslationKey`, `TranslateFn`, `BUNDLED_RESOURCES`, `baseNamespaces`; merge `BUNDLED_RESOURCES` with `LOCALE_RESOURCES` and `baseNamespaces` with `enNamespaces`; `base.extend` a `Translate` fixture that derives the language from `process.env.lang || process.env.LANGUAGE || process.env.LANG || 'en'`, falls back to `en` if unsupported, calls `await LanguageHelper.createInstance(language, MERGED_RESOURCES)` and `use()`s a function wrapping `languageHelper.translate(key, options)`.
-   - `types/TranslationTypes.ts`: `TranslationKey<typeof enNamespaces>` and `TranslateFn<CustomTranslationKey>` for type-safe keys.
-   - Main fixture file (`test.ts`/`index.ts`): `export const test = mergeTests(ShopwareTestSuite, CustomTranslation);`.
-6. In `playwright.config.ts`, map language to browser locale (e.g. `{ de: 'de-DE', en: 'en-US', fr: 'fr-FR' }`), set `use.locale`, and for non-`en` pass `--lang=<locale>` and `--accept-lang=<locale>,<lang>;q=0.9,en;q=0.8` via `launchOptions.args`.
+- Install `npm install @shopware-ag/acceptance-test-suite @playwright/test` and `npm install -D @types/node`.
+- `fixtures/CustomTranslation.ts`: import `test as base`, `LanguageHelper`, `TranslationKey`, `TranslateFn`, `BUNDLED_RESOURCES`, `baseNamespaces`; merge `BUNDLED_RESOURCES.en/de` with your `LOCALE_RESOURCES` and `baseNamespaces` with your `enNamespaces`; define `Translate` via `base.extend`. Language = `process.env.lang || process.env.LANGUAGE || process.env.LANG || 'en'`, split on `/[_.-]/`, lowercased, falling back to `en`; instance via `await LanguageHelper.createInstance(language, MERGED_RESOURCES)`.
+- `locales/index.ts`: import JSON files `with { type: 'json' }`, export `LOCALE_RESOURCES` (keys like `'administration/common'`) and `enNamespaces`.
+- `types/TranslationTypes.ts`: `export type CustomTranslationKey = TranslationKey<typeof enNamespaces>;` for compile-time key checks.
+- Root `test.ts`: `export const test = mergeTests(ShopwareTestSuite, CustomTranslation);`.
+- `playwright.config.ts`: map language to browser locale (`{ de: 'de-DE', en: 'en-US', fr: 'fr-FR' }`), set `use.locale`, and for non-`en` pass `--lang=` / `--accept-lang=` in `launchOptions.args`.
 
 ## Essential identifiers
 
-- `translate()`, `Translate` fixture
-- `LanguageHelper`, `LanguageHelper.createInstance`, `BUNDLED_RESOURCES`, `baseNamespaces`, `TranslationKey`, `TranslateFn`, `mergeTests`
-- `LOCALE_RESOURCES`, `enNamespaces` (project-defined)
-- Env vars `LANG`, `LANGUAGE`, `lang`
-- `locales/<lang>/<area>/<module>.json`, `locales/index.ts`
+- `@shopware-ag/acceptance-test-suite`, `translate()`, `Translate`, `LanguageHelper`
+- `BUNDLED_RESOURCES`, `baseNamespaces`, `TranslationKey`, `TranslateFn`, `mergeTests`
+- `LANG`, `LANGUAGE`, `locales/index.ts`, `playwright.config.ts`
 
 ## Gotchas
 
-- Supported translation resources: `en`, `de`. Browser UI locales: `en`, `de`, `fr`, `es`, `it`, `nl`, `pt`.
-- Key not found: verify the key exists in both EN and DE files, is imported in `locales/index.ts`, and the namespace structure is correct.
-- Tests failing after changing `LANG`: call `translate()` inside constructors/functions, not at module level.
-- JSON import errors: always use the `with { type: 'json' }` import attribute.
-- Browser locale mismatch: check the locale mapping and browser args in `playwright.config.ts`.
+- Translation resources exist only for `en` and `de`; browser UI locales: `en`, `de`, `fr`, `es`, `it`, `nl`, `pt`.
+- Key not found: check both EN/DE files, the import in `locales/index.ts`, and namespace structure.
+- Failures after changing `LANG`: call `translate()` inside constructors/functions, never at module level.
+- JSON import errors: always use `with { type: 'json' }`.
+- ATS keys are the suite's own locale files, not Administration snippet keys (the Administration's "Create category" is `sw-category.general.buttonCreate`).
 
-## Code check (6.7.13.0)
-- confirmed `sw-category` — core Administration category snippets use this namespace (en), separate from ATS `administration:category:*` keys — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/snippet/en.json:2
-- confirmed `sw-category` — German core snippet file with the same namespace — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/snippet/de.json:2
-- unverified `translate()` — ATS npm package, outside vendor/shopware
-- unverified `LanguageHelper` — ATS npm package, outside vendor/shopware
-- unverified `BUNDLED_RESOURCES` — ATS npm package, outside vendor/shopware
-- unverified `baseNamespaces` — ATS npm package, outside vendor/shopware
-- unverified `TranslationKey` — ATS npm package, outside vendor/shopware
-- unverified `TranslateFn` — ATS npm package, outside vendor/shopware
-- unverified `mergeTests` — Playwright test runner API, outside vendor/shopware
-- unverified `LANG` — environment variable read by ATS/Playwright config, not Shopware code
+## Code check (6.7.15.1)
+- unverified `@shopware-ag/acceptance-test-suite` — external npm package, outside the vendor/shopware roots
+- unverified `LanguageHelper.createInstance` — ATS API, out of scope
+- unverified `BUNDLED_RESOURCES` — ATS export, out of scope
+- confirmed `buttonCreate` — Administration English "Create category" snippet — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/snippet/en.json:9
+- confirmed `buttonCreate` — German "Kategorie erstellen" counterpart — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/snippet/de.json:9
+- confirmed `locale` — Administration global en snippet file carries a locale block — vendor/shopware/administration/Resources/app/administration/src/app/snippet/en.json:1434

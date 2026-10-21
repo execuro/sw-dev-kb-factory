@@ -1,39 +1,35 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables.md
-title: Add SCSS Variables
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/styling/add-scss-variables.html
+id: platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables-via-subscriber.md
 sourceHash: ccd5022c14c651ccb4bd8dbb3a04506c147fcb2b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["<css>", "config.xml", "input-field", "defaultValue", "ThemeCompilerEnrichScssVarSubscriber", "ThemeCompilerEnrichScssVariablesEvent", "theme:compile", "scss variables", "plugin configuration", "base.scss", "!default", "storefront theme"]
-summary: "Expose a plugin config.xml field as an SCSS variable with the <css> tag; value or defaultValue is injected at theme compile, recompile after changes."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables-via-subscriber.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/styling/add-scss-variables.html
+title: Add SCSS Variables
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["css", "<css>", "config.xml", "input-field", "defaultValue", "scss variables", "plugin config", "theme compile", "ThemeCompilerEnrichScssVarSubscriber", "ThemeCompilerEnrichScssVariablesEvent", "base.scss", "!default"]
+summary: "Expose a plugin config.xml field as an SCSS variable with the <css> element (since 6.4.13.0); the theme must be recompiled after the value changes."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The declarative way for a plugin to turn a plugin configuration field (`config.xml`) into an SCSS variable: add a `<css>` element naming the variable. This is the recommended approach; for more flexibility see [Add SCSS Variables via Subscriber](platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables-via-subscriber.md).
+A plugin `config.xml` input field can be exposed as an SCSS variable by adding a `<css>` child element whose text is the variable name. When the theme compiles, the core injects the configured value, or the field's `<defaultValue>` if none is set. This is the recommended way to add plugin SCSS variables. For more flexibility use a subscriber ([Add SCSS variables via subscriber](platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-scss-variables-via-subscriber.md)).
 
 ## When to use
 
-A merchant should control a Storefront style value (color, size, etc.) through the plugin's configuration in the Administration, without writing an event subscriber.
+A merchant-editable plugin setting, such as a color, should drive Storefront styling without custom PHP.
 
 ## Key steps / config
 
-1. Provide a fallback value in the plugin's `src/Resources/app/storefront/src/scss/base.scss`, marked `!default` so the configured value can replace it:
-
+1. Give the variable a fallback in `<plugin root>/src/Resources/app/storefront/src/scss/base.scss`:
    ```scss
    $sass-plugin-header-bg-color: #ffcc00 !default;
-
-   .header-main {
-       background-color: $sass-plugin-header-bg-color;
-   }
+   .header-main { background-color: $sass-plugin-header-bg-color; }
    ```
-
-2. In `src/Resources/config/config.xml`, add `<css>` to the input field; its content is the SCSS variable name (without `$`):
-
+2. Add `<css>` with the variable name, without `$`, to the field in `config.xml`:
    ```xml
    <input-field>
        <name>sassPluginHeaderBgColor</name>
@@ -43,34 +39,29 @@ A merchant should control a Storefront style value (color, size, etc.) through t
        <defaultValue>#eee</defaultValue>
    </input-field>
    ```
-
-3. Recompile the theme (e.g. `bin/console theme:compile`) after changing the value.
-
-How it works in the installed code: during theme compilation `ThemeCompilerEnrichScssVarSubscriber` listens to `ThemeCompilerEnrichScssVariablesEvent`, loads the resolved `<TechnicalName>.config` of every registered Storefront plugin for the sales channel being compiled, and for each element with a `css` entry calls `addVariable(<css>, value ?? defaultValue)`. Values are therefore per sales channel.
+3. After changing the value in the Administration, recompile the theme manually.
 
 ## Essential identifiers
 
-- `<css>` element inside `<input-field>` in `config.xml`
-- `<defaultValue>` — used when no value is saved
-- `Shopware\Storefront\Theme\Subscriber\ThemeCompilerEnrichScssVarSubscriber`
-- `bin/console theme:compile`
+- `<css>` (child of `<input-field>` in `config.xml`)
+- `<defaultValue>`
+- `Shopware\Storefront\Theme\Subscriber\ThemeCompilerEnrichScssVarSubscriber` (core handler)
 
 ## Gotchas
 
-- Changing the configured value does not recompile the theme; recompile manually for it to take effect.
-- Plugin configurations with a `<css>` field show a notice in the Administration that changes can affect the theme.
-- Only string values are applied: an element whose `value ?? defaultValue` is not a string is skipped.
-- If loading the plugin configuration fails with a database error, a warning is written and plugin CSS customizations are ignored.
+- A changed value does not apply until the theme is recompiled.
+- Plugin configs that declare an SCSS variable show a notice in the Administration that changes can affect the theme.
+- In the installed code, the variable is set only when the stored value (or `defaultValue`) is a string. Other value types are silently skipped.
+- Values are read per sales channel from `<TechnicalName>.config` for every plugin known to the Storefront plugin registry.
 
 ## Version notes
 
-- The `css` configuration flag is available since Shopware 6.4.13.0.
+- The `<css>` configuration flag is available from Shopware 6.4.13.0.
 
-## Code check (6.7.13.0)
-- confirmed `ThemeCompilerEnrichScssVarSubscriber::enrichExtensionVars()` — subscribed to the enrich event — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:35
-- confirmed `css` — `addVariable($element['config']['css'], value ?? defaultValue)` — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:77
-- confirmed `defaultValue` — fallback when no value is saved; non-string values skipped — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:96
-- confirmed `getSalesChannelId()` — config resolved per compiled sales channel — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:57
-- confirmed `input-field` — XSD allows arbitrary child elements (lax any), so `<css>` validates — vendor/shopware/core/System/SystemConfig/Schema/config.xsd:33
-- confirmed `nodeName` — unknown option elements are stored by element name — vendor/shopware/core/System/SystemConfig/Util/ConfigReader.php:251
-- confirmed `theme:compile` — console command to recompile themes — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:19
+## Code check (6.7.15.1)
+- confirmed `input-field` — schema allows arbitrary extra children (lax), so `<css>` validates — vendor/shopware/core/System/SystemConfig/Schema/config.xsd:36
+- confirmed `css` — element's `config.css` is checked for each config element — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:92
+- confirmed `defaultValue` — used when no value is stored — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:77
+- confirmed `ThemeCompilerEnrichScssVarSubscriber::hasCssValue()` — only string values are added — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:82
+- confirmed `ThemeCompilerEnrichScssVarSubscriber::enrichExtensionVars()` — reads `<technicalName>.config` per sales channel — vendor/shopware/storefront/Theme/Subscriber/ThemeCompilerEnrichScssVarSubscriber.php:42
+- unverified `Administration notice` — admin hint for css-bearing configs not checked

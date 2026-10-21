@@ -1,70 +1,66 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2026-03-17-refactor-of-document-generation.md
-title: Refactor of document generation
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-03-17-refactor-of-document-generation.html
+id: platform/dev/6.7/resources/references/adr/2026-03-17-refactor-of-document-generation.md
 sourceHash: 9bb6395307c7435e344c9eb5c613b90364e52871
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["document generation", "DocumentV2", "invoice", "zugferd", "e-invoice", "document format", "document type", "DOCUMENT_GENERATION_REWORK", "horstoeko/zugferd", "document.renderer", "AbstractDocumentRenderer", "document_base_config", "adr"]
-summary: "ADR: refactor document generation into types with multiple formats (PDF, HTML, Zugferd), opt-in in 6.7, default in 6.8; estimated to break ~69 plugins."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-03-17-refactor-of-document-generation.html
+title: Refactor of document generation
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["document generation", "DOCUMENT_GENERATION_REWORK", "DocumentFormat", "AbstractDocumentRenderer", "ZugferdBuilder", "document.renderer", "document_type.renderer", "DocumentGenerateOperation", "zugferd", "e-invoice", "accessible documents", "document.static", "document_base_config"]
+summary: "ADR: document types get multiple formats (PDF, HTML, ZUGFeRD); opt-in rework in 6.7 drops horstoeko/zugferd and breaks extensions."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2026-03-17) to rewrite Shopware's document generation. The existing implementation patched in accessible HTML documents and Zugferd e-invoices under legal deadlines; the refactor separates document types (invoice, delivery note, ...) from their formats (PDF, HTML, Zugferd XML, Zugferd embedded PDF) and gives extensions a cleaner API than class decoration.
+Architecture decision record (2026-03-17, area after-sales) to refactor Shopware's document generation. Accessible documents (HTML) and e-invoices (ZUGFeRD) were patched into the existing system under legal deadlines and backward-compatibility constraints (no breaks in 6.6/6.7): each ZUGFeRD variant is its own document type and the accessible HTML is an extra media file on the document entity, which leads to hard-coded file/document types across UI and code. The decision: one document type gets one or more formats, with a simpler extension API that does not rely on PHP class decoration. Architecture and extension points are covered by two follow-up ADRs (2026-03-18 new document generation architecture, 2026-03-19 extension points, linked from the upstream ADR repository).
 
 ## When to use
 
-- Assessing whether a plugin or integration that touches documents will need changes for the new implementation.
-- Understanding why the `DocumentV2` namespace exists next to the old `Checkout\Document` code.
+- You maintain a plugin or integration that renders, decorates or configures documents (renderers, Twig document templates, `document_base_config`) and need to know what will break.
+- You plan app-based document generation (currently impossible: apps cannot provide or hook into generators).
+- You want to try the new opt-in implementation in 6.7.
 
 ## Key steps / config
 
-Problems named in the current implementation:
+Goals the new implementation is built against:
 
-- Each Zugferd document is a separate document type instead of a format; accessibility HTML is an attached media file instead of a format.
-- File and document types are hard-coded in several places (e.g. the UI).
-- Adding types/formats needs disproportionate effort; apps cannot provide or hook into generators (shopware#9676, shopware#10478).
-- `horstoeko/zugferd` is declared legacy and wrapped behind a partial `ZugferdBuilder`.
-
-Goals / decision:
-
-- One document type has one or more formats, all generated from the same data and document number in one call; formats may depend on each other (e.g. PDF from HTML via DomPDF).
-- Mail attachments work at document level, including all formats.
-- Types and formats are extendable by plugins; merchants only configure options the type uses.
-- Uploading static document files (`document.static`) to bypass generation stays possible.
-- Zugferd XML is generated from Twig templates; the `horstoeko/zugferd` dependency is to be removed.
-- The new implementation is opt-in during 6.7 (feature flag `DOCUMENT_GENERATION_REWORK` in the installed code) and replaces the old one in 6.8.
-
-Follow-up ADRs: 2026-03-18 new document generation architecture, 2026-03-19 new document generation extension points.
+1. One document type (e.g. invoice) has one or more formats — the installed `Shopware\Core\Checkout\DocumentV2\DocumentFormat` enum has `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`. The merchant chooses which formats to generate.
+2. All formats from one generation call share the same data (e.g. the same document number) and may depend on each other (ZUGFeRD-embedded PDF combines PDF + ZUGFeRD XML; PDF can be produced from HTML via DomPDF).
+3. Mail attachments work on document level and include all available formats.
+4. Types and formats are extendable by plugins (more e-invoice data, another format, another type).
+5. Merchants only configure settings a type actually uses; company details may move into their own entity.
+6. Uploading a static file per type, bypassing generation, stays possible (`document.static` field).
+7. ZUGFeRD XML is generated via Twig templates; the `horstoeko/zugferd` dependency (declared legacy) is removed.
+8. Opt-in: the new implementation sits behind the feature flag `DOCUMENT_GENERATION_REWORK` (default off, major); the old implementation is to be deprecated.
 
 ## Essential identifiers
 
-- `DOCUMENT_GENERATION_REWORK`
-- `Shopware\Core\Checkout\DocumentV2` (new), `Shopware\Core\Checkout\Document` (old)
-- Old extension points: `document.renderer`, `document_type.renderer`, `AbstractDocumentRenderer`, `AbstractDocumentTypeRenderer`, `DocumentFileRendererRegistry`, `DocumentGenerateOperation`, `InvoiceRenderer`, `PdfRenderer`, `HtmlRenderer`, `ZugferdBuilder`, `ZugferdRenderer`
-- Templates: `@Framework/documents/base.html.twig`, `invoice.html.twig`, `delivery_note.html.twig`, `credit_note.html.twig`, `storno.html.twig`
+- `DOCUMENT_GENERATION_REWORK`, `Shopware\Core\Checkout\DocumentV2\DocumentFormat`
+- Existing extension points affected: `document.renderer` / `AbstractDocumentRenderer`, `document_type.renderer` / `AbstractDocumentTypeRenderer`, `InvoiceRenderer`, `CreditNoteRenderer`, `DeliveryNoteRenderer`, `StornoRenderer`, `ZugferdRenderer`, `ZugferdBuilder`, `HtmlRenderer`, `PdfRenderer`, `DocumentFileRendererRegistry`, `DocumentGenerateOperation`
+- Templates: `@Framework/documents/base.html.twig`, `invoice.html.twig`, `credit_note.html.twig`, `delivery_note.html.twig`, `storno.html.twig`
 - Config entities: `document_base_config`, `document_base_config_sales_channel`
 
 ## Gotchas
 
-- All document-related extensions and integrations are expected to need updates. Of 3,204 scanned store plugins, 204 use the document API; 84 touch only Twig templates (likely unaffected), 51 more only config schemas — estimate 69 broken plugins (2.2%).
-- Most used extension points: `invoice.html.twig` (76 plugins), `document_base_config` (77), `DocumentGenerateOperation` (44).
-- Existing generated documents are to be migrated and stay accessible.
+- All extensions and integrations doing anything document-related must be updated for the new implementation; merchant UX changes are expected to be minor, and already generated documents are migrated and stay accessible.
+- Impact estimate from a store scan: 204 of 3,204 plugins (6.4%) use the document API; 84 only touch Twig templates (likely unaffected, templates are kept); keeping config schemas backward compatible spares 51 more, leaving ~69 affected plugins (2.2%).
+- Most used points: `invoice.html.twig` (76 plugins), `document_base_config` (77), `document_base_config_sales_channel` (54), `@Framework/documents/base.html.twig` (52), `DocumentGenerateOperation` (44); `ZugferdBuilder` and `ZugferdRenderer` had zero users.
+- `ZugferdBuilder` wraps the library's builder but does not expose all its features.
 
 ## Version notes
 
-6.7: new implementation opt-in; 6.8: default, old implementation removed (should be deprecated before). In 6.7.13.0 `horstoeko/zugferd` is still a core dependency and the old classes carry no `@deprecated` tag.
+- 6.7: new implementation is opt-in via `DOCUMENT_GENERATION_REWORK`; per the ADR it becomes the default in 6.8. In 6.7.15.1 the legacy `AbstractDocumentRenderer` carries an `ExperimentalReplacement` attribute naming `DocumentV2Renderer` as replacement with `version: 'v6.9.0'`. A separate ADR is to describe the migration strategy.
 
-## Code check (6.7.13.0)
-- confirmed `DOCUMENT_GENERATION_REWORK` — major, toggleable flag, default false; the opt-in switch — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
-- confirmed `horstoeko/zugferd` — still required by core in 6.7.13.0 — vendor/shopware/core/composer.json:85
-- confirmed `documentV2.php` — new DocumentV2 services loaded alongside old `document.xml` — vendor/shopware/core/Checkout/Checkout.php:43
-- confirmed `document.renderer` — old renderer tag still in use — vendor/shopware/core/Checkout/DependencyInjection/document.xml:72
-- confirmed `AbstractDocumentRenderer` — old abstract renderer, not deprecated — vendor/shopware/core/Checkout/Document/Renderer/AbstractDocumentRenderer.php:19
-- confirmed `AbstractDocumentTypeRenderer` — old type renderer base — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:9
-- confirmed `DocumentGenerateOperation` — old generation struct — vendor/shopware/core/Checkout/Document/Struct/DocumentGenerateOperation.php:11
-- confirmed `DocumentFileRendererRegistry` — old file renderer registry — vendor/shopware/core/Checkout/Document/Service/DocumentFileRendererRegistry.php:10
-- confirmed `ZugferdBuilder` — wrapper around the Zugferd library — vendor/shopware/core/Checkout/Document/Zugferd/ZugferdBuilder.php:25
+## Code check (6.7.15.1)
+- confirmed `DOCUMENT_GENERATION_REWORK` — feature flag, default false, major — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
+- confirmed `DocumentFormat` — enum html/pdf/zugferd_xml/zugferd_embedded_pdf, experimental — vendor/shopware/core/Checkout/DocumentV2/DocumentFormat.php:13
+- confirmed `AbstractDocumentRenderer` — legacy base, ExperimentalReplacement to DocumentV2Renderer (v6.9.0) — vendor/shopware/core/Checkout/Document/Renderer/AbstractDocumentRenderer.php:27
+- confirmed `ZugferdBuilder` — legacy ZUGFeRD builder wrapper — vendor/shopware/core/Checkout/Document/Zugferd/ZugferdBuilder.php:31
+- confirmed `document.renderer` — DI tag on legacy renderers — vendor/shopware/core/Checkout/DependencyInjection/document.php:127
+- confirmed `document_type.renderer` — DI tag for file type renderers (key pdf) — vendor/shopware/core/Checkout/DependencyInjection/document.php:181
+- confirmed `DocumentGenerateOperation` — final struct — vendor/shopware/core/Checkout/Document/Struct/DocumentGenerateOperation.php:18
+- confirmed `DocumentFileRendererRegistry` — legacy registry — vendor/shopware/core/Checkout/Document/Service/DocumentFileRendererRegistry.php:16
+- confirmed `document.static` — BoolField static on document — vendor/shopware/core/Checkout/Document/DocumentDefinition.php:88
+- unverified `horstoeko/zugferd` — composer dependency, outside code roots

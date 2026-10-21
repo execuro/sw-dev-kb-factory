@@ -1,50 +1,52 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.md
-title: Using Data Handling
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.html
+id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/_index.md
 sourceHash: 48f5050a63c1c45d63aa0c40e5924bcdfd51729a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["admin data handling", "repositoryFactory", "Repository", "Criteria", "EntityCollection", "Shopware.Context.api", "Shopware.Data", "syncDeleted", "assign", "associations", "crud administration", "entity extensions", "addAssociation", "setTotalCountMode"]
-summary: Administration JS data layer - repositoryFactory.create, Criteria, and repository search/get/save/delete/syncDeleted/assign, plus association handling.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/_index.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.html
+title: Using Data Handling
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["repositoryFactory", "Repository", "Criteria", "Shopware.Data", "EntityCollection", "Shopware.Context.api", "syncDeleted", "addAssociation", "setTotalCountMode", "admin data handling", "crud", "associations", "entity extensions"]
+summary: "Admin JS data handling: repositoryFactory.create, Criteria search, get/save/delete/create, and OneToMany/ManyToMany association handling."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Administration's JavaScript data handling: a client-side mirror of the DAL that reads and writes almost any entity via the Admin API using repositories, entities, collections and `Criteria`. Background: [reading data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md), [writing data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md), [DAL data handling](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/_index.md).
+The Administration's JavaScript data layer, which remotely operates the Data Abstraction Layer over the Admin API: repositories created by `repositoryFactory`, `Criteria` for searches, change-tracked entities, and association handling. See [reading data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md) and [writing data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md) with the DAL.
 
 ## When to use
 
-Any Administration component (plugin module, override) that must list, load, create, update or delete entities or their associations.
+When an Administration component must fetch, create, update or delete entities, or work with their associations and entity extensions.
 
 ## Key steps / config
 
-**Relevant classes** (`Shopware.Data`): `Repository` (CRUD requests), `Entity` (single record), `EntityCollection` (list of entities; also what `search` resolves to), `Criteria` (filter, sorting, pagination, associations; re-exported from `@shopware-ag/meteor-admin-sdk`). `repositoryFactory` is a DI service; `Shopware.Context.api` holds language, version and auth state.
+Relevant classes: `Repository` (CRUD requests), `Entity` (single record), `EntityCollection` (collection of entities), `SearchResult`, `RepositoryFactory`, `Context` (language, version, auth, ...), `Criteria` (filter, sorting, pagination, ...).
 
-**1. Get a repository** - inject the service (BottleJS container wrapped into Vue inject/provide):
+1. **Inject and create a repository** — services come from the BottleJS DI container via Vue `inject`:
 
 ```javascript
 inject: ['repositoryFactory'],
-computed: {
-    productRepository() { return this.repositoryFactory.create('product'); },
-},
+// ...
+const productRepository = this.repositoryFactory.create('product');
 ```
 
-Signature: `create(entityName, route = '', options = {})`. `route` defaults to `/<entity-name-with-dashes>` and is overridden for association repositories. `options` is a free object; the installed repository reads `useSync` (save via `_action/sync`), `keepApiErrors` and `compatibility`.
+   Signature: `create(entityName, route = '', options = {})`. Without `route` it uses `/<entity-name-with-dashes>`; a custom route is used for association loading. Options read by the repository include `useSync` (save via sync API), `keepApiErrors` and `compatibility`.
 
-**2. Search with Criteria**:
+2. **Search with Criteria** (`const { Criteria } = Shopware.Data;`):
 
 ```javascript
-const { Criteria } = Shopware.Data;
 const criteria = new Criteria();
 criteria.setPage(1);
 criteria.setLimit(10);
 criteria.setTerm('foo');
 criteria.setIds(['some-id']);
-criteria.setTotalCountMode(2);
+criteria.setTotalCountMode(2); // 0 none, 1 exact, 2 limit*5+1
 criteria.addFilter(Criteria.equals('product.active', true));
 criteria.addSorting(Criteria.sort('product.name', 'DESC'));
 criteria.addAggregation(Criteria.avg('average_price', 'product.price'));
@@ -52,58 +54,49 @@ criteria.getAssociation('categories').addSorting(Criteria.sort('category.name', 
 this.productRepository.search(criteria, Shopware.Context.api).then(result => { /* ... */ });
 ```
 
-Total count modes: `0` no total (fastest), `1` exact total (slow), `2` fetches limit * 5 + 1 for "next page exists" (fast).
+3. **Single entity** — `repository.get(id, Shopware.Context.api, criteria?)`; it builds a `Criteria(1, 1)` with `setIds([id])` when none is given.
 
-**3. Single entity** - `repository.get(id, Shopware.Context.api, criteria?)`.
+4. **Update** — change properties, then call `repository.save(entity, Shopware.Context.api)`. Only changed fields are sent (change tracking); saving is never automatic. The entity is stateless after save — re-`get` it if needed.
 
-**4. Update** - change tracking sends only changed fields, but saving is manual: set properties, then `repository.save(entity, Shopware.Context.api)`. Entities are stateless; re-fetch with `get` after saving if you need fresh data.
+5. **Delete** — `repository.delete(id, Shopware.Context.api)`; for several ids `repository.syncDeleted(ids, context)`.
 
-**5. Delete** - `repository.delete(id, Shopware.Context.api)`; multiple at once with `repository.syncDeleted(ids, Shopware.Context.api)`.
+6. **Create** — `repository.create(Shopware.Context.api)` returns a new entity; fill it and `save` it.
 
-**6. Create** - `const entity = repository.create(Shopware.Context.api)`, fill fields, then `save`.
+7. **Associations** — load with `new Criteria().addAssociation('manufacturer')` and pass the criteria to `get`. ManyToOne yields an entity (write via the foreign key, e.g. `product.manufacturerId`, then save the parent); ToMany yields an `EntityCollection` with `entity` and `source` properties.
 
-**7. Associations** - load with `new Criteria().addAssociation('manufacturer')` and pass criteria to `get`. ManyToOne yields an entity (`product.manufacturer`); ToMany yields an `EntityCollection` carrying `entity` and `source` (API route such as `/product/{id}/categories`). Set a ManyToOne by writing the foreign key (`product.manufacturerId = ...`) and saving.
+8. **Association repository** (saved parent) — `this.repositoryFactory.create(this.product.prices.entity, this.product.prices.source)`; then `search`, `create` + `save`, `delete`. For ManyToMany use `assign(id, context)` to link and `delete(id, context)` to unlink.
 
-**8. Association repositories** (persisted parent):
+9. **Local associations** (unsaved parent) — create the child through the association repository, `this.product.prices.add(newPrice)` / `this.product.prices.remove(priceId)`, then `productRepository.save(this.product, Shopware.Context.api)` sends everything. Adding to the collection is mandatory for reactive UI data.
+
+10. **Entity extensions** — load the extension via `addAssociation(<extensionName>)`; assign a new entity from the extension's repository to `entity.extensions.<name>` and save the parent:
 
 ```javascript
-this.repositoryFactory.create(
-    this.product.prices.entity,  // product_price
-    this.product.prices.source   // product/<id>/priceRules
-);
+this.salesChannel.extensions.paypalPosSalesChannel =
+    this.paypalPosSalesChannelRepository.create(Context.api);
+this.salesChannelRepository.save(this.salesChannel, Context.api);
 ```
-
-OneToMany: `search`, `create` + `save`, `delete`, `save` on that repository. ManyToMany: `assign(categoryId, Shopware.Context.api)` links, `delete(categoryId, ...)` unlinks.
-
-**9. Local associations** (parent not saved yet) - add entities to the collection with `this.product.prices.add(newPrice)`, remove with `this.product.prices.remove(priceId)`; `this.productRepository.save(this.product, Shopware.Context.api)` sends them with the parent.
-
-**10. Entity extensions** - create the extension entity with its own repository and assign it under `entity.extensions.<name>` (e.g. `salesChannel.extensions.paypalPosSalesChannel = paypalPosSalesChannelRepository.create(Context.api)`); load it via `addAssociation(<extension name>)` and saving the parent writes it.
 
 ## Essential identifiers
 
-- `repositoryFactory.create(entityName, route, options)`
-- `Repository`: `search`, `get`, `save`, `delete`, `syncDeleted`, `create`, `assign`
-- `Shopware.Data.Criteria`: `setPage`, `setLimit`, `setTerm`, `setIds`, `setTotalCountMode`, `addFilter`, `addSorting`, `addAggregation`, `addAssociation`, `getAssociation`, `Criteria.equals`, `Criteria.sort`, `Criteria.avg`
-- `EntityCollection` (`entity`, `source`, `add`, `remove`)
-- `Shopware.Context.api`
+- `repositoryFactory`, `repositoryFactory.create(entityName, route, options)`
+- `Repository` methods: `search`, `get`, `save`, `delete`, `syncDeleted`, `create`, `assign`
+- `Shopware.Data.Criteria`, `Shopware.Data.EntityCollection`, `Shopware.Context.api`
+- Criteria: `setPage`, `setLimit`, `setTerm`, `setIds`, `setTotalCountMode`, `addFilter`, `addSorting`, `addAggregation`, `addAssociation`, `getAssociation`, `Criteria.equals`, `Criteria.sort`, `Criteria.avg`
 
 ## Gotchas
 
-- It is mandatory to `add` entities to collections for reactive UI data.
-- Local associations cannot be sent through an association repository while the parent is new - use the collection as storage.
-- A OneToMany price needs more than `quantityStart` to save.
-- The source lists a `SearchResult` class; in 6.7.13.0 `search` hydrates into an `EntityCollection`, and `Shopware.Data` has no `SearchResult` export.
-- The source says `version` is the only repository option; the installed `Repository` does not read a `version` option.
-- `get` internally runs `search` with `setIds([id])` on the passed (or a new `Criteria(1, 1)`) criteria.
+- The source passes `{ version: 1 }` as the third `create()` argument and says there are no other options; the 6.7 `Repository` does not read a `version` option at all, while it does read `useSync`, `keepApiErrors` and `compatibility`.
+- `Criteria` is re-exported from `@shopware-ag/meteor-admin-sdk`; its full API lives in that package, not in the Administration source.
+- A new price needs more fields than `quantityStart` before it saves.
 
-## Code check (6.7.13.0)
-- confirmed `RepositoryFactory::create()` — signature (entityName, route = '', options = {}) — vendor/shopware/administration/Resources/app/administration/src/core/data/repository-factory.data.ts:42
-- corrected `options` — docs: only option is `version`; code reads useSync/keepApiErrors/compatibility — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:157
-- corrected `EntityCollection` — docs: search returns SearchResult; hydrator returns EntityCollection — vendor/shopware/administration/Resources/app/administration/src/core/data/entity-hydrator.data.ts:99
-- confirmed `Repository::search()` — POSTs criteria to /search route — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:124
-- confirmed `Repository::get()` — search with setIds — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:142
-- confirmed `Repository::save()` — REST or sync depending on options — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:156
-- confirmed `Repository::assign()` — ManyToMany link on association route — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:409
-- confirmed `Repository::delete()` — DELETE on route/id — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:418
-- confirmed `Repository::syncDeleted()` — bulk delete via _action/sync — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:468
-- confirmed `Criteria` — re-exported from meteor-admin-sdk — vendor/shopware/administration/Resources/app/administration/src/core/data/criteria.data.ts:5
+## Code check (6.7.15.1)
+- confirmed `RepositoryFactory::create()` — `(entityName, route = '', options = {})`, default route from entity name — vendor/shopware/administration/Resources/app/administration/src/core/data/repository-factory.data.ts:42
+- corrected `this.options.useSync` — docs: `version` is the only option; repository reads useSync/keepApiErrors/compatibility — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:195
+- confirmed `Repository::search()` — POST `/search<route>` with criteria — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:137
+- confirmed `Repository::get()` — Criteria(1, 1) with setIds when none given — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:162
+- confirmed `Repository::save()` — changeset-based create/update — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:194
+- confirmed `Repository::assign()` — ManyToMany link — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:451
+- confirmed `Repository::delete()` — deletes one id — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:460
+- confirmed `Repository::syncDeleted()` — deletes an array of ids — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:510
+- confirmed `Repository::create()` — `(context, id = null)` returns new entity — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:566
+- unverified `Criteria` — implemented in @shopware-ag/meteor-admin-sdk, out of scope (re-export only in core/data/criteria.data.ts)

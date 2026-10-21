@@ -1,47 +1,48 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md
-title: Working with Media and Thumbnails
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/use-media-thumbnails.html
+id: platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
+  - platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-custom-assets.md
 sourceHash: cc5802e50aee708f1151242ebbf2b48c4df65226
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["media", "thumbnails", "images", "responsive images", "srcset", "searchMedia", "sw_thumbnails", "MediaCollection", "thumbnail.html.twig", "lazy loading", "custom field media", "element_product_listing_col"]
-summary: Load media entities by ID in Storefront Twig with searchMedia and render responsive img/srcset markup with the sw_thumbnails tag.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-custom-assets.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/use-media-thumbnails.html
+title: Working with Media and Thumbnails
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["searchMedia", "sw_thumbnails", "MediaCollection", "MediaExtension", "thumbnail.html.twig", "element_product_listing_col", "srcset", "sizes", "lazy loading", "media id to image", "responsive images", "theme breakpoint"]
+summary: Resolve media IDs to MediaCollection with the searchMedia Twig function and render responsive img/srcset markup with the sw_thumbnails tag.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Two Storefront Twig helpers for media: the `searchMedia` function, which loads media entities for a list of media IDs (e.g. IDs stored in custom fields), and the `sw_thumbnails` tag, which renders an `img` element with `srcset`/`sizes` built from the media's generated thumbnails.
+Two Storefront Twig helpers for media: the `searchMedia` function, which loads media entities for a list of media IDs (e.g. stored in a custom field), and the `sw_thumbnails` tag, which renders an `img` with `src`, `srcset` and `sizes` from the media's generated thumbnails.
 
 ## When to use
 
-You store only a media ID (for example in a custom field such as `custom_sports_media_id`) and need to display the image, or you want responsive image markup without hand-writing `srcset`.
+You have a media ID (often in a custom field such as `custom_sports_media_id`) and need to display the image in a Storefront template, or you want responsive thumbnail markup without hand-writing `srcset`.
 
 ## Key steps / config
 
 ### searchMedia
 
-Twig call: `searchMedia(ids, context.context)`, taking an array of media IDs and a `Context` and returning a `MediaCollection`. It runs a database query, so collect IDs first and call it once, never inside a loop. Listing pattern (extend `@Storefront/storefront/component/product/listing.html.twig`):
+Signature: `searchMedia(array $ids, Context $context): MediaCollection`. Pass all IDs at once, then pick entries with `.get(id)`:
 
 ```twig
-{% block element_product_listing_col %}
-    {% set sportsMediaIds = [] %}
-    {% for product in searchResult %}
-        {% set sportsMediaIds = sportsMediaIds|merge([product.translated.customFields.custom_sports_media_id]) %}
-    {% endfor %}
-    {% set mediaCollection = searchMedia(sportsMediaIds, context.context) %}
-    {% for product in searchResult %}
-        {% set sportsMedia = mediaCollection.get(product.translated.customFields.custom_sports_media_id) %}
-    {% endfor %}
-{% endblock %}
+{% set ids = [] %}
+{% for product in searchResult %}
+    {% set ids = ids|merge([product.translated.customFields.custom_sports_media_id]) %}
+{% endfor %}
+{% set mediaCollection = searchMedia(ids, context.context) %}
+{% set sportsMedia = mediaCollection.get(someId) %}
 ```
+
+The source applies this inside `element_product_listing_col` of `@Storefront/storefront/component/product/listing.html.twig`.
 
 ### sw_thumbnails
 
-`media` (the whole media entity) is required, and so is the name string after the tag (it is passed as the `name` variable, not rendered as a CSS class):
+Minimal form — the name string and `media` (whole media entity) are required; everything else is optional. The name string does not render a CSS class.
 
 ```twig
 {% sw_thumbnails 'my-thumbnails' with {
@@ -51,35 +52,34 @@ Twig call: `searchMedia(ids, context.context)`, taking an array of media IDs and
 } %}
 ```
 
-- `sizes`: per-breakpoint image width used to build the `sizes` attribute. A `default` entry overrides all breakpoints and is emitted alone (e.g. `sizes="100px"`). Only Bootstrap breakpoint keys work; custom media queries do not.
-- `attributes`: extra HTML attributes. `alt`/`title` fall back to the media's translated values when not given.
-- `loading: 'lazy'`: enables native lazy loading. Consider it when many thumbnails are outside the initial viewport or inside a container hidden with `display: none`.
-
-The tag includes `@Storefront/storefront/utilities/thumbnail.html.twig`, which also reads `load`, `loadOriginalImage`, `autoColumnSizes` and `columns`.
+- `sizes`: maps Bootstrap viewport keys to the image width used per media query, producing a `sizes` attribute built from `(min-width: <breakpoint>px)` entries plus a `vw` fallback.
+- `sizes.default`: if present, all other keys are ignored and the output is `sizes="<default>"` (e.g. `'default': '100px'`).
+- `attributes`: arbitrary extra `img` attributes; `'loading': 'lazy'` enables native lazy loading.
+- The tag renders `@Storefront/storefront/utilities/thumbnail.html.twig`, which also reads `load`, `loadOriginalImage`, `autoColumnSizes` and `columns`.
 
 ## Essential identifiers
 
-- Twig function `searchMedia`
-- Twig tag `sw_thumbnails` (`Shopware\Storefront\Framework\Twig\TokenParser\ThumbnailTokenParser`)
-- `@Storefront/storefront/utilities/thumbnail.html.twig`
-- Parameters `media`, `sizes`, `attributes`
+- Twig function `searchMedia` (`Shopware\Core\Framework\Adapter\Twig\Extension\MediaExtension::searchMedia()`), returns `MediaCollection`
+- Twig tag `sw_thumbnails` (Storefront `ThumbnailTokenParser`)
+- Template `storefront/utilities/thumbnail.html.twig`
+- Parameters `media`, `sizes`, `sizes.default`, `attributes`
 
 ## Gotchas
 
-- The PHP class behind `searchMedia`, `Shopware\Core\Framework\Adapter\Twig\Extension\MediaExtension`, is marked `@deprecated tag:v6.8.0` (becomes internal); use the Twig function, do not depend on the class.
-- The source's product-detail example extends `@Storefront/storefront/page/product-detail/index.html.twig` block `page_product_detail_media`; neither exists in the installed Storefront (only `page/product-detail/meta.html.twig` remains there), so pick a current block for product detail pages.
-- Without `loading` in `attributes`, the utility sets `loading="eager"`.
-- The source's sample output uses `max-width`/`min-width` pairs and lists the original image in `srcset`; the installed template builds `(min-width: <breakpoint>px) <size>` entries from `theme_config('breakpoint.*')` (including `xxl`) plus a `vw` fallback, and adds the original image only when `loadOriginalImage` is true.
-- The source says missing `sizes` fall back to the global `shopware.theme.breakpoint`; the installed template reads the theme config breakpoints instead.
+- `searchMedia` runs a database query per call — never call it inside a loop; collect IDs and fetch once.
+- `sizes` keys only work with the theme's Bootstrap breakpoints; custom media queries are not supported. The installed template iterates `xs`, `sm`, `md`, `lg`, `xl` and `xxl`, read via `theme_config('breakpoint.<key>')` (the docs refer to "global `shopware.theme.breakpoint`").
+- Automatic `sizes` are only computed when `columns` is passed and `autoColumnSizes` is not false; with neither `sizes` nor `columns` no `sizes` attribute is emitted.
+- If no `loading` attribute is given, the template sets `loading="eager"`. Consider `lazy` for thumbnails outside the initial viewport or inside a `display: none` container.
+- `alt`/`title` fall back to `media.translated.alt` / `media.translated.title` when not set in `attributes`.
+- The source's single-image example extends `@Storefront/storefront/page/product-detail/index.html.twig` block `page_product_detail_media`; neither exists in 6.7 (product detail is CMS-layout based), so apply the pattern to a template/block that exists.
 
-## Code check (6.7.13.0)
-- confirmed `searchMedia` — Twig function registered — vendor/shopware/core/Framework/Adapter/Twig/Extension/MediaExtension.php:31
-- deprecated `MediaExtension` — becomes internal in v6.8.0 — vendor/shopware/core/Framework/Adapter/Twig/Extension/MediaExtension.php:17
-- confirmed `sw_thumbnails` — tag name of token parser — vendor/shopware/storefront/Framework/Twig/TokenParser/ThumbnailTokenParser.php:41
-- confirmed `name` — tag string passed as variable name — vendor/shopware/storefront/Framework/Twig/TokenParser/ThumbnailTokenParser.php:33
-- confirmed `element_product_listing_col` — block in listing template — vendor/shopware/storefront/Resources/views/storefront/component/product/listing.html.twig:66
-- confirmed `default` — sizes['default'] emitted as sole sizes value — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:112
-- corrected `loading` — docs: lazy loading disabled by default; template defaults it to eager — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:35
-- corrected `loadOriginalImage` — docs: original image always in srcset; only added when true — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:69
-- corrected `breakpoint.xs` — docs: fallback from global shopware.theme.breakpoint; template uses theme_config breakpoints — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:91
-- absent `page_product_detail_media` — block not found in installed code
+## Code check (6.7.15.1)
+- confirmed `searchMedia` — registered as Twig function — vendor/shopware/core/Framework/Adapter/Twig/Extension/MediaExtension.php:30
+- confirmed `MediaExtension::searchMedia()` — takes array of IDs and Context, returns MediaCollection — vendor/shopware/core/Framework/Adapter/Twig/Extension/MediaExtension.php:37
+- confirmed `sw_thumbnails` — token parser tag name — vendor/shopware/storefront/Framework/Twig/TokenParser/ThumbnailTokenParser.php:41
+- corrected `sizes` — docs: fallback from global shopware.theme.breakpoint; code computes from theme_config breakpoints only when columns set — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:40
+- confirmed `default` — sizes default overrides all media queries — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:112
+- corrected `xxl` — docs: only xs–xl; template also uses breakpoint.xxl — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:96
+- confirmed `loading` — defaults to eager when not set in attributes — vendor/shopware/storefront/Resources/views/storefront/utilities/thumbnail.html.twig:35
+- confirmed `element_product_listing_col` — block in product listing template — vendor/shopware/storefront/Resources/views/storefront/component/product/listing.html.twig:66
+- absent `page_product_detail_media` — block not found in installed code; product-detail/index.html.twig no longer exists

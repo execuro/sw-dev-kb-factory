@@ -1,85 +1,96 @@
 ---
-id: platform/dev/6.7/guides/development/testing/unit/jest-storefront.md
-title: "Jest Unit Tests in Shopware's Storefront"
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
+id: platform/dev/6.7/guides/development/testing/unit/jest-storefront.md
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md", "platform/dev/6.7/guides/development/testing/unit/jest-admin.md"]
+sourceHash: 22c7ed47eed56c0a181b2321520440fef003afc3
+sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/jest-storefront.html
+title: Jest Unit Tests in Shopware's Storefront
 version: "6.7"
 versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/jest-storefront.html
-sourceHash: 22c7ed47eed56c0a181b2321520440fef003afc3
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["jest", "storefront unit test", "javascript test", "feature.helper", "Feature.init", "Feature.isActive", "PluginManager", "getPluginInstancesFromElement", "plugin.class", "@jest-environment jsdom", "storefront:unit", "mock js plugin", "jest.config.js"]
-summary: Writing Jest unit tests for Storefront helpers and JS plugins, mocking window.PluginManager, test folder layout and running storefront unit tests.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md", "platform/dev/6.7/guides/development/testing/unit/jest-admin.md"]
+keywords: ["jest", "storefront unit test", "javascript testing", "feature.helper", "Feature.init", "Feature.isActive", "PluginManager", "getPluginInstancesFromElement", "plugin.class", "jsdom", "composer run storefront:unit", "mocking", "beforeEach", "afterEach"]
+summary: Writing Jest unit tests for Storefront JS - test folder layout, testing feature.helper, mocking window.PluginManager for JS plugins, running storefront:unit.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to write Jest unit tests for Storefront JS code, covering plain helpers (example `feature.helper`) and Storefront JS plugins extending `src/plugin-system/plugin.class`, including the mock of the global `window.PluginManager` that plugin instantiation needs.
+A guide to writing Jest unit tests for Storefront JavaScript code — helpers/services (imported directly, no mocking) and Storefront JS plugins (which need a mocked global `PluginManager`). Unlike Administration tests (see platform/dev/6.7/guides/development/testing/unit/jest-admin.md), Storefront modules are usually testable in isolation.
 
 ## When to use
 
-- Adding or changing Storefront JS (helpers, services, ES modules, JS plugins) and covering it with unit tests.
-- A plugin test fails with `TypeError: Cannot read property 'getPluginInstancesFromElement' of undefined`.
-
-Unlike Administration Jest tests (see [Jest in the Administration](platform/dev/6.7/guides/development/testing/unit/jest-admin.md)), Storefront helpers and services can be imported directly without mocking dependencies. Building a JS plugin itself is covered in [add custom JS](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md).
+- Adding tests for a custom Storefront helper or JavaScript plugin (see platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md for building plugins).
+- Running the core Storefront Jest suite in a development-template-based setup.
 
 ## Key steps / config
 
-1. **Test location.** Place tests under `Resources/app/storefront/test/`, mirroring the source path (e.g. `test/helper/feature.helper.test.js` for `src/helper/feature.helper.js`). The core layout lives in `src/Storefront/Resources/app/storefront/test` in the platform repository. The folder is free to choose, but must match what your Jest / `package.json` config scans. The core `jest.config.js` matches `**/test/**/*.test.js` and maps `^src/(.*)$` to `<rootDir>/src/$1`, so `import Feature from 'src/helper/feature.helper'` resolves.
-2. **Basic helper test.** Use `describe`/`test`, set fixtures in `beforeEach`:
-   ```javascript
-   import Feature from 'src/helper/feature.helper';
-   const default_flags = { test1: true, test2: false };
-   describe('feature.helper.js', () => {
-       beforeEach(() => { Feature.init(default_flags); });
-       test('checks the flags', () => {
-           expect(Feature.isActive('test1')).toBeTruthy();
-           expect(Feature.isActive('test3')).toBeFalsy();
-       });
-   });
-   ```
-3. **JS plugin test.** Add the `@jest-environment jsdom` docblock, create a DOM element, mock `window.PluginManager` before instantiating (the `Plugin` constructor calls `_registerInstance()`, which uses `getPluginInstancesFromElement(this.el)` and `getPlugin(name, false)`), and null the instance in `afterEach`:
-   ```javascript
-   /** @jest-environment jsdom */
-   import HelloWorldPlugin from 'src/plugin/hello-world/hello-world.plugin';
-   let plugin;
-   beforeEach(() => {
-       window.PluginManager = {
-           getPluginInstancesFromElement: () => new Map(),
-           getPlugin: () => ({ get: () => [] }),
-       };
-       plugin = new HelloWorldPlugin(document.createElement('div'));
-   });
-   afterEach(() => { plugin = null; });
-   test('can be instantiated', () => { expect(plugin).toBeInstanceOf(HelloWorldPlugin); });
-   ```
-4. **Run.** Install Storefront dependencies with `composer run build:js:storefront`, then run all Storefront unit tests with coverage via `composer run storefront:unit` (development template / platform repository scripts). Inside the Storefront app directory the npm script is `unit` (`jest --config jest.config.js --ci`), and `unit-watch` for watch mode.
+Test location: free to choose, but must match what your `package.json`/Jest config picks up. Core Storefront tests live in `platform/src/Storefront/Resources/app/storefront/test`; mirror the source path inside `test/`:
+
+```bash
+Resources
+  `-- app
+    `-- storefront
+      `-- test
+        `-- plugin
+          `-- <plugin-name>
+            `-- <name>.plugin.test.js
+```
+
+The core `jest.config.js` matches `**/test/**/*.test.js`, uses `testEnvironment: 'jsdom'`, and maps `^src/(.*)$` to `<rootDir>/src/$1` (so `import X from 'src/...'` works).
+
+1. Basic helper test — import the helper, set fixtures in `beforeEach`, assert with matchers:
+
+```javascript
+import Feature from 'src/helper/feature.helper';
+const default_flags = { test1: true, test2: false };
+describe('feature.helper.js', () => {
+    beforeEach(() => { Feature.init(default_flags); });
+    test('checks the flags', () => {
+        expect(Feature.isActive('test1')).toBeTruthy();
+        expect(Feature.isActive('test3')).toBeFalsy();
+    });
+});
+```
+
+2. JS plugin test — a plugin extends `Plugin` from `src/plugin-system/plugin.class`. Its constructor calls `window.PluginManager.getPluginInstancesFromElement(this.el)` and `window.PluginManager.getPlugin(name, false).get('instances')`, so without a mock you get `TypeError: Cannot read property 'getPluginInstancesFromElement' of undefined`. Mock it in `beforeEach`, create the plugin on a dummy element, null it in `afterEach`:
+
+```javascript
+/** @jest-environment jsdom */
+beforeEach(() => {
+    window.PluginManager = {
+        getPluginInstancesFromElement: () => new Map(),
+        getPlugin: () => ({ get: () => [] }),
+    };
+    plugin = new HelloWorldPlugin(document.createElement('div'));
+});
+afterEach(() => { plugin = null; });
+```
+
+Then assert, e.g. `expect(plugin).toBeInstanceOf(HelloWorldPlugin)` and `expect(plugin.sayHello()).toBe('Hello World!')`.
+
+3. Run (development template): install dependencies with `composer run build:js:storefront`, then `composer run storefront:unit` (all tests plus coverage). Inside the Storefront app, the `unit` npm script runs `jest --config jest.config.js --ci`.
 
 ## Essential identifiers
 
-- `src/helper/feature.helper` with `Feature.init(flagConfig)` and `Feature.isActive(flag)`
-- `src/plugin-system/plugin.class`, the base `Plugin` class for Storefront JS plugins
+- `src/helper/feature.helper` — `Feature.init()`, `Feature.isActive()`
+- `src/plugin-system/plugin.class` — `Plugin` base class
 - `window.PluginManager.getPluginInstancesFromElement`, `window.PluginManager.getPlugin`
-- `@jest-environment jsdom`, `beforeEach`, `afterEach`
+- `@jest-environment jsdom` docblock
 - `composer run build:js:storefront`, `composer run storefront:unit`
-- `Resources/app/storefront/jest.config.js`, `test/**/*.test.js`
 
 ## Gotchas
 
-- The `composer run storefront:unit` script only covers the Shopware-provided Storefront; plugins need their own Jest setup and scripts.
-- The docs' folder tree shows a file named `js-plugin-test.spec.js`, but the core Jest config only picks up `*.test.js` files under `test/`; use `.test.js` or adjust `testMatch`.
-- Always reset the plugin (`plugin = null`) in `afterEach` to keep tests isolated.
-- Without the `PluginManager` mock, constructing any plugin throws in `_registerInstance()`.
-- The core config sets `testEnvironment: 'jsdom'`, `collectCoverage: true`, and an 85% coverage threshold for `./src/helper`.
+- The docs' folder tree names a file `js-plugin-test.spec.js`, but the core Jest config only matches `*.test.js` under `test/` — use the `.test.js` suffix.
+- The composer scripts apply to the Shopware-provided Storefront only; plugins may need their own test scripts.
+- Always reset the plugin to `null` in `afterEach` to keep tests isolated.
 
-## Code check (6.7.13.0)
-- confirmed `Feature.init` — static method on the Storefront feature helper — vendor/shopware/storefront/Resources/app/storefront/src/helper/feature.helper.js:60
-- confirmed `Feature.isActive` — static method returning flag state — vendor/shopware/storefront/Resources/app/storefront/src/helper/feature.helper.js:71
-- confirmed `_registerInstance()` — called from the Plugin constructor — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:29
-- corrected `getPluginInstancesFromElement` — docs: error trace shows line 121; installed at line 157 in `_registerInstance()` — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:157
-- confirmed `getPlugin` — `getPlugin(this._pluginName, false)` — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:160
-- corrected `testMatch` — docs: tree shows `js-plugin-test.spec.js`; core config matches `**/test/**/*.test.js` — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:88
-- confirmed `moduleNameMapper` — `^src/(.*)$` mapped to `<rootDir>/src/$1` — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:74
-- confirmed `testEnvironment` — core default is `jsdom` — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:25
-- confirmed `unit` — npm script `jest --config jest.config.js --ci` — vendor/shopware/storefront/Resources/app/storefront/package.json:27
-- unverified `composer run storefront:unit` — composer script lives in the platform/template root, outside the vendor/shopware package roots
+## Code check (6.7.15.1)
+- confirmed `Feature.init()` — static method on the feature helper — vendor/shopware/storefront/Resources/app/storefront/src/helper/feature.helper.js:60
+- confirmed `Feature.isActive()` — static method on the feature helper — vendor/shopware/storefront/Resources/app/storefront/src/helper/feature.helper.js:71
+- confirmed `Plugin` — Storefront plugin base class export — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:9
+- confirmed `getPluginInstancesFromElement` — called in Plugin::_registerInstance(), hence the mock — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:168
+- confirmed `getPlugin` — called with get('instances') during registration — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:171
+- corrected `testMatch` — docs: js-plugin-test.spec.js file name; config matches only *.test.js — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:88
+- confirmed `testEnvironment` — jsdom by default in core config — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:25
+- confirmed `moduleNameMapper` — maps src/ imports to the src dir — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:74
+- confirmed `unit` — npm script runs jest with jest.config.js — vendor/shopware/storefront/Resources/app/storefront/package.json:27
+- unverified `composer run storefront:unit` — defined in the project/development template composer.json, out of scope

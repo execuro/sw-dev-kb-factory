@@ -5,76 +5,83 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-08-05-document-generation-v1-to-v2-migration-strategy.html
-sourceHash: 4beea812e6883050b2ad16ff927df7927fc567a1
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["DOCUMENT_GENERATION_REWORK", "DocumentV2", "document_file", "shopware.document_v2.renderer", "shopware.document_v2.provider", "document.renderer", "document_type.renderer", "DocumentBaseConfigSyncSubscriber", "zugferd_invoice", "document generation v2", "invoice pdf migration", "adr"]
-summary: "ADR: v1/v2 document generation coexist in 6.7/6.8 behind DOCUMENT_GENERATION_REWORK; v2 default in 6.8, v1 removed in 6.9 with backfills."
-lastBuilt: 2026-09-15
+sourceHash: 7f36cd3b36cda42d86a66eb425eda63e3e691145
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["DOCUMENT_GENERATION_REWORK", "DocumentV2", "document generation v2", "ExperimentalReplacement", "shopware.document_v2.type", "shopware.document_v2.provider", "shopware.document_v2.renderer", "document.renderer", "document_file", "type_name", "zugferd_invoice", "invoice pdf", "document migration", "AbstractDocumentRenderer"]
+summary: "ADR: phased v1-to-v2 document generation migration behind DOCUMENT_GENERATION_REWORK — opt-in 6.7, default 6.8, v1 removed 6.9, schema drops after."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record for migrating from document generation v1 to the rewritten v2 (`DocumentV2` namespace). Both persist into the same `document` table, render the same Twig templates, and coexist through 6.7 and 6.8; the feature flag `DOCUMENT_GENERATION_REWORK` opts into v2.
+An architecture decision record (2026-08-05) giving the migration strategy for the document generation rewrite. v1 and v2 coexist throughout 6.7 and 6.8, persist into the same `document` table and render the same Twig document templates. The feature flag `DOCUMENT_GENERATION_REWORK` opts into v2.
 
 ## When to use
 
-- Your extension registers custom document types/formats, listens to v1 document events, or decorates the v1 `DocumentGenerator`.
-- You decide when to enable v2 for a shop or need to know what survives switching the flag back.
+- Planning an extension that adds document types, formats or renderers, or listens to document events.
+- Deciding when a merchant should switch to v2, or how documents stay readable across flag states.
 
 ## Key steps / config
 
-Roadmap:
+| Phase | Version | Action |
+|---|---|---|
+| 1 | 6.7 | Opt-in: v2 behind the flag (default off); v1 marked `#[ExperimentalReplacement]` for removal in 6.9; backfill prepared. |
+| 2 | 6.8 | Opt-out: flag `default: true`; `@experimental` removed; `#[ExperimentalReplacement]` becomes `@deprecated tag:v6.9.0`. |
+| 3 | 6.9 | v1 and the flag removed; backfills executed. |
+| 4 | post-6.9 | Destructive schema drops. |
 
-| Version | Action |
-|---|---|
-| 6.7 | Opt-in: v2 behind the flag (default off); v1 deprecated with `@deprecated tag:v6.9.0` |
-| 6.8 | Opt-out: flag flips to `default: true`; `@experimental` removed |
-| 6.9 | v1 and flag removed; backfills executed |
-| post-6.9 | Destructive schema drops |
-
-Principles:
-
-- Flag off: pure v1. Flag on: admin UI, Flow Builder actions, mail attachments, bulk edits and customer download routes use v2.
-- v2 admin API routes exist regardless of the flag; storefront/Store API download routes keep their URLs.
-- v1 APIs stay a public contract until 6.9. Data compatibility is one-way: v2 reads v1 data.
-- v2 public entry points are annotated `@experimental stableVersion:v6.8.0 feature:DOCUMENT_GENERATION_REWORK`; internals carry `@internal`.
+Principles: flag off = pure v1. Flag on = all Shopware-driven surfaces (admin UI, Flow Builder actions, mail attachments, bulk edits, download routes) use v2. v1 APIs remain a public contract in both states until 6.9. Data compatibility is one-way: v2 reads v1 data.
 
 Compatibility:
+- **Read-time fallback**: a `document` without `document_file` rows exposes virtual formats — `documentMediaFileId` maps to the format of its file extension, `documentA11yMediaFileId` to HTML.
+- **Best effort**: the v2 persister fills the primary slot with the PDF (else the single generated format) and the a11y slot with HTML, so v1 can still read it.
+- **No regeneration by v1** for documents that already have `document_file` rows.
+- **Legacy Zugferd types** (`zugferd_invoice`, `zugferd_embedded_invoice`, four storno/credit-note variants) show under their legacy name, download-only.
+- **Idempotent backfill** creates missing `document_file` rows and normalizes e.g. `zugferd_invoice` into `invoice` + `zugferd_xml`; never touches media files.
 
-- Read-time fallback: a `document` without `document_file` rows exposes virtual formats — `documentMediaFileId` by file extension, `documentA11yMediaFileId` as HTML.
-- The v2 persister fills the primary slot with the PDF (else the single format) and the a11y slot with HTML, so v2 documents stay usable in v1.
-- v1 does not regenerate media for documents that already have `document_file` rows; it fails gracefully.
-- Legacy Zugferd types (`zugferd_invoice`, `zugferd_embedded_invoice`, storno/credit-note variants) are download-only; the backfill turns e.g. `zugferd_invoice` into `invoice` plus a `zugferd_xml` file.
+v2 admin API routes exist regardless of the flag; storefront and Store API download routes keep their URLs. Public v2 classes carry `@experimental stableVersion:v6.8.0 feature:DOCUMENT_GENERATION_REWORK`; internals carry `@internal`.
 
-Porting an extension: provide v2 tagged services (data provider, renderer, type) or an app manifest entry. The v1 `document.renderer` / `document_type.renderer` tags, v1 events and `DocumentGenerator` decorators are never invoked by v2. v1 and v2 variants may be registered side by side. Overrides of `@Framework/documents/*.html.twig` keep working.
+Schema in 6.7: nullable `type_name` added to `document`, `document_base_config`, `document_base_config_sales_channel`; v2 writes `type_name` plus the legacy foreign key, v1 only the foreign key.
+
+v2 discovers extensions only via its own tags or the app manifest:
+
+```php
+$services->set(MyType::class)->tag('shopware.document_v2.type');
+$services->set(MyProvider::class)->tag('shopware.document_v2.provider');
+$services->set(MyRenderer::class)->tag('shopware.document_v2.renderer');
+```
+
+Bases in `Shopware\Core\Checkout\DocumentV2`: `AbstractDocumentType` (`getTechnicalName()`, `getSupportedFormats()`), `AbstractDocumentDataProvider` (`getKey()`, `supports()`, `provideRenderingData()`), `AbstractDocumentRenderer` (`getFormat()`, `getFileExtension()`, `renderToString()`).
 
 ## Essential identifiers
 
-- `DOCUMENT_GENERATION_REWORK`
-- `Shopware\Core\Checkout\DocumentV2`
-- `document_file`
-- `shopware.document_v2.provider`, `shopware.document_v2.renderer`
-- `document.renderer`, `document_type.renderer` (v1)
-- `DocumentBaseConfigSyncSubscriber`
+- `DOCUMENT_GENERATION_REWORK` (`default: false` in 6.7)
+- `#[ExperimentalReplacement(version: 'v6.9.0', feature: 'DOCUMENT_GENERATION_REWORK', ...)]`
+- `shopware.document_v2.type`, `shopware.document_v2.provider`, `shopware.document_v2.renderer`
+- v1 tags `document.renderer`, `document_type.renderer`
+- `document_file`, `type_name`, `@Framework/documents/*.html.twig`
 
 ## Gotchas
 
-- v1 surfaces show at most two formats and default to PDF: a v2 document without PDF is reachable in v1 only via an explicit file-type request.
-- The ADR names a `shopware.document_v2.type` tag and nullable `type_name` columns on `document`, `document_base_config`, `document_base_config_sales_channel`; neither was found in installed 6.7.13.0.
-- In 6.7.13.0 neither the v1 `DocumentGenerator` nor `DocumentTypeDefinition` carries a `@deprecated` annotation yet.
+- v1 extension points are not carried over: `document.renderer` / `document_type.renderer` registrations, v1 document events and decorators of the v1 `DocumentGenerator` are never invoked by v2. Port to v2; during transition register both variants side by side.
+- Twig overrides of `@Framework/documents/*.html.twig` keep working.
+- v1 surfaces show at most two formats and default to PDF; a v2 document without PDF is reachable in v1 only via an explicit file-type request.
+- Amendment 2026-09-11: `Shopware\Core\Checkout\Document` is not hard-deprecated in 6.7; it carries `#[ExperimentalReplacement]`. `document_type` and `document_type_translation` are deprecated with `reason:remove-entity`.
+- Amendment 2026-09-29 moves reused v1 classes (`DocumentEntity`, `DocumentDefinition`, `RenderedDocument`, `ReferenceInvoiceLoader`, ...) into `DocumentV2` behind runtime aliases; in 6.7.15.1 they are still in `Shopware\Core\Checkout\Document`.
 
 ## Version notes
 
-- 6.9: flag and v1 branches removed; `DocumentEntity`, `DocumentDefinition`, `DocumentCollection`, `ReferenceInvoiceLoader` move into `DocumentV2`; `document_base_config.config` dropped and `DocumentBaseConfigSyncSubscriber` removed; `updateDestructive()` drops `document_type` tables, `document_type_id`, `document.document_media_file_id`, `document.document_a11y_media_file_id`.
-- The ADR plans `document_type` and `document_type_translation` to be deprecated with `reason:remove-entity` for 6.9.
+- 6.8: flip the flag to `default: true`, remove `@experimental`, write `UPGRADE-6.8.md`.
+- 6.9: remove the flag and all gates; delete v1 code; remove class aliases and `#[ClassMoved]` attributes; run backfills; make `document_type_id` nullable; drop `document_base_config.config` and remove `DocumentBaseConfigSyncSubscriber`; destructive migrations via `updateDestructive()`.
+- Merchants: test v2 in 6.7, opt out in 6.8 if an extension is not ready; 6.9 is v2-only.
 
-## Code check (6.7.13.0)
+## Code check (6.7.15.1)
 - confirmed `DOCUMENT_GENERATION_REWORK` — feature flag, `default: false`, `major: true`, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
-- confirmed `shopware.document_v2.provider` — tag used by `DocumentMetaProvider`/`InvoiceDataProvider` — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:66
-- confirmed `shopware.document_v2.renderer` — tag on HTML/PDF/Zugferd renderers — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:99
-- unverified `shopware.document_v2.type` — no registration found under core/Checkout in 6.7.13.0
-- confirmed `document.renderer` — v1 renderer tag — vendor/shopware/core/Checkout/DependencyInjection/document.xml:72
-- confirmed `document_type.renderer` — v1 file-type renderer tag — vendor/shopware/core/Checkout/DependencyInjection/document.xml:125
-- confirmed `DocumentBaseConfigSyncSubscriber` — event subscriber in DocumentV2 — vendor/shopware/core/Checkout/DocumentV2/Subscriber/DocumentBaseConfigSyncSubscriber.php:25
-- confirmed `document_file` — table created by 6.7 migration with `document_format` column — vendor/shopware/core/Migration/V6_7/Migration1776770187AddDocumentFileTable.php:40
-- confirmed `document_media_file_id` — v1 media slot FK on `document` — vendor/shopware/core/Checkout/Document/DocumentDefinition.php:66
-- confirmed `document_a11y_media_file_id` — v1 a11y media slot FK — vendor/shopware/core/Checkout/Document/DocumentDefinition.php:67
+- confirmed `ExperimentalReplacement` — attribute class for v1 replacement markers — vendor/shopware/core/Framework/Deprecation/BCChange/ExperimentalReplacement.php:22
+- confirmed `ExperimentalReplacement` — used on v1 `PdfRenderer` with `version: 'v6.9.0'` — vendor/shopware/core/Checkout/Document/Service/PdfRenderer.php:22
+- confirmed `shopware.document_v2.type` — v2 type tag — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:140
+- confirmed `shopware.document_v2.provider` — v2 data provider tag — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:99
+- confirmed `shopware.document_v2.renderer` — v2 renderer tag — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:185
+- confirmed `document.renderer` — v1 renderer tag still registered — vendor/shopware/core/Checkout/DependencyInjection/document.php:127
+- confirmed `AbstractDocumentType::getSupportedFormats()` — abstract v2 type member — vendor/shopware/core/Checkout/DocumentV2/Type/AbstractDocumentType.php:22
+- corrected `DocumentEntity` — docs: moved into `DocumentV2` during 6.7; still `Shopware\Core\Checkout\Document\DocumentEntity` — vendor/shopware/core/Checkout/Document/DocumentEntity.php:21
+- deprecated `DocumentBaseConfigSyncSubscriber` — `@deprecated tag:v6.9.0 reason:remove-subscriber` — vendor/shopware/core/Checkout/DocumentV2/Subscriber/DocumentBaseConfigSyncSubscriber.php:27

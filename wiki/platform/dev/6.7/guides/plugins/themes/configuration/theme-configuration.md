@@ -5,26 +5,28 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/themes/configuration/theme-configuration.html
-sourceHash: 3b10c28c6b7b177c2482429261ae99975245db6d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["theme.json", "configInheritance", "config.fields", "theme:refresh", "views", "style", "script", "asset", "previewMedia", "sw-theme snippet keys", "theme manager", "config field types", "sw-single-select", "sw-multi-select", "theme settings"]
-summary: "theme.json keys: views, style, script, asset, previewMedia, config fields (types, tabs/blocks/sections, snippet labels) and configInheritance."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md", "platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md", "platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md", "platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md"]
+sourceHash: 92330baff521b506c2e18768867d8b88dece74a0
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["theme.json", "configInheritance", "config.fields", "previewMedia", "theme:refresh", "labelSnippetKey", "sw-theme snippet keys", "editable", "sw-single-select", "sw-multi-select", "theme config fields", "theme manager", "tabs blocks sections", "theme translations"]
+summary: Reference for theme.json keys (views, style, script, asset, config, configInheritance), config field parameters and sw-theme snippet keys.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md
+  - platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md
+  - platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md
+  - platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md
 ---
 ## What it is
 
-Reference for a theme's `<plugin root>/src/Resources/theme.json`: basic information, template/style/script/asset inheritance lists, Administration-editable `config` fields and `configInheritance` between themes.
+Reference for a theme's `<plugin root>/src/Resources/theme.json`: the top-level keys Shopware reads, the `config` field definitions that show up in the Administration theme manager, how they are translated via snippet keys, and `configInheritance`.
 
 ## When to use
 
-- Setting up or changing a theme's `theme.json`.
-- Adding theme settings merchants edit in the Administration theme manager.
-- Letting a theme inherit config fields from another theme.
+When creating or changing a theme's metadata, template/style/script/asset order, or the configurable fields (colors, fonts, media, switches) merchants edit in the theme manager.
 
 ## Key steps / config
 
-Skeleton (values elided):
+Skeleton of `theme.json`:
 
 ```json
 {
@@ -41,58 +43,67 @@ Skeleton (values elided):
 }
 ```
 
-After any change run `bin/console theme:refresh`.
+After any change to `theme.json` run `bin/console theme:refresh`.
 
-- `name`, `author`: required by the installed code (read unconditionally). Name in camel case recommended. `description` is optional and translatable.
-- `previewMedia`: image path relative to the theme root, shown as preview in the Administration.
-- `views`: template inheritance order.
-- `style`: SCSS compilation order. `overrides.scss` (before `@Storefront`) overrides Shopware/Bootstrap variables and functions; `base.scss` holds your styles. Reference whole namespaces (`@Storefront`, `@BasicTheme`) or single files (`@BasicTheme/app/storefront/src/scss/custom.scss`).
-- `script`: JS import order; reference compiled files from `dist`. Namespace aliases and single-file references (`@BasicTheme/app/storefront/dist/storefront/custom-plugin.js`) work here too.
-- `asset`: asset paths (images, fonts); add `@Storefront` to reuse default Storefront assets.
-- `config.fields`: each key is the technical name used in theme/SCSS files. Values merge with the Storefront config; provide only what you change.
+- `name` / `author` — read unconditionally by the parser (camel-case name recommended); `description` is optional and translatable.
+- `previewMedia` — image path relative to the theme root, shown as the theme preview.
+- `views` — template inheritance order (see [Theme inheritance](platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md)).
+- `style` — SCSS compilation order. `overrides.scss` comes before `@Storefront` so it can override Shopware/Bootstrap variables and functions ([override Bootstrap variables](platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md)); `base.scss` holds your own styles. Entries may be a whole namespace (`@Storefront`, `@BasicTheme`) or a single file from one (`@BasicTheme/app/storefront/src/scss/custom.scss`).
+- `script` — JS import order; reference the compiled files from the theme's `dist` directory. Namespace aliases and single-file references work here too.
+- `asset` — asset paths (images, fonts); add `@Storefront` to reuse the default theme's assets ([add assets](platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md)).
+- `config.fields` — the key of each field is its technical name, used in theme/SCSS files. Your config is merged over the Storefront config, so only provide values you change.
 
-Field item parameters: `type` (`color`, `text`, `number`, `fontFamily`, `media`, `checkbox`, `switch`, `url`), `value`, `editable` (false hides it in the Administration), `tab`, `block`, `section` (grouping; `tab` and `section` are optional), `custom` (not processed, available via API; e.g. `numberType`/`min`/`max`, or `componentName` `sw-single-select`/`sw-multi-select` with `options[].value`), `scss` (false = not injected as SCSS variable), `fullWidth` (full-width Administration component).
+Config field parameters:
 
-```json
-"my-single-select-field": {
-  "type": "text", "value": "24", "editable": true,
-  "custom": { "componentName": "sw-single-select", "options": [{ "value": "16" }, { "value": "24" }] },
-  "block": "exampleBlock", "section": "exampleSection"
-}
-```
+| Key | Meaning |
+|---|---|
+| `type` | `color`, `text`, `number`, `fontFamily`, `media`, `checkbox`, `switch`, `url` |
+| `value` | default value |
+| `editable` | `false` hides the field in the Administration |
+| `tab` / `block` / `section` | grouping in the theme manager (optional; unnamed groups use `default`) |
+| `custom` | not processed, available via API; e.g. `componentName: "sw-single-select"` / `"sw-multi-select"` with `options[].value`, or `numberType`/`min`/`max` |
+| `scss` | `false` stops injection as an SCSS variable |
+| `fullWidth` | `true` renders the Administration component full width |
 
-`configInheritance`: additional themes whose fields and snippets this theme inherits; the Storefront theme's fields are always inherited. Inherited fields stay available unless overwritten. The relationship is created at theme install; update it later with `theme:refresh`.
+Translations: store texts in Administration snippet files, e.g. `<plugin root>/src/Resources/app/administration/src/app/snippet/de.json` / `en.json` (locale files like `de-DE.json` override language files). Key structure (fields may end in `.helpText` for the help text):
+
+- Tab: `sw-theme.<technicalName>.<tabName>.label`
+- Block: `sw-theme.<technicalName>.<tabName>.<blockName>.label`
+- Section: `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.label`
+- Field: `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.<fieldName>.label`
+- Option: `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.<fieldName>.<index>.label`
+
+The theme manager looks up the key under the theme's own name first, then under each inherited parent theme name.
+
+`configInheritance`: lists themes whose fields and snippets this theme inherits; the Storefront theme is always inherited. Fields from listed themes are available unless overwritten. The list is ordered least to most specific — the last entry other than `@Storefront`/self becomes the stored parent theme.
 
 ## Essential identifiers
 
-- `theme.json`, `config.fields`, `configInheritance`
-- `views`, `style`, `script`, `asset`, `previewMedia`
+- `theme.json`, `config.fields`, `configInheritance`, `previewMedia`
 - `bin/console theme:refresh`
-- `sw-single-select`, `sw-multi-select`
+- `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.<fieldName>.label` snippet keys
+- `Shopware\Storefront\Theme\ThemeConfigField` (`labelSnippetKey`, `helpTextSnippetKey`)
 
 ## Gotchas
 
-- Overwriting variables of a third-party theme can break compilation if that theme later renames or removes them.
-- Fields with `editable: false` or `scss: false` are skipped when saving/validating config changes.
+- Overriding config variables of a third-party theme can break compilation if that theme later renames or removes them.
+- The `configInheritance` relationship is only created on theme install; re-run `theme:refresh` to update it.
+- Per-field `label` and `helpText` translation arrays in `theme.json` (and `label` maps in `config.tabs`/`blocks`/`sections`) are deprecated for v6.8; use snippets instead. The theme manager logs a deprecation warning when it falls back to them.
 
 ## Version notes
 
 - `configInheritance` is available since 6.4.8.0.
-- Since 6.7.1.0 field `label`/`helpText` arrays (and `label` entries under `config.blocks`/`sections`/`tabs`) are deprecated for v6.8; translations come from Administration snippet files, e.g. `<plugin root>/src/Resources/app/administration/src/app/snippet/en.json` (`en-GB.json` style locale files override base files).
-- Snippet keys start with `sw-theme`, then the technical name (or a parent theme name from `configInheritance`), then tab, block, section, field (and option index); unnamed parts become `default`; end with `label` (fields may use `helpText`):
-  - `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.<fieldName>.label`
-  - `sw-theme.<technicalName>.<tabName>.<blockName>.<sectionName>.<fieldName>.<index>.label`
-  - Example: `sw-theme.justAnotherTheme.default.exampleBlock.exampleSection.my-single-select-field.0.label`
-- The Administration looks up the theme's own technical name first, then `configInheritance` names (last listed first) with `@` stripped; the technical name is used as-is.
+- The docs show snippet-only examples as "Since v6.7.1.0" and `label`-based examples as "Before v6.8.0.0".
+- The docs describe, for 6.7.16.0, an automatic conversion of `label`/`helpText` into snippets under `snippets/administration/<technicalName>/<locale>.json` in `shopware.filesystem.private`, plus `bin/console theme:migrate-translations <technicalName> --strip` (`--dry-run` to preview). That command is not present in 6.7.15.1.
 
-## Code check (6.7.13.0)
-- confirmed `author` — name and author read unconditionally from theme.json — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:79
-- confirmed `previewMedia` — optional key read from theme.json — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:94
-- confirmed `configInheritance` — stored and copied into theme config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
-- confirmed `theme:refresh` — console command — vendor/shopware/storefront/Theme/Command/ThemeRefreshCommand.php:14
-- deprecated `ThemeConfigField::$label` — tag:v6.8.0, use labelSnippetKey — vendor/shopware/storefront/Theme/ThemeConfigField.php:19
-- deprecated `ThemeConfigField::$helpText` — tag:v6.8.0, use helpTextSnippetKey — vendor/shopware/storefront/Theme/ThemeConfigField.php:28
-- confirmed `ThemeConfigField::$scss` — field option exists — vendor/shopware/storefront/Theme/ThemeConfigField.php:64
-- confirmed `ThemeConfigField::$fullWidth` — field option exists — vendor/shopware/storefront/Theme/ThemeConfigField.php:66
-- confirmed `sw-theme` — snippet key prefix built from technical name and inherited names — vendor/shopware/storefront/Resources/app/administration/src/modules/sw-theme-manager/page/sw-theme-manager-detail/index.js:785
-- confirmed `fontFamily` — mapped to a text input in the theme manager — vendor/shopware/storefront/Resources/app/administration/src/modules/sw-theme-manager/page/sw-theme-manager-detail/index.js:46
+## Code check (6.7.15.1)
+- confirmed `previewMedia` — `theme.json` key read by the factory — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:94
+- confirmed `configInheritance` — `theme.json` key stored on config and base config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
+- confirmed `views` — sets view inheritance — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:102
+- confirmed `theme:refresh` — command refreshing theme configuration — vendor/shopware/storefront/Theme/Command/ThemeRefreshCommand.php:15
+- confirmed `ThemeConfigField::$fullWidth` — field parameter — vendor/shopware/storefront/Theme/ThemeConfigField.php:68
+- confirmed `ThemeConfigField::$labelSnippetKey` — replacement for the deprecated per-field label array — vendor/shopware/storefront/Theme/ThemeConfigField.php:23
+- confirmed `ThemeConfigField::$helpTextSnippetKey` — replacement for the deprecated per-field help text array — vendor/shopware/storefront/Theme/ThemeConfigField.php:32
+- confirmed `sw-theme.${themeName}.${key}` — theme manager snippet lookup across inherited prefixes — vendor/shopware/storefront/Resources/app/administration/src/modules/sw-theme-manager/page/sw-theme-manager-detail/index.js:763
+- confirmed `getConfigInheritance()` — ordered least to most specific, last non-Storefront entry becomes parent theme — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:567
+- absent `theme:migrate-translations` — docs mark it 6.7.16.0; not in the 6.7.15.1 code

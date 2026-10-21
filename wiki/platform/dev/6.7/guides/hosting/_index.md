@@ -6,61 +6,67 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/
 sourceHash: 92f2e3d19defbb1437e05bdfbadd21718e44ee8f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["hosting", "server stack", "supported versions", "php version", "php extensions", "memory_limit", "max_execution_time", "mariadb", "mysql", "opensearch", "redis", "valkey", "rabbitmq", "max_allowed_packet", "requirements"]
-summary: Recommended Shopware 6.7 application stack and minimum versions for PHP, MariaDB/MySQL, Node.js, OpenSearch, Redis/Valkey, web server and queue.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["hosting", "server requirements", "supported versions", "php", "mariadb", "mysql", "opensearch", "elasticsearch", "redis", "valkey", "memory_limit", "max_allowed_packet", "rabbitmq", "caddy", "php extensions"]
+summary: Shopware 6.7 supported stack - PHP 8.2+, MariaDB 10.11+/MySQL 8.0.22+, Node 20+, optional search, cache and queue - plus php.ini minimums.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/installation/system-requirements.md"]
 ---
 ## What it is
 
-Entry page of the hosting guides: the recommended application stack and supported component versions for running Shopware 6. Physical machine requirements are covered separately in [system requirements](platform/dev/6.7/guides/installation/system-requirements.md).
+Overview of the recommended application stack and minimum supported versions for running Shopware 6.7. Physical machine requirements are on [System requirements](platform/dev/6.7/guides/installation/system-requirements.md).
 
 ## When to use
 
-When provisioning a server or local environment, checking whether a PHP/database/search/cache version is supported, or verifying PHP settings before installation.
+When setting up or auditing a server or local environment for Shopware: choosing PHP, database, search, cache, web server and queue versions, and checking `php.ini` limits.
 
 ## Key steps / config
 
 | Component | Minimum | Recommended | Notes |
 |---|---|---|---|
-| PHP (required) | 8.2 | 8.4 | installed core accepts `~8.2.0 \|\| ~8.3.0 \|\| ~8.4.0 \|\| ~8.5.0`; `memory_limit` ≥ `512M`, `max_execution_time` ≥ 30s; Composer 2.2+ recommended |
-| SQL (required) | MariaDB 10.11 (docs: 10.11.6) / MySQL 8.0.22 | MariaDB 11.4 / MySQL 8.4 | MySQL Innovation releases unsupported; `max_allowed_packet` ≥ `32M` |
-| Node.js / npm (required) | Node 20.0.0 | Node 24 / npm 10 | |
-| Search (optional) | OpenSearch 1.0 / Elasticsearch 7.8 | OpenSearch 2.17.1 | admin search preview needs OpenSearch 2.12+ or Elasticsearch 8.8+ |
-| Cache / KV (optional) | Redis 7 | Valkey 8.0 | `maxmemory-policy: volatile-lfu`; caching and sessions |
-| Web server (required) | any | Caddy | Apache and Nginx configs exist; Symfony CLI server works for local dev |
-| Queue (optional) | any Symfony Messenger transport | RabbitMQ | SQL database is the default queue; use a dedicated queue in production |
+| PHP | 8.2 (composer allows 8.2, 8.3, 8.4, 8.5) | 8.4 | Required; Composer 2.2+ recommended |
+| SQL | MariaDB 10.11 (docs: 10.11.6) or MySQL 8.0.22; no Innovation releases | MariaDB 11.4 / MySQL 8.4 | Required; `max_allowed_packet ≥ 32M` |
+| Node.js / npm | Node 20.0.0 | Node 24 / npm 10 | Required |
+| Search | OpenSearch 1.0 or Elasticsearch 7.8 | OpenSearch 2.17.1 | Optional; admin search preview needs OpenSearch 2.12+ or Elasticsearch 8.8+ |
+| Cache / KV | Redis 7 | Valkey 8.0 | Optional; caching and sessions; `maxmemory-policy: volatile-lfu` |
+| Web server | any | Caddy | Required; Apache and Nginx also documented; Symfony CLI server for local dev |
+| Queue | any Symfony Messenger transport | RabbitMQ | Optional; default is the SQL database, a dedicated queue is recommended in production |
 
-PHP extensions required by the installed `shopware/core` composer package: `ctype`, `curl`, `dom`, `fileinfo`, `filter`, `gd`, `intl`, `json`, `libxml`, `mbstring`, `openssl`, `pdo`, `pdo_mysql`, `session`, `simplexml`, `sodium`, `xml`, `xmlreader`, `zip`, `zlib`. Optional: `amqp` (message queues).
+PHP settings checked by the installer: `memory_limit` ≥ `512M` (or `-1`), `max_execution_time` ≥ `30` (or `0`).
 
-Verify the environment:
+PHP extensions required by `shopware/core`'s `composer.json`: `ctype`, `curl`, `dom`, `fileinfo`, `filter`, `gd`, `intl`, `json`, `libxml`, `mbstring`, `openssl`, `pdo`, `pdo_mysql`, `session`, `simplexml`, `sodium`, `xml`, `xmlreader`, `zip`, `zlib`. Optional: `amqp` for message queues.
+
+Verify your environment:
 
 - `php -v`, `php -m`, `php -i | grep memory_limit`
 - `composer -V`, `node -v`, `npm -v`
+- macOS/Homebrew: `brew install php-intl`, then `php -m | grep intl`
 
 ## Essential identifiers
 
-- `memory_limit`, `max_execution_time`, `max_allowed_packet`, `maxmemory-policy: volatile-lfu`
-- `php -m | grep intl`, `brew install php-intl`
+- `memory_limit`, `max_execution_time` (php.ini)
+- `max_allowed_packet` (MySQL/MariaDB)
+- `maxmemory-policy: volatile-lfu` (Redis/Valkey)
 
 ## Gotchas
 
-- CLI and FPM often use different `php.ini` files and a host may have several PHP binaries; check the one that actually runs Shopware.
-- Homebrew PHP on macOS may lack `intl`; install `php-intl` separately and verify with `php -m | grep intl`.
-- The docs' extension list (`iconv`, `pcre`, `phar`) differs from the installed core's composer requirements, which also demand `filter`, `json`, `libxml`, `pdo`, `session` and `sodium`.
+- CLI and FPM often use different PHP binaries and `php.ini` files; check the one that actually serves the shop.
+- Homebrew PHP may lack the `intl` extension.
+- The docs list `iconv`, `pcre` and `phar` as required extensions; core's `composer.json` does not require them, but requires `filter`, `json`, `libxml`, `pdo`, `session` and `sodium`, which the docs omit.
+- The runtime DB check rejects MariaDB below 10.11 and MySQL below 8.0.22 when the connection is created.
 
 ## Version notes
 
 - OpenSearch 3.1 support was added in Shopware 6.7.3.1.
 
-## Code check (6.7.13.0)
-- corrected `php` — docs: 8.2+ ; core allows 8.2 to 8.5 — vendor/shopware/core/composer.json:51
-- corrected `ext-sodium` — docs omit it (and `filter`, `json`, `libxml`, `pdo`, `session`) — vendor/shopware/core/composer.json:67
-- confirmed `ext-intl` — required extension — vendor/shopware/core/composer.json:58
-- confirmed `MEMORY_LIMIT_REQUIREMENT` — installer checks `512M` — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:18
-- confirmed `MAX_EXECUTION_TIME_REQUIREMENT` — installer checks 30 — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:17
-- confirmed `$mysqlRequiredVersion` — `8.0.22` — vendor/shopware/core/Maintenance/System/Service/DatabaseConnectionFactory.php:38
-- corrected `$mariaDBRequiredVersion` — docs: 10.11.6; code checks `10.11` — vendor/shopware/core/Maintenance/System/Service/DatabaseConnectionFactory.php:39
-- unverified `max_allowed_packet` — database server setting, not enforced in scanned code
-- unverified `maxmemory-policy` — Redis/Valkey server setting, out of scope
+## Code check (6.7.15.1)
+- corrected `php` — docs: 8.2+; composer allows 8.2 to 8.5 — vendor/shopware/core/composer.json:36
+- confirmed `ext-intl` — required extension — vendor/shopware/core/composer.json:43
+- corrected `ext-sodium` — docs: not listed; required by composer — vendor/shopware/core/composer.json:52
+- corrected `$mariaDBRequiredVersion` — docs: MariaDB 10.11.6; code checks 10.11 — vendor/shopware/core/Maintenance/System/Service/DatabaseConnectionFactory.php:39
+- confirmed `$mysqlRequiredVersion` — MySQL 8.0.22 — vendor/shopware/core/Maintenance/System/Service/DatabaseConnectionFactory.php:38
+- confirmed `MEMORY_LIMIT_REQUIREMENT` — `512M`, `-1` also passes — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:18
+- confirmed `MAX_EXECUTION_TIME_REQUIREMENT` — 30 seconds, `0` also passes — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:17
+- unverified `max_allowed_packet` — server setting, no check found in core
+- unverified `maxmemory-policy` — Redis/Valkey server setting, outside the checked packages
+- unverified `OpenSearch` — search server versions not checked in core

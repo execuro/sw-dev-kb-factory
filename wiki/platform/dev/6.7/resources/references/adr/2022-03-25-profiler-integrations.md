@@ -6,33 +6,32 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-03-25-profiler-integrations.html
 sourceHash: f429cac785eeccf955ffa13598108a418842b9ae
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Profiler::trace", "Shopware\\Core\\Profiling\\Profiler", "ProfilerInterface", "shopware.profiler.integrations", "shopware.profiler", "tideways", "datadog", "blackfire", "stopwatch", "profiling", "tracing spans", "performance"]
-summary: "ADR: Shopware's static Profiler::trace() wraps code in spans for Tideways, Datadog, Symfony Stopwatch; enabled via shopware.profiler.integrations."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["Shopware\\Core\\Profiling\\Profiler", "Profiler::trace", "ProfilerInterface", "shopware.profiler.integrations", "shopware.profiler", "Tideways", "Datadog", "Symfony", "ServerTiming", "blackfire", "tracing", "spans", "performance profiling", "apm"]
+summary: "ADR: Profiler::trace() wraps code in spans for Tideways, Datadog, Symfony Stopwatch or ServerTiming; enabled via shopware.profiler.integrations."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record describing Shopware's profiler integration: a static `Shopware\Core\Profiling\Profiler::trace()` call that makes every enabled profiling tool (Tideways, Datadog, Symfony Stopwatch) open a span around the code executed inside a closure. It was introduced because tools like Blackfire and Tideways made it hard to find bottlenecks or catch a "bad trace" under high load.
+An architecture decision record (2022-03-25) introducing `Shopware\Core\Profiling\Profiler`, a static entry point that tells every enabled profiler integration to open a span around a given closure. It was built after performance benchmarks with Blackfire, Tideways and Datadog showed it was hard to get detailed traces under high load and hard to catch a "bad trace"; the application now feeds the profilers named spans itself.
 
 ## When to use
 
-- You want custom spans for your own plugin code to show up in the Tideways/Datadog timeline or the Symfony profiler.
-- You need to choose which profiler integrations are active in an environment.
+When you want a section of core or plugin code to show up as a named span in the timeline of an APM/profiler (Tideways, Datadog, the Symfony profiler), or when choosing which integrations are active in an environment.
 
 ## Key steps / config
 
-1. Wrap the code to measure in `Profiler::trace()`; the closure's return value is passed through:
+1. Wrap code in a span with the static call; the closure's return value is passed through:
 
 ```php
 use Shopware\Core\Profiling\Profiler;
 
 return Profiler::trace('cart-calculation', function () use ($cart, $context) {
-    return $this->cartRuleLoader->loadByCart(/* ... */)->getCart();
+    // code to measure
 });
 ```
 
-   Signature in the installed code: `trace(string $name, \Closure $closure, string $category = 'shopware', array $tags = [])`. Core itself uses it, e.g. `CartCalculator::calculate()` with the span name `cart-calculation`.
+Signature: `Profiler::trace(string $name, \Closure $closure, string $category = 'shopware', array $tags = [])`. Global tags added with `Profiler::addTag()` are merged into every span. For spans that cannot be expressed as a closure, `Profiler::start($title, $category, $tags)` / `Profiler::stop($title)` exist; spans left open are closed by `Profiler::cleanup()` on shutdown.
 
 2. Enable integrations in `config/packages/*.yaml`:
 
@@ -42,28 +41,31 @@ shopware:
         integrations: ['Symfony', 'Tideways', 'Datadog']
 ```
 
-   The names are the `integration` attribute of services tagged `shopware.profiler`: `Symfony` (Stopwatch), `Tideways`, `Datadog`, `ServerTiming`. The core default is `integrations: []`; the `dev` environment enables `['Symfony']`.
+Available integration names (service tag `shopware.profiler`, attribute `integration`): `Symfony` (Stopwatch), `Tideways`, `Datadog`, `ServerTiming`. The core default is `integrations: []`; the `dev` environment config sets `['Symfony']`. The list is not deep-merged — an environment's list replaces the default.
+
+3. Integrations implement `Shopware\Core\Profiling\Integration\ProfilerInterface` and are collected via `tagged_iterator('shopware.profiler', 'integration')`; `Profiler`'s constructor keeps only those named in `shopware.profiler.integrations`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Profiling\Profiler` — static `trace()`, `start()`, `stop()`
-- `Shopware\Core\Profiling\Integration\ProfilerInterface` — `start(string $title, string $category, array $tags)`, `stop(string $title)`
-- Integrations: `Shopware\Core\Profiling\Integration\Stopwatch`, `Tideways`, `Datadog`, `ServerTiming`
-- DI tag `shopware.profiler` (attribute `integration`), parameter `shopware.profiler.integrations`
+- `Shopware\Core\Profiling\Profiler` — `trace()`, `start()`, `stop()`, `addTag()`, `removeTag()`
+- `Shopware\Core\Profiling\Integration\ProfilerInterface`
+- `shopware.profiler.integrations` (config key / container parameter)
+- `shopware.profiler` (service tag, attribute `integration`)
 
 ## Gotchas
 
-- The class is marked `@internal experimental atm`, so its API is not covered by the backwards-compatibility promise.
-- The ADR's snippet chains profilers by nesting `$profiler->trace(...)` closures; the installed `Profiler::trace()` instead calls `start()` on every active profiler, runs the closure, and calls `stop()` in a `finally` block. A custom integration therefore implements `start`/`stop`, not `trace`.
-- Only integrations listed in `shopware.profiler.integrations` are active (the constructor intersects the tagged services with that list).
+- `Profiler` and the integration classes are marked `@internal experimental atm`; the ADR still says the calls can be used in plugins.
+- The ADR's `Profiler` snippet chains closures through a per-profiler `trace()` method; the installed `ProfilerInterface` instead declares `start()`/`stop()`, and `Profiler::trace()` calls `start()` on every profiler, runs the closure, then `stop()` in a `finally` block.
+- The ADR shows `CartCalculator::calculate()` wrapping its work in `Profiler::trace('cart-calculation', ...)`; in 6.7.15.1 that span is opened in `CartMetricsInstrumentor` instead.
 
-## Code check (6.7.13.0)
-- confirmed `Shopware\Core\Profiling\Profiler` — class exists, marked internal/experimental — vendor/shopware/core/Profiling/Profiler.php:12
-- confirmed `Profiler::trace()` — same signature as documented — vendor/shopware/core/Profiling/Profiler.php:58
-- corrected `$profiler->start` — docs: chains nested profiler trace closures; code calls start/stop per profiler around the closure — vendor/shopware/core/Profiling/Profiler.php:64
-- corrected `ProfilerInterface::start()` — docs: integrations expose trace(); interface declares start() and stop() — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:13
-- confirmed `Profiler::$profilers` — filtered by active integrations list in constructor — vendor/shopware/core/Profiling/Profiler.php:44
-- confirmed `shopware.profiler.integrations` — passed to the Profiler constructor — vendor/shopware/core/Profiling/DependencyInjection/services.xml:33
-- confirmed `integrations` — scalar array config node, default empty list — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:175
-- confirmed `shopware.profiler` — tag with integration Symfony/Tideways/Datadog/ServerTiming — vendor/shopware/core/Profiling/DependencyInjection/services.xml:10
-- confirmed `Profiler::trace('cart-calculation'` — used in CartCalculator — vendor/shopware/core/Checkout/Cart/CartCalculator.php:25
+## Code check (6.7.15.1)
+- confirmed `Profiler` — class, `@internal experimental atm` — vendor/shopware/core/Profiling/Profiler.php:12
+- confirmed `Profiler::trace()` — same signature, category default `'shopware'` — vendor/shopware/core/Profiling/Profiler.php:58
+- corrected `ProfilerInterface::start()` — docs: integrations expose `trace()` chained per profiler; interface now has `start()`/`stop()` — vendor/shopware/core/Profiling/Integration/ProfilerInterface.php:13
+- confirmed `Profiler::addTag()` — global tags merged into each span — vendor/shopware/core/Profiling/Profiler.php:110
+- confirmed `shopware.profiler.integrations` — passed to Profiler constructor — vendor/shopware/core/Profiling/DependencyInjection/services.php:46
+- confirmed `integrations` — scalar array node, `performNoDeepMerging()` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1167
+- confirmed `integrations` — core default `[]` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:186
+- confirmed `shopware.profiler` — tag with `integration: Symfony` on Stopwatch — vendor/shopware/core/Profiling/DependencyInjection/services.php:24
+- confirmed `Datadog` — tag `integration: Datadog` — vendor/shopware/core/Profiling/DependencyInjection/services.php:36
+- corrected `cart-calculation` — docs: span opened in CartCalculator; now in CartMetricsInstrumentor — vendor/shopware/core/Checkout/Cart/Telemetry/CartMetricsInstrumentor.php:53

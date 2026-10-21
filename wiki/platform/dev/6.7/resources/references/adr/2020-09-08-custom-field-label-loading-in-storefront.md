@@ -3,64 +3,43 @@ id: platform/dev/6.7/resources/references/adr/2020-09-08-custom-field-label-load
 title: CustomField label loading in storefront
 docType: developer
 version: "6.7"
-versions:
-  - "6.7"
+versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2020-09-08-custom-field-label-loading-in-storefront.html
 sourceHash: 393d8d20894404af6ed5561d0c04a29ba5f66fe5
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["custom field label", "custom fields", "custom_field.written", "CustomFieldSubscriber", "translationKey", "customFields.", "snippet", "snippet set", "storefront translation", "label translations", "adr", "storefront"]
-summary: "ADR: on custom_field.written a subscriber creates snippets customFields.<name> in every snippet set from the field's label, for use in the Storefront."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["custom fields", "custom_field.written", "customFields.", "translationKey", "snippets", "snippet set", "CustomFieldSubscriber", "custom field label", "storefront translation", "trans filter", "adr"]
+summary: "ADR: custom field labels become storefront snippets with key customFields.<technical name>, written to every snippet set on custom_field.written."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2020-09-08): custom field labels are made available in the Storefront as snippets, not by attaching labels to every loaded entity (which would cost performance for labels templates rarely use).
+An architecture decision record (2020-09-08, area: storefront) on how custom field labels are made available in the Storefront. Attaching the labels to every loaded entity was rejected because it costs performance and the labels are rarely used in templates. Instead, a subscriber on the `custom_field.written` event writes the label translations as snippets into all snippet sets.
 
 ## When to use
 
-- Showing a custom field's label in a Storefront template.
-- Understanding where `customFields.*` snippets in the snippet sets come from.
+When a Storefront template or theme needs to show the human-readable label of a custom field, and you want to know which snippet key to use and when that snippet is created.
 
 ## Key steps / config
 
-Installed implementation: `Shopware\Core\System\Snippet\Subscriber\CustomFieldSubscriber` (marked `@internal`).
-
-1. It listens on `custom_field.written` (`customFieldIsWritten`) and `custom_field.deleted` (`customFieldIsDeleted`).
-2. For each write result that is an **insert** and whose payload has a non-empty `config.label`, it creates one snippet per snippet set:
-   - `translationKey`: `customFields.` followed by the custom field's technical `name`
-   - value: the label for the snippet set's ISO (e.g. `en-GB`), falling back to the technical name when that locale has no label
-   - author `System`, and `custom_fields` holding `custom_field_id`
-3. Existing keys are updated on duplicate (value overwritten).
-4. On deletion, snippets whose `custom_fields.custom_field_id` matches the deleted ids are removed.
-
-Payload shape the subscriber reads:
-
-```json
-{
-  "name": "my_field",
-  "config": { "label": { "en-GB": "...", "de-DE": "..." } }
-}
-```
-
-The resulting snippet key (`customFields.my_field`) can then be used like any other snippet in Storefront templates.
+- Snippet key: `customFields.` followed by the custom field's technical name, e.g. a custom field named `my_field` yields the snippet `customFields.my_field`.
+- The snippets are created by `Shopware\Core\System\Snippet\Subscriber\CustomFieldSubscriber` listening on `custom_field.written`.
+- In the installed code, only insert write results whose payload has a non-empty `config.label` produce snippets. One snippet is written per snippet set; the value is the label for the set's ISO code from `config.label`, falling back to the technical name when that locale is missing. The snippet's `author` is `System`.
+- The same subscriber listens on `custom_field.deleted` and removes the snippets belonging to the deleted custom field.
 
 ## Essential identifiers
 
-- `custom_field.written`, `custom_field.deleted`
-- `CustomFieldSubscriber`
-- `customFields.<technical name>` snippet `translationKey`
+- `custom_field.written` (`CustomFieldEvents::CUSTOM_FIELD_WRITTEN_EVENT`)
+- `customFields.<technical name>` snippet translation key
+- `Shopware\Core\System\Snippet\Subscriber\CustomFieldSubscriber`
 
 ## Gotchas
 
-- Snippets are created only when a custom field is inserted; updating an existing field's label does not update the snippets.
-- A custom field without `config.label` gets no snippet.
-- If no snippet sets exist, nothing is written.
+- Inserting a custom field always creates new snippets with the given label translations.
+- Only inserts are handled: updating the label of an existing custom field does not rewrite the snippets through this subscriber.
 
-## Code check (6.7.13.0)
-- confirmed `custom_field.written` — subscribed to customFieldIsWritten — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:37
-- confirmed `custom_field.deleted` — subscribed to customFieldIsDeleted — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:38
-- confirmed `CustomFieldSubscriber` — internal subscriber in the Snippet package — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:21
-- confirmed `OPERATION_INSERT` — snippets only created on insert — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:51
-- confirmed `customFields.` — translation key prefix plus technical name — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:108
-- confirmed `translationKey` — snippet field mapped to translation_key — vendor/shopware/core/System/Snippet/SnippetDefinition.php:57
-- confirmed `CUSTOM_FIELD_WRITTEN_EVENT` — constant value custom_field.written — vendor/shopware/core/System/CustomField/CustomFieldEvents.php:10
+## Code check (6.7.15.1)
+- confirmed `custom_field.written` — constant CUSTOM_FIELD_WRITTEN_EVENT — vendor/shopware/core/System/CustomField/CustomFieldEvents.php:10
+- confirmed `CustomFieldSubscriber::getSubscribedEvents()` — maps custom_field.written to customFieldIsWritten — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:42
+- confirmed `CustomFieldSubscriber::customFieldIsWritten()` — only OPERATION_INSERT results with config.label — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:42
+- confirmed `customFields.` — translation_key prefix plus custom field name — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:111
+- confirmed `CustomFieldSubscriber::customFieldIsDeleted()` — removes snippets on custom_field.deleted — vendor/shopware/core/System/Snippet/Subscriber/CustomFieldSubscriber.php:81

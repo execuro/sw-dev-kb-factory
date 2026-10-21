@@ -5,36 +5,28 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/project-commands/helper-commands.html
-sourceHash: 0b20b2335ec681f298ec7b08ba219de418e37012
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli project create", "shopware-cli project admin-build", "shopware-cli project storefront-build", "shopware-cli project worker", "swx", "shopware-cli project admin-api", "shopware-cli project validate", "shopware-cli project doctor", "shopware-cli project generate-jwt", ".shopware-project.yml", "--only-custom-static-extensions", "cli helper commands", "build scripts replacement"]
-summary: "shopware-cli project helper commands: create, dev, storefront/admin build and watch, worker, console/swx, admin-api, validate, doctor, generate-jwt."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/tools/cli/project-commands/dev-environment.md", "platform/dev/6.7/guides/development/dev-environment.md", "platform/dev/6.7/products/tools/cli/validation.md"]
+sourceHash: 4afeb0082e0dea3a885667296abf451de09a3547
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli project create", "shopware-cli project admin-build", "shopware-cli project storefront-build", "shopware-cli project worker", "shopware-cli project clear-cache", "swx", "shopware-cli project admin-api", "shopware-cli project validate", "shopware-cli project doctor", "generate-jwt", ".config/shopware-project.yml", "APP_SECRET", "helper commands", "build scripts replacement"]
+summary: shopware-cli project helpers for create, admin/storefront build and watch, workers, clear-cache, swx console, admin-api, validate, doctor
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/development/dev-environment.md", "platform/dev/6.7/products/tools/cli/project-commands/dev-environment.md", "platform/dev/6.7/products/tools/cli/validation.md", "platform/dev/6.7/products/tools/cli/configuration.md"]
 ---
 ## What it is
 
-A curated reference of `shopware-cli project` subcommands for day-to-day work in a Shopware project: project creation, the Docker dev environment, asset builds, workers, console/Composer proxying, Admin API calls, validation, diagnostics and project config.
+A curated list of `shopware-cli project ...` helper commands for daily project work: creation, dev environment, admin/storefront build replacements, Messenger workers, cache clearing, a `bin/console` proxy (`swx`), a pre-authenticated Admin API client, validation, diagnostics, project config and JWT key generation.
 
 ## When to use
 
-When you need a CLI shortcut instead of `bin/console`, the `bin/build-*.sh`/`bin/watch-*.sh` scripts, manual Admin API authentication, or hand-started Messenger workers.
+When you want one CLI for routine tasks instead of the `bin/*.sh` scripts, manual `bin/console messenger:consume` processes, or hand-built curl authentication against the Admin API.
 
 ## Key steps / config
 
-**Create a project** — `shopware-cli project create <folder-name> [<version>]`; version may be `latest` or `dev-trunk`. `--no-audit` bypasses Composer's security advisory blocking for old versions.
+**Create**: `shopware-cli project create <folder-name> [<version>]`; `<version>` may be `latest` or `dev-trunk`. `--no-audit` bypasses Composer's security advisory blocking for old versions.
 
-**Dev environment** (see [CLI reference](platform/dev/6.7/products/tools/cli/project-commands/dev-environment.md), [guide](platform/dev/6.7/guides/development/dev-environment.md)):
+**Dev environment** (see [guide](platform/dev/6.7/guides/development/dev-environment.md), [CLI reference](platform/dev/6.7/products/tools/cli/project-commands/dev-environment.md)): `shopware-cli project dev` (TUI), `project dev start|status|stop`, `project logs`. Run Composer inside the container (`docker compose exec web composer <command>`); host PHP often has `memory_limit` below the required `512M`.
 
-```bash
-shopware-cli project dev            # interactive TUI
-shopware-cli project dev start|status|stop
-shopware-cli project logs
-```
-
-In Docker projects run Composer inside the container: `docker compose exec web composer <command>`.
-
-**Script replacements**
+**Build script replacements**:
 
 | Shell script | Command |
 |---|---|
@@ -43,47 +35,44 @@ In Docker projects run Composer inside the container: `docker compose exec web c
 | `bin/watch-storefront.sh` | `shopware-cli project storefront-watch` |
 | `bin/watch-administration.sh` | `shopware-cli project admin-watch` |
 
-- `admin-watch --only-extensions <name>,<second>` / `--skip-extensions <name>,<second>`
-- `storefront-build --only-custom-static-extensions` / `admin-build --only-custom-static-extensions` build only `custom/static-plugins`.
+`admin-watch --only-extensions <name>,<second>` / `--skip-extensions ...` limit watched extensions. `--only-custom-static-extensions` on `storefront-build`/`admin-build` builds only `custom/static-plugins`.
 
-**Other commands**
+**Workers**: `shopware-cli project worker <amount>`; use supervisord/systemd in production.
 
-- `shopware-cli project worker <amount>` — starts N `messenger:consume` workers (dev use).
-- `shopware-cli project clear-cache` — shortcut for `bin/console cache:clear`; clears the remote instance when an API connection is configured in `.shopware-project.yml`.
-- `shopware-cli project console <command>` (alias `swx`) — also runs `composer.json` scripts: `swx phpstan -- --memory-limit=2G`. `swx composer install`, `shopware-cli project composer require shopware/dev-tools` proxy full Composer.
-- `shopware-cli project admin-api GET /_info/version`, `... POST /api/search/product -d '{"limit":10}'`; `--output-token` prints the JWT.
-- `shopware-cli project validate [path]` with `--format summary|json|github|gitlab|junit|markdown`, `--only`, `--exclude` (comma-separated), `--no-copy`, `--local-only`. See [Validation](platform/dev/6.7/products/tools/cli/validation.md).
-- `shopware-cli project doctor`, `shopware-cli project config-schema`, `shopware-cli project config init` (writes URL and Admin API credentials under `environments.local`).
-- `shopware-cli project generate-jwt <path-to-project>` writes keys to `config/jwt/`; `--env` prints `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` base64-encoded.
+**Cache / console**: `shopware-cli project clear-cache` (clears the remote cache if an API connection is in `.config/shopware-project.yml`, see [configuration](platform/dev/6.7/products/tools/cli/configuration.md)); `shopware-cli project console <command>` or `swx`. `swx` also runs `composer.json` scripts (`swx phpstan -- --memory-limit=2G`); `swx composer install` / `shopware-cli project composer require ...` proxy Composer.
+
+**Admin API**: `shopware-cli project admin-api POST /api/search/product -d '{"limit":10}'` — curl-style flags (`-d`, `-H`); `--output-token` prints the JWT.
+
+**Validate**: `shopware-cli project validate [path]` with `--format summary|json|github|gitlab|junit|markdown`, `--only phpstan,eslint`, `--exclude eslint`, `--no-copy`, `--local-only`, `--verbose`; built-in checker `builtin`. See [Validation](platform/dev/6.7/products/tools/cli/validation.md).
+
+**Other**: `shopware-cli project doctor`, `project config-schema`, `project config init` (writes credentials under `environments.local`).
 
 ## Essential identifiers
 
-- `shopware-cli project create`, `dev`, `logs`, `storefront-build`, `admin-build`, `storefront-watch`, `admin-watch`
-- `shopware-cli project worker`, `clear-cache`, `console`, `swx`, `composer`, `admin-api`
-- `shopware-cli project validate`, `doctor`, `config-schema`, `config init`, `generate-jwt`
-- `.shopware-project.yml`, `environments.local`, `validation.ignore_extensions`
+- `project create`, `project dev`, `project worker`, `project clear-cache`, `project console`, `swx`
+- `project admin-api`, `project validate`, `project doctor`, `project config init`
+- `.config/shopware-project.yml`, `environments.local`, `validation.ignore_extensions`
 
 ## Gotchas
 
-- Host PHP often has too low a `memory_limit`; Shopware requires at least `512M`.
-- `admin-build` runs `npm install` on first run, so it is slow initially.
-- For production workers use supervisord or systemd, not `project worker`.
-- Built-in `bin/console` commands take precedence over a Composer script of the same name; lifecycle hooks (`post-install-cmd`, `auto-scripts`) are not exposed via `swx`.
-- `project validate` skips extensions resolved from `vendor/` and those in `validation.ignore_extensions`.
-- Top-level `url` and `admin_api` keys in `.shopware-project.yml` are deprecated (warning logged); move them under `environments`.
-- The core route is `/api/_info/version`; the docs' `admin-api` example writes it as `/_info/version`.
+- `admin-build` runs `npm install` on first execution.
+- Built-in `bin/console` commands win over same-named Composer scripts in `swx`; lifecycle hooks (`post-install-cmd`, `auto-scripts`) are not exposed.
+- `validate`: unknown checker names fail early; `prettier`/`rector` cannot be selected; the `sw-cli` alias is deprecated.
+- Top-level `url`/`admin_api` config keys are deprecated in favour of `environments`.
+- The docs example `admin-api GET /_info/version` maps to the core route `/api/_info/version`.
 
 ## Version notes
 
-`generate-jwt` is only needed for Shopware before 6.5; 6.5+ generates JWT secrets automatically.
+`shopware-cli project generate-jwt <path-to-project>` (`--env` emits base64 `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`) is deprecated, removal planned October 2026. Only 6.5/6.6 use the `config/jwt/` keys; 6.7 signs JWTs with `APP_SECRET` (docs: at least 32 characters).
 
-## Code check (6.7.13.0)
-- confirmed `/api/_info/version` — core Admin API version route (GET) — vendor/shopware/core/Framework/Api/Controller/InfoController.php:222
-- confirmed `/api/search/` — dynamic per-entity search route, so `/api/search/product` exists — vendor/shopware/core/Framework/Api/Route/ApiRouteLoader.php:109
-- confirmed `512M` — installer memory limit requirement — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:18
-- confirmed `memory_limit` — ini value checked against the requirement — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:48
-- unverified `shopware-cli project` — subcommands and flags live in the Go shopware-cli, out of scope
-- unverified `messenger:consume` — Symfony Messenger command, out of scope
-- unverified `cache:clear` — Symfony FrameworkBundle command, out of scope
-- unverified `JWT_PRIVATE_KEY` — no occurrence in vendor/shopware/core; project-level config, out of scope
-- unverified `.shopware-project.yml` — shopware-cli config file, out of scope
+## Code check (6.7.15.1)
+- confirmed `APP_SECRET` — 6.7 JWT configuration reads the secret from this env var (HMAC SHA-256, no key files) — vendor/shopware/core/Framework/Api/OAuth/JWTConfigurationFactory.php:23
+- confirmed `JWTConfigurationFactory::createJWTConfiguration()` — builds a symmetric signer configuration — vendor/shopware/core/Framework/Api/OAuth/JWTConfigurationFactory.php:20
+- confirmed `APP_SECRET_LENGTH` — generated secrets are 136 characters — vendor/shopware/core/Maintenance/System/Command/SystemGenerateAppSecretCommand.php:22
+- confirmed `system:install` — core install command exists — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:31
+- confirmed `/api/_info/version` — Admin API version route — vendor/shopware/core/Framework/Api/Controller/InfoController.php:229
+- confirmed `/api/search/` — dynamic search route per entity — vendor/shopware/core/Framework/Api/Route/ApiRouteLoader.php:109
+- unverified `APP_SECRET` minimum length 32 — no length check found in core; documented constraint only
+- unverified `shopware-cli` — Go CLI, not part of the Shopware core/storefront/administration packages
+- unverified `messenger:consume` — Symfony Messenger command, vendor/symfony out of scope
+- unverified `cache:clear` — Symfony FrameworkBundle command, vendor/symfony out of scope

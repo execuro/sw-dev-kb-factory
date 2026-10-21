@@ -1,46 +1,51 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/paas/shopware-paas/composable-frontends/performance.md
-sourceHash: a1b945e041292bc060198ff8d9d29fd042ae538d
-sourceUrl: https://developer.shopware.com/docs/products/paas/shopware-paas/composable-frontends/performance.html
 title: Composable-Frontends Performance
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["composable frontends", "fastly", "store-api caching", "SwagStoreApiCache", "SwagStoreAPICache.config.additionalCacheableRoutes", "routesRules", "isr", "s-maxage", "stale-while-revalidate", "cors preflight", "sw-cache-hash", "vcl", "soft purge", "http cache"]
-summary: "Composable Frontends: Fastly caching of store-api via SwagStoreApiCache, Nuxt ISR cache headers, same-domain store-api routing to skip CORS preflight."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/products/paas/shopware-paas/composable-frontends/performance.html
+sourceHash: a1b945e041292bc060198ff8d9d29fd042ae538d
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["fastly", "SwagStoreApiCache", "SwagStoreAPICache.config.additionalCacheableRoutes", "store-api", "nuxt.config.ts", "routeRules", "isr", "s-maxage", "stale-while-revalidate", "sw-cache-hash", "cors", "options preflight", "vcl", "cache hit ratio"]
+summary: Caching store-api POST requests, Nuxt ISR cache headers, CORS preflight removal and sw-cache-hash VCL tuning for Composable Frontends behind Fastly.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Performance guidance for Composable Frontends (Nuxt) in front of a Shopware backend on PaaS with Fastly: caching `/store-api/` requests, caching the frontend itself, removing CORS preflight requests, and improving the backend Fastly hit ratio.
+Performance guidance for running Composable Frontends with a Shopware backend on Shopware PaaS behind Fastly: caching `/store-api/` requests on the backend, caching frontend pages, removing CORS preflight requests, and raising the backend cache hit ratio.
 
 ## When to use
 
-A Composable Frontend on Shopware PaaS is slow or has a low Fastly cache hit ratio, or browsers send many `OPTIONS` requests to the backend.
+When a Composable Frontend (Nuxt) shows slow responses or low cache hit rates on Fastly, or the browser sends many `OPTIONS` requests to the Shopware backend.
 
 ## Key steps / config
 
-**Backend (store-api) caching**
+**Backend (`/store-api/`) caching**
 
-- `POST` requests are not cacheable, and Fastly passes them to the backend. The temporary plugin `SwagStoreApiCache` (shopwareLabs) makes a set of `/store-api/` `POST` routes cacheable; it ships its own Fastly snippets that replace the usual ones.
-- Add further cacheable routes via admin config `SwagStoreAPICache.config.additionalCacheableRoutes`.
-- Keep Fastly soft purges enabled (core config `shopware.http_cache.reverse_proxy.fastly.soft_purge`, default `'0'`).
+- Current Shopware versions use `POST` for many `/store-api/` requests; Fastly passes `POST` to the backend without caching.
+- The temporary `SwagStoreApiCache` plugin (shopwareLabs) makes some `/store-api/` `POST` routes cacheable. It ships its own Fastly snippets that must replace the usual ones. Add more routes via the admin config `SwagStoreAPICache.config.additionalCacheableRoutes`.
+- Keep Fastly soft purges enabled.
 
 **Frontend caching**
 
-1. Put a Fastly service in front of each frontend (one per frontend, or one service with multiple domains/hosts).
-2. In `nuxt.config.ts`, give `routesRules` ISR plus cache headers:
+1. Put a Fastly service in front of each frontend (one service per frontend, or one service with several domains/hosts).
+2. In `nuxt.config.ts` route rules, combine Incremental Static Regeneration (`isr`) with cache headers:
 
 ```ts
-'/': { isr: 60 * 60 * 24, headers: { 'cache-control': 'public, s-maxage=3600, stale-while-revalidate=1800' } },
-'/**': { isr: 60 * 60 * 24, headers: { 'cache-control': 'public, s-maxage=3600, stale-while-revalidate=1800' } },
+'/**': {
+  isr: 60 * 60 * 24,
+  headers: {
+    'cache-control': 'public, s-maxage=3600, stale-while-revalidate=1800'
+  }
+},
 ```
 
-`s-maxage` = seconds cached on Fastly; `stale-while-revalidate` = how long an expired page may be served while a background refresh runs.
+`s-maxage` is how long (seconds) Fastly caches the content; `stale-while-revalidate` is how long an expired page may still be served while it is refreshed in the background. The source applies the same rule to `'/'`.
 
-**Remove CORS preflight**: serve backend requests on the frontend domain. In the frontend Fastly service:
+**Remove CORS preflights**
+
+Serve backend requests from the frontend's domain, so the browser sees one origin. In the frontend Fastly service:
 
 ```vcl
 if (req.url.path ~ "^/store-api/") {
@@ -50,33 +55,43 @@ if (req.url.path ~ "^/store-api/") {
 }
 ```
 
-(Alternative: an `Access-Control-Max-Age` header on `OPTIONS` responses to extend the browser's default 5-second preflight cache.)
+`return (pass)` is required: the frontend service must not cache these; the backend Fastly service stays responsible for caching. (The alternative, an `Access-Control-Max-Age` header on `OPTIONS` responses, only extends the browser's default 5-second preflight cache.)
 
-**Backend hit ratio**: after an item is added to the cart, the `sw-cache-hash` cookie is set and the default VCL hash snippet adds it to the cache key. If rule-based pricing is not used, comment out the "Consider Shopware http cache cookies" block (`if (req.http.cookie:sw-cache-hash) { set req.hash += ...; }`) in the VCL hash snippet.
+**Backend hit ratio**
 
-**Verify**: check the `Age` response header in browser developer tools.
+After an item is added to the cart, Shopware sends the `sw-cache-hash` cookie, which the default VCL hash snippet adds to the cache key. If rule-based pricing is not used, comment out the cookie block of the VCL hash snippet (shown in Gotchas).
+
+**Verify** with browser developer tools: check the `Age` response header.
 
 ## Essential identifiers
 
 - `SwagStoreApiCache`, `SwagStoreAPICache.config.additionalCacheableRoutes`
-- `nuxt.config.ts`, `routesRules`, `isr`, `s-maxage`, `stale-while-revalidate`
-- `sw-cache-hash`, `return (pass)`, `Age` header
+- `nuxt.config.ts`, `isr`, `s-maxage`, `stale-while-revalidate`
+- `sw-cache-hash` cookie, `return (pass)`, `Access-Control-Max-Age`, `Age`
 
 ## Gotchas
 
-- `return (pass)` is required: the frontend Fastly service must not cache store-api responses, otherwise invalidation breaks; the backend Fastly service stays responsible for caching.
-- Frontend cache invalidation happens only on Fastly; Shopware cannot invalidate frontend pages, so they stay cached for the `s-maxage` duration.
-- The source's commented VCL block also contains an `elseif` branch for the `sw-currency` cookie. In 6.7 core that cookie is deprecated for 6.8 and only used in the cache key when no `sw-cache-hash` cookie exists and the `v6.8.0.0`/`PERFORMANCE_TWEAKS`/`CACHE_REWORK` flags are inactive.
+- Cache invalidation happens only on the backend Fastly service. Shopware is not aware of the frontend instance and cannot purge it; frontend items stay cached for the `s-maxage` duration.
+- The block to comment out in the VCL hash snippet also has a fallback on the `sw-currency` cookie, which is deprecated in core for v6.8.0:
+
+```vcl
+# Consider Shopware http cache cookies
+#if (req.http.cookie:sw-cache-hash) {
+#	set req.hash += req.http.cookie:sw-cache-hash;
+#} elseif (req.http.cookie:sw-currency) {
+#	set req.hash += req.http.cookie:sw-currency;
+#}
+```
 
 ## Version notes
 
-- Shopware is moving store-api requests from `POST` to `GET` so the plugin becomes unnecessary. In 6.7.13.0, e.g. `store-api.product.listing` already accepts both `POST` and `GET` and is marked HTTP-cacheable.
+Shopware is moving `store-api` requests from `POST` to `GET` so they become cacheable; the `SwagStoreApiCache` plugin will then no longer be required.
 
-## Code check (6.7.13.0)
-- confirmed `sw-cache-hash` — `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE`, added to the HTTP cache key — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:27
-- deprecated `sw-currency` — `CURRENCY_COOKIE` tagged for removal in v6.8.0; fallback only — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:26
-- confirmed `store-api.product.listing` — route accepts POST and GET with HTTP cache attribute — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingRoute.php:59
-- confirmed `shopware.http_cache.reverse_proxy.fastly.soft_purge` — Fastly soft purge parameter, default '0' — vendor/shopware/core/Framework/DependencyInjection/cache.xml:244
-- unverified `SwagStoreAPICache.config.additionalCacheableRoutes` — separate shopwareLabs plugin, not in vendor/shopware
-- unverified `routesRules` — Nuxt config key, outside vendor/shopware
-- unverified `Access-Control-Max-Age` — not set by vendor/shopware/core; infrastructure-level header
+## Code check (6.7.15.1)
+- confirmed `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE` — constant for the sw-cache-hash cookie, removed when no cache hash is required — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:58
+- deprecated `sw-currency` — HttpCacheKeyGenerator::CURRENCY_COOKIE, removal planned for v6.8.0 — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:26
+- confirmed `shopware.http_cache.stale_while_revalidate` — core config node, default null — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1342
+- confirmed `shopware.http_cache.soft_purge` — core config node, default false — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1344
+- unverified `SwagStoreApiCache` — separate shopwareLabs plugin, not in vendor/shopware
+- unverified `SwagStoreAPICache.config.additionalCacheableRoutes` — plugin config key, out of scope
+- unverified `nuxt.config.ts` — Composable Frontends/Nuxt, out of scope

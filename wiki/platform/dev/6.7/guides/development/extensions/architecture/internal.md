@@ -6,81 +6,52 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/extensions/architecture/internal.html
 sourceHash: 16d41259a41e4b67bf835304e19b02486e19a720
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["public api", "@internal", "final", "getDecorated", "DecorationPatternException", "Struct", "addExtension", "decoration pattern", "abstract class", "dto", "backward compatibility", "internal interfaces"]
-summary: Shopware public API rules - public/protected members, abstract classes with getDecorated() for decoration, final DTOs and subscribers, @internal classes.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["public api", "@internal", "final", "getDecorated", "decoration pattern", "abstract class", "Struct", "dto", "event subscriber", "backward compatibility", "minor release", "FieldSerializerInterface"]
+summary: "Defines Shopware's Public API: protected/public members are stable in minors; final classes, abstract decoration classes, and @internal classes/interfaces."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-A core coding guideline (mirrored from `coding-guidelines/core/internal.md` in the Shopware repository). It defines what Shopware treats as public API for third-party developers, and which tools mark things as not public API: the decoration pattern, `final` classes, and the `@internal` annotation.
+A core coding guideline (mirrored from the Shopware repository) defining what counts as Shopware's Public API and how core marks elements that are not public API.
 
 ## When to use
 
-When deciding whether a plugin may rely on, decorate, or extend a core class, service, DTO, or interface, and which changes to expect across minor releases.
+When deciding whether a core class, service or DTO is safe to use, decorate or extend in an extension across minor releases.
 
 ## Key steps / config
 
-### Public API baseline
-
-All classes and elements (methods, properties, constants) that are `protected` or `public` start out as public API. These use cases must stay compatible in minor releases:
+Public API baseline: all classes and elements (methods, properties, constants) defined as protected or public are initially Public API and must stay compatible within a minor release for these use cases:
 
 - using a service to call its functions
-- decorating a service to extend it
+- decorating a service to extend its functionality
 - using a DTO to get or pass data
 
-### Decoration pattern
+Tools core uses to mark non-public API:
 
-Services meant for **service decoration** come with an abstract class that declares `getDecorated()`. A decorator passes calls it does not handle to the inner service. The core base implementation throws `DecorationPatternException` from `getDecorated()`. Shape as found in core:
-
-```php
-abstract class AbstractProductListRoute
-{
-    abstract public function getDecorated(): AbstractProductListRoute;
-    abstract public function load(Criteria $criteria, SalesChannelContext $context): ProductListResponse;
-}
-
-class ProductListRoute extends AbstractProductListRoute
-{
-    public function getDecorated(): AbstractProductListRoute
-    {
-        throw new DecorationPatternException(self::class);
-    }
-    // load(...) { /* ... */ }
-}
-```
-
-### Final classes
-
-- DI container services are meant to be `final`. Exchangeable services have an `abstract class`, so extending core services with `extends` is not intended.
-- **DTO classes** are `final`. To add data, use the extensions of the base `Shopware\Core\Framework\Struct\Struct` class (`addExtension()`).
-- **Event subscribers** are `final`.
-- `final` classes are still public API, because third-party developers consume their public methods.
-
-### `@internal`
-
-- Classes marked with the `@internal` docblock may be refactored completely in any release and are not for third-party use.
-- Interfaces are `@internal` when Shopware wants several implementations of its own but no third-party ones. Example: DAL Field and FieldSerializer classes, where Shopware keeps the right to optimise and break within minor versions.
+1. **Decoration pattern** — services meant for decoration have an abstract class with a `getDecorated()` method that forwards unimplemented calls to the core implementation (e.g. `AbstractCategoryRoute::getDecorated()`). Decorate the abstract class; do not `extends` a core service.
+2. **Final classes** — nearly all classes should be `final`:
+   - DI container services are `final`; exchangeable services have an `abstract class`.
+   - DTO classes are `final`; to append data, use the `Struct` base class (`Shopware\Core\Framework\Struct\Struct`), which supports **Extensions**.
+   - Event subscribers are `final`.
+   - Final classes remain Public API: third-party developers consume their public methods.
+3. **`@internal` classes** — classes reserved for complete refactoring, or split out to avoid one big master class, may change completely with each release; not for third-party use.
+4. **`@internal` interfaces** — used where core wants multiple implementations without third-party interference, e.g. the Data Abstraction Layer's field serializers (`FieldSerializerInterface`), so optimizations and breaks remain possible within minor versions.
 
 ## Essential identifiers
 
-- `getDecorated()` — decoration entry point on abstract service classes
-- `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`
-- `Shopware\Core\Framework\Struct\Struct` / `addExtension()`
-- `FieldSerializerInterface` (`@internal`)
-- `@internal` docblock annotation
+- `getDecorated()`
+- `Shopware\Core\Framework\Struct\Struct`
+- `@internal`
+- `final`
 
 ## Gotchas
 
-- The constructors of decoratable core services are often `@internal` themselves (for example `ProductListRoute::__construct()`). Decorate through the abstract class instead of instantiating or extending the concrete service.
-- Calling `getDecorated()` on the core base implementation throws. Only decorators return an inner service.
-- In practice many core classes carry a `@final` docblock rather than the PHP `final` keyword. That means "use, do not extend", but PHP does not enforce it.
+The source names "the Field and FieldSerializer classes" as the internal-interface example; in 6.7 `FieldSerializerInterface` carries `@internal`, while the abstract `Field` class itself has no class-level `@internal` docblock.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractProductListRoute::getDecorated()` — declared abstract on the decoratable base class — vendor/shopware/core/Content/Product/SalesChannel/AbstractProductListRoute.php:15
-- confirmed `ProductListRoute::getDecorated()` — core implementation throws DecorationPatternException — vendor/shopware/core/Content/Product/SalesChannel/ProductListRoute.php:30
-- confirmed `DecorationPatternException` — message says getDecorated() of a core base class cannot be used — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:13
-- confirmed `Struct` — abstract base class implementing ExtendableInterface — vendor/shopware/core/Framework/Struct/Struct.php:8
-- confirmed `ExtendableTrait::addExtension()` — how data is appended to Struct-based DTOs — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:21
-- confirmed `@internal` — on the DAL interface FieldSerializerInterface — vendor/shopware/core/Framework/DataAbstractionLayer/FieldSerializer/FieldSerializerInterface.php:13
-- confirmed `ProductListRoute::__construct()` — constructor docblock is @internal — vendor/shopware/core/Content/Product/SalesChannel/ProductListRoute.php:26
+## Code check (6.7.15.1)
+- confirmed `AbstractCategoryRoute::getDecorated()` — abstract decoration method — vendor/shopware/core/Content/Category/SalesChannel/AbstractCategoryRoute.php:16
+- confirmed `CategoryRoute::getDecorated()` — concrete implementation of the decoration contract — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:50
+- confirmed `Struct` — abstract base implementing ExtendableInterface — vendor/shopware/core/Framework/Struct/Struct.php:8
+- confirmed `FieldSerializerInterface` — marked `@internal` — vendor/shopware/core/Framework/DataAbstractionLayer/FieldSerializer/FieldSerializerInterface.php:13
+- corrected `Field` — docs: Field classes are an internal area; the abstract class has no class-level @internal — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Field.php:18

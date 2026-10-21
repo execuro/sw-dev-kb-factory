@@ -6,26 +6,26 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/core/entity-acl.html
 sourceHash: 065bd2235f5044e91497ab819548a07568c427e3
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "acl", "access control", "AclRepository", "AclTable", "AclContextResolver", "AclDdlService", "AclQuery", "AclUnsupportedContextException", "b2b_acl.table", "b2b_acl.repository_factory", "b2b_address.acl_repository", "getUnionizedSqlQuery", "entity permissions", "m:n relation"]
-summary: "B2B Suite entity ACL: M:N b2b_acl_* tables, AclRepository allow/deny/isAllowed, AclTable subjects tagged b2b_acl.table, custom AclContextResolver."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "acl", "access control", "permissions", "AclRepository", "AclTable", "AclContextResolver", "AclDdlService", "AclQuery", "getUnionizedSqlQuery", "AclUnsupportedContextException", "b2b_acl.table", "b2b_acl.repository_factory", "grantable", "b2b_address.acl_repository"]
+summary: B2B Suite entity ACL - M:N b2b_acl_* tables, AclRepository allow/deny/isAllowed, query filtering, and adding subjects (AclTable) or contexts.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The B2B Suite ACL component restricts access to any entity through M:N relation tables in the database. It creates the tables, stores/removes relations, and reads them, resolving several relations (e.g. contact and role) into a single `true`/`false` result or a SQL join. It has no dependencies on other parts of the framework and covers repository filtering and service checks; authentication context and route protection are handled by separate B2B components.
+The B2B Suite ACL component restricts access to any entity. At its core it is an implementation of **M:N relation management** in the database: it creates the tables, stores/removes relations and reads them, so several relations (e.g. user and role) resolve to one `true`/`false` or can be joined into a query. It has no dependencies on other framework parts and covers repository filtering and service checks; the Authentication component supplies the logged-in user context and the ACL route component secures routes.
 
-Naming: the **context** is the user or role; the **subject** is the entity that is allowed/denied.
+Naming: **Context** = the user or role; **Subject** = the entity that is allowed/denied.
 
 ## When to use
 
-- Checking or changing whether a contact/role may access a B2B entity (e.g. addresses).
+- Granting/denying a contact or role access to records (e.g. addresses).
 - Filtering a listing query by ACL assignments.
-- Making your own entity ACL-aware (new subject) or restricting by a context other than contact/role.
+- Making your own entity ACL-aware, or adding a new context type besides contact and role.
 
 ## Key steps / config
 
-Table shape (always the same):
+**Data structure** - every ACL table looks like:
 
 ```sql
 CREATE TABLE `b2b_acl_*` (
@@ -37,56 +37,59 @@ CREATE TABLE `b2b_acl_*` (
 );
 ```
 
-No record = not accessible; record exists = accessible; `grantable` = `1` means the context may grant access to others.
+No record = not accessible; record = accessible; `grantable` = `1` means the context may grant access to others. Addresses, for example, are allowed via a role table and a contact table, so one query selects all addresses allowed to a user through role and direct assignment.
 
-**Using a repository.** Fetch an `Shopware\B2B\Acl\Framework\AclRepository` from the DIC (address example: `b2b_address.acl_repository`). Methods: `allow($context, IdValue $subjectId, bool $grantable = false)`, `allowAll`, `deny`, `denyAll`, `isAllowed`, `isGrantable`, `getAllAllowedIds`, `fetchAllGrantableIds`, `fetchAllDirectlyIds`, `getUnionizedSqlQuery($context): AclQuery`. Supported context types:
+**Usage** - there is no service, only `Shopware\B2B\Acl\Framework\AclRepository` (address instance: DIC id `b2b_address.acl_repository`). Methods, all taking a `$context`:
+`allow($context, IdValue $subjectId, bool $grantable = false)`, `allowAll($context, array $subjectIds, bool $grantable = false)`, `deny`, `denyAll`, `isAllowed`, `isGrantable`, `getAllAllowedIds`, `fetchAllGrantableIds`, `fetchAllDirectlyIds`, `getUnionizedSqlQuery($context): AclQuery`.
 
-- `Shopware\B2B\Contact\Framework\ContactEntity`
-- `Shopware\B2B\StoreFrontAuthentication\Framework\Identity`
-- `Shopware\B2B\StoreFrontAuthentication\Framework\OwnershipContext`
-- `Shopware\B2B\Role\Framework\RoleEntity`
-- `Shopware\B2B\Role\Framework\RoleAclGrantContext`
-- `Shopware\B2B\Contact\Framework\ContactAclGrantContext`
+Supported context types: `Shopware\B2B\Contact\Framework\ContactEntity`, `Shopware\B2B\StoreFrontAuthentication\Framework\Identity`, `Shopware\B2B\StoreFrontAuthentication\Framework\OwnershipContext`, `Shopware\B2B\Role\Framework\RoleEntity`, `Shopware\B2B\Role\Framework\RoleAclGrantContext`, `Shopware\B2B\Contact\Framework\ContactAclGrantContext`. Reads usually use both tables, writes only the directly related one. Unsupported contexts (e.g. any debtor identity) throw `Shopware\B2B\Acl\Framework\AclUnsupportedContextException`.
 
-Reads usually use both tables; writes use only the directly related table.
+Filtering a listing (Doctrine `QueryBuilder`):
 
-**Filtering a listing.** Call `getUnionizedSqlQuery($context)`, `innerJoin` `'(' . $aclQuery->sql . ')'` as `acl_query` on `<alias>.id = acl_query.referenced_entity_id`, copy `$aclQuery->params` with `setParameter`, and catch `AclUnsupportedContextException`.
+```php
+$aclQuery = $this->aclRepository->getUnionizedSqlQuery($context);
+$query->innerJoin(self::TABLE_ALIAS, '(' . $aclQuery->sql . ')', 'acl_query',
+    self::TABLE_ALIAS . '.id = acl_query.referenced_entity_id');
+foreach ($aclQuery->params as $name => $value) { $query->setParameter($name, $value); }
+// catch AclUnsupportedContextException
+```
 
-**Adding a subject.**
-1. Extend `Shopware\B2B\Acl\Framework\AclTable`: call `parent::__construct(<name suffix>, <context table>, <context PK>, <subject table>, <subject PK>)` (e.g. `'contact_address', 'b2b_debtor_contact', 'id', 's_user_addresses', 'id'`) and return resolvers from `getContextResolvers()` (e.g. `new AclTableContactContextResolver()`). Create one class per context (contact and role).
-2. During plugin installation create the table via the static factory: `AclDdlService::create()->createTable(new <YourAclTable>())`.
-3. Tag the table service:
-   ```php
-   $services->set('b2b_address.contact_acl_table', AddressContactAclTable::class)
-       ->tag('b2b_acl.table');
-   $services->set('b2b_address.acl_repository', AclRepository::class)
-       ->factory([service('b2b_acl.repository_factory'), 'createRepository'])
-       ->args(['s_user_addresses']);
-   ```
+**Add a new subject**:
 
-**Adding a context.** Create an `AclContextResolver` subclass implementing `getQuery(string $aclTableName, int $contextId, QueryBuilder $queryBuilder): AclQuery`, `extractId($context): int` and `isMainContext(): bool`. `getQuery` should use `$this->getNextPrefix()` for aliases and return `(new AclQuery())->fromQueryBuilder($queryBuilder)`. `extractId` throws `AclUnsupportedContextException` when no ID can be produced. `isMainContext` marks the single resolver responsible for writes.
+1. Extend `Shopware\B2B\Acl\Framework\AclTable` per relation (e.g. `AddressContactAclTable`): call `parent::__construct(<name suffix>, <context table>, <context primary key>, <subject table name>, <subject primary key>)` (contact example: `'contact_address'`, `'b2b_debtor_contact'`, `'id'`, subject table, `'id'`) and implement `getContextResolvers(): array` returning e.g. `new AclTableContactContextResolver()`. Create an identical class for the role relation.
+2. During plugin installation (container not set up yet) create the table: `AclDdlService::create()->createTable(new AddressContactAclTable());` (`Shopware\B2B\Acl\Framework\AclDdlService`).
+3. Tag the table definition and register a repository via the factory:
+
+```php
+$services->set('b2b_address.contact_acl_table', Shopware\B2B\Address\Framework\AddressContactAclTable::class)
+    ->tag('b2b_acl.table');
+$services->set('b2b_address.acl_repository', Shopware\B2B\Acl\Framework\AclRepository::class)
+    ->factory([service('b2b_acl.repository_factory'), 'createRepository'])
+    ->args(['<subject table name>']);
+```
+
+**Add a new context** - extend `Shopware\B2B\Acl\Framework\AclContextResolver` and implement `getQuery(string $aclTableName, int $contextId, QueryBuilder $queryContext): AclQuery`, `extractId($context): int` and `isMainContext(): bool`. A generic `getQuery` uses `$this->getNextPrefix()` as alias, selects from `$aclTableName` where `entity_id = :p_<prefix>`, and returns `(new AclQuery())->fromQueryBuilder($queryBuilder)`. `extractId` returns the id for supported context objects (`ContactIdentity`, `OwnershipContext` whose `identityClassName` is a `ContactIdentity`, `ContactEntity`) and otherwise throws `AclUnsupportedContextException`. `isMainContext` flags the one resolver responsible for writes when several can extract an id.
 
 ## Essential identifiers
 
-- `Shopware\B2B\Acl\Framework\AclRepository`, `AclTable`, `AclContextResolver`, `AclDdlService`, `AclQuery`, `AclUnsupportedContextException`
-- `Shopware\B2B\Contact\Framework\AclTableContactContextResolver`
-- Service tag `b2b_acl.table`; factory service `b2b_acl.repository_factory` (`createRepository`)
-- Service ids `b2b_address.acl_repository`, `b2b_contact.repository`
-- Table prefix `b2b_acl_*`
+- `Shopware\B2B\Acl\Framework\AclRepository`, `AclQuery` (`sql`, `params`), `AclTable`, `AclContextResolver`, `AclDdlService`
+- `Shopware\B2B\Acl\Framework\AclUnsupportedContextException`
+- DIC: `b2b_address.acl_repository`, `b2b_acl.repository_factory` (`createRepository`), tag `b2b_acl.table`
+- `AclTableContactContextResolver`, `RoleAclGrantContext`, `ContactAclGrantContext`
 
 ## Gotchas
 
-- Unsupported contexts throw `AclUnsupportedContextException`; debtor identities are unknown to the ACL and always trigger it.
-- The ACL is not an automatically wired security layer; you must secure your workflows yourself.
-- The unionized SQL is tuned for MySQL and may look unusual when inspected.
-- The source is internally inconsistent: it names `AddressContactTable` in the DDL snippet but `AddressContactAclTable` for the class, refers to `getContextResolver`/`getMainPrefix`/`UnsupportedContextException` in prose while snippets use `getContextResolvers`, `getNextPrefix` and `AclUnsupportedContextException`.
+- The ACL is a collection of functions, not an automatically wired security layer - you secure your workflows yourself.
+- The source's address example uses the Shopware 5 table `s_user_addresses` as subject table; that table does not exist in Shopware 6.7 (the core address entity is `customer_address`).
+- The source is inconsistent: it calls `AddressContactTable` in the DDL step (class defined is `AddressContactAclTable`), mentions `getContextResolver`/`getMainPrefix` (code uses `getContextResolvers`/`getNextPrefix`) and `UnsupportedContextException` (thrown class is `AclUnsupportedContextException`).
+- The generated union query may look strange due to MySQL performance tuning.
 
-## Code check (6.7.13.0)
-- unverified `Shopware\B2B\Acl\Framework\AclRepository` — B2B Suite package not installed; not in vendor/shopware core/storefront/administration
-- unverified `Shopware\B2B\Acl\Framework\AclTable` — B2B Suite package not installed
-- unverified `Shopware\B2B\Acl\Framework\AclContextResolver` — B2B Suite package not installed
-- unverified `AclDdlService::create()` — B2B Suite package not installed
-- unverified `Shopware\B2B\Acl\Framework\AclUnsupportedContextException` — B2B Suite package not installed
-- unverified `b2b_acl.table` — tag not found in the installed Shopware packages; defined by the B2B Suite
-- unverified `b2b_acl.repository_factory` — service not found in the installed Shopware packages
-- unverified `b2b_address.acl_repository` — service not found in the installed Shopware packages
+## Code check (6.7.15.1)
+- unverified `Shopware\B2B\Acl\Framework\AclRepository` — B2B Suite plugin code, not in the installed core/storefront/administration packages
+- unverified `Shopware\B2B\Acl\Framework\AclTable` — B2B Suite plugin code, out of scope
+- unverified `Shopware\B2B\Acl\Framework\AclContextResolver` — B2B Suite plugin code, out of scope
+- unverified `Shopware\B2B\Acl\Framework\AclDdlService` — B2B Suite plugin code, out of scope
+- unverified `b2b_acl.table` — B2B Suite service tag, out of scope
+- absent `s_user_addresses` — Shopware 5 table, not found anywhere in the installed code
+- confirmed `CustomerAddressDefinition::ENTITY_NAME` — 6.7 address entity is customer_address — vendor/shopware/core/Checkout/Customer/Aggregate/CustomerAddress/CustomerAddressDefinition.php:28
+- confirmed `Doctrine\DBAL\Query\QueryBuilder` — DBAL query builder used by core — vendor/shopware/core/Framework/Migration/MigrationRuntime.php:6

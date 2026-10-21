@@ -1,82 +1,67 @@
 ---
-id: platform/dev/6.7/products/extensions/migration-assistant/guides/creating-a-new-migration-profile.md
-title: Creating a new migration profile
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/guides/creating-a-new-migration-profile.html
+id: platform/dev/6.7/products/extensions/migration-assistant/guides/creating-a-new-migration-profile.md
 sourceHash: 9e03bb668af2f73330df509751ace241553dc501
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["migration profile", "ProfileInterface", "GatewayInterface", "OwnLocaleGateway", "DataSelectionInterface", "DataSet", "ProductReader", "ShopwareConverter", "shopware.migration.profile", "shopware.migration.gateway", "shopware.migration.reader", "shopware.migration.converter", "credential form", "third-party shop import", "SwagMigrationAssistant"]
-summary: "Build a SwagMigrationAssistant profile for a non-Shopware source: profile, gateway, credentials form, DataSelection, reader, converter and writer tags."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/guides/creating-a-new-migration-profile.html
+title: Creating a new migration profile
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["migration profile", "SwagMigrationAssistant", "ProfileInterface", "GatewayInterface", "shopware.migration.profile", "shopware.migration.gateway", "shopware.migration.reader", "shopware.migration.converter", "ShopwareConverter", "AbstractReader", "DataSelectionInterface", "third-party source system", "custom import source"]
+summary: "Migration Assistant profile for a non-Shopware source: profile, gateway, credentials form, DataSet/DataSelection, reader, converter, writer."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Walkthrough for adding a new migration profile to the Migration Assistant (`SwagMigrationAssistant`) so data from a non-Shopware source (example: a MySQL `product` table with `id`, `product_number`, `price`, `stock`, `product_name`, `tax`) can be migrated into Shopware 6.
+A walkthrough for adding a new source system to the Migration Assistant plugin (`SwagMigrationAssistant`, a separate plugin, not part of Shopware core). The example migrates a third-party `product` table (`id`, `product_number`, `price`, `stock`, `product_name`, `tax`) into Shopware 6 products. For converting Shopware plugin data instead, the guide points to "Extending a Shopware Migration Profile".
 
 ## When to use
 
-Importing data from a third-party shop system through the Migration Assistant wizard when no existing profile covers it. For Shopware 5 plugin data, extend the Shopware profile instead.
+You need to import data from a system other than Shopware 5/6 and want to plug it into the Migration Assistant wizard (profile/gateway selection, credentials, data selection, migration run).
 
 ## Key steps / config
 
-1. **Profile** — `OwnProfile implements SwagMigrationAssistant\Migration\Profile\ProfileInterface`: `getName()` (`'ownProfile'`), `getSourceSystemName()`, `getVersion()`, `getAuthorName()`, `getIconPath()`. No logic. Tag `shopware.migration.profile`.
-2. **Gateway** — `SwagMigrationAssistant\Migration\Gateway\GatewayInterface`:
-
-```php
-class OwnLocaleGateway implements GatewayInterface
-{
-    public const GATEWAY_NAME = 'local';
-    public function getName(): string { /* ... */ }
-    public function supports(MigrationContextInterface $migrationContext): bool { /* ... */ }
-    public function getSnippetName(): string { /* ... */ }
-    public function read(MigrationContextInterface $migrationContext): array { /* readerRegistry->getReader() */ }
-    public function readEnvironmentInformation(MigrationContextInterface $migrationContext, Context $context): EnvironmentInformation { /* ... */ }
-    public function readTotals(MigrationContextInterface $migrationContext, Context $context): array { /* ... */ }
-}
-```
-
-   Connection test via `ConnectionFactoryInterface::createDatabaseConnection()`. Tag `shopware.migration.gateway`.
-3. **Credentials form** — component `swag-migration-profile-ownProfile-local-credential-form` (prefix `swag-migration-profile-` + profile + gateway + `-credential-form`) registered with `Shopware.Component.register` in `Resources/app/administration/src/own-profile/profile/index.js`, imported from `main.js`. Data `inputCredentials` (`dbHost`, `dbPort`, `dbUser`, `dbPassword`, `dbName`); emits `onCredentialsChanged`, `onChildRouteReadyChanged`, `onTriggerPrimaryClick`.
-4. **DataSet / DataSelection** — `ProductDataSet extends SwagMigrationAssistant\Migration\DataSelection\DataSet\DataSet` (`static getEntity()` returns `'product'`); `ProductDataSelection implements DataSelectionInterface` (`IDENTIFIER = 'products'`, `getData()` returns `new DataSelectionStruct(self::IDENTIFIER, $this->getDataSets(), $this->getDataSetsRequiredForCount(), 'swag-migration.index.selectDataCard.dataSelection.products', 100)`). Register both as tagged services (see Gotchas).
-5. **Reader** — `ProductReader extends SwagMigrationAssistant\Profile\Shopware\Gateway\Local\Reader\AbstractReader`: `supports()` and `read(MigrationContextInterface $migrationContext, array $params = [])` using `getOffset()`/`getLimit()`.
-6. **Converter** — `ProductConverter extends SwagMigrationAssistant\Profile\Shopware\Converter\ShopwareConverter`: `getSourceIdentifier()`, `supports()`, `writeMapping()`, `convert()` returning `ConvertStruct` (uses `getOrCreateMapping()`, `convertValue()`, `updateMainMapping()`). Field names: see `ProductDefinition`.
-7. **Writer** — products reuse the plugin's `ProductWriter`; `WriterRegistry` matches the DataSet entity to the writer's `supports()`.
-
-```php
-$services->set(OwnLocaleGateway::class)
-    ->args([service(ReaderRegistry::class), service(ConnectionFactory::class)])
-    ->tag('shopware.migration.gateway');
-$services->set(ProductReader::class)
-    ->parent(SwagMigrationAssistant\Profile\Shopware\Gateway\Local\Reader\AbstractReader::class)
-    ->args([service(ConnectionFactory::class)])
-    ->tag('shopware.migration.reader');
-$services->set(ProductConverter::class)
-    ->args([service(MappingService::class), service(LoggingService::class)])
-    ->tag('shopware.migration.converter');
-```
+1. **Profile** — `class OwnProfile implements SwagMigrationAssistant\Migration\Profile\ProfileInterface` with `getName()` (`'ownProfile'`), `getSourceSystemName()`, `getVersion()`, `getAuthorName()`, `getIconPath()`. It holds no logic; it only bundles the executing classes. Register in `services.php` with tag `shopware.migration.profile`.
+2. **Gateway** — `OwnLocaleGateway implements SwagMigrationAssistant\Migration\Gateway\GatewayInterface` (`GATEWAY_NAME = 'local'`) with `getName()`, `supports()` (profile `instanceof OwnProfile`), `getSnippetName()`, `read()`, `readEnvironmentInformation()`. The latter tests the source DB via `ConnectionFactoryInterface::createDatabaseConnection()`, returns an `EnvironmentInformation` (with a `RequestStatusStruct` built from `DatabaseConnectionException` on failure) and collects entity counts from the `ReaderRegistry`.
+   ```php
+   $services->set(SwagMigrationOwnProfileExample\Profile\OwnProfile\Gateway\OwnLocaleGateway::class)
+       ->args([
+           service(SwagMigrationAssistant\Migration\Gateway\Reader\ReaderRegistry::class),
+           service(SwagMigrationAssistant\Profile\Shopware\Gateway\Connection\ConnectionFactory::class),
+       ])
+       ->tag('shopware.migration.gateway');
+   ```
+3. **Credentials page** — Administration component in `Resources/app/administration/src/own-profile/profile` named `swag-migration-profile-ownProfile-local-credential-form` (prefix `swag-migration-profile-` + profile name + gateway name + suffix `-credential-form`). It holds `inputCredentials` (`dbHost`, `dbPort`, `dbUser`, `dbPassword`, `dbName`), emits `onCredentialsChanged`, `onChildRouteReadyChanged` and `onTriggerPrimaryClick`, and uses template `swag-migration-profile-ownProfile-local-credential-form.html.twig`. Import it in `main.js`: `import './own-profile/profile';`.
+4. **DataSet and DataSelection** — `ProductDataSet extends SwagMigrationAssistant\Migration\DataSelection\DataSet\DataSet` (`getEntity()` returns `'product'`, `supports()`); `ProductDataSelection implements DataSelectionInterface` (`IDENTIFIER = 'products'`) whose `getData()` returns `new DataSelectionStruct(self::IDENTIFIER, $this->getDataSets(), $this->getDataSetsRequiredForCount(), 'swag-migration.index.selectDataCard.dataSelection.products', 100)`. Register both in `services.php` with the data-selection and data-set tags named in Gotchas.
+5. **Reader** — `ProductReader extends SwagMigrationAssistant\Profile\Shopware\Gateway\Local\Reader\AbstractReader` with `supports()` (profile + `ProductDataSet::getEntity()`) and `read(MigrationContextInterface $migrationContext, array $params = [])`, paging with `getOffset()`/`getLimit()`. Register with `->parent(...AbstractReader::class)`, arg `ConnectionFactory`, tag `shopware.migration.reader`. Then implement the gateway's `read()` as `$this->readerRegistry->getReader($migrationContext)->read($migrationContext)`.
+6. **Converter** — `ProductConverter extends SwagMigrationAssistant\Profile\Shopware\Converter\ShopwareConverter` with `getSourceIdentifier()`, `supports()`, `writeMapping()`, `convert()` returning `ConvertStruct($converted, $data, $this->mainMapping['id'])`. It uses `generateChecksum()`, `mappingService->getOrCreateMapping()`, `convertValue()` (e.g. `self::TYPE_INTEGER`), `getTaxUuid()`, `createMapping(..., DefaultEntities::TAX, ...)`, `getCurrencyUuid(..., 'EUR', ...)` and `updateMainMapping()`. Register with args `MappingService`, `LoggingService`, tag `shopware.migration.converter`. Check the target structure in the core `ProductDefinition`.
+7. **Writer** — for products the plugin's existing `ProductWriter` (`supports()` returns `DefaultEntities::PRODUCT`) is picked by the `WriterRegistry`, which matches the DataSet entity name against each writer's `supports()`. New entities need their own writer class.
 
 ## Essential identifiers
 
-- `ProfileInterface`, `GatewayInterface`, `ReaderRegistry`, `ConnectionFactory`, `DataSelectionStruct`, `AbstractReader`, `ShopwareConverter`, `ConvertStruct`, `WriterRegistry`
-- `shopware.migration.profile`, `shopware.migration.gateway`, `shopware.migration.reader`, `shopware.migration.converter`
+- `ProfileInterface`, `GatewayInterface`, `ReaderRegistry`, `ConnectionFactory`, `EnvironmentInformation`, `RequestStatusStruct`
+- `DataSet`, `DataSelectionInterface`, `DataSelectionStruct`, `AbstractReader`, `TotalStruct`
+- `ShopwareConverter`, `ConvertStruct`, `DefaultEntities`, `MappingService`, `LoggingService`, `WriterRegistry`
+- Tags: `shopware.migration.profile`, `shopware.migration.gateway`, `shopware.migration.reader`, `shopware.migration.converter`
 
 ## Gotchas
 
-- Source tags: `shopware.migration.data_selection` (DataSelection) and `shopware.migration.data_set` (DataSet); these are plugin strings, absent from the installed Shopware packages.
-- The source reader also declares `supportsTotal()`, protected `setConnection()` and `readTotal()` (returns `TotalStruct`), consumed by `readTotals()` via `getReaderForTotal()`; plugin API, not in vendor/shopware.
-- `getDataSets()` order is processing order (manufacturers before products).
-- The source imports `Component` from `src/core/shopware` and uses `sw-field`; the installed Administration uses `Shopware.Component.register` and `sw-text-field`/`sw-password-field`.
+- The order of `getDataSets()` decides processing order — e.g. manufacturers must come before products.
+- The guide tags the DataSelection with `shopware.migration.data_selection` and the DataSet with `shopware.migration.data_set`; the reader additionally implements `supportsTotal()`, `readTotal()` (returning `TotalStruct`) and a protected `setConnection()`. All of these live in the separate Migration Assistant plugin and cannot be verified against installed Shopware core.
+- The reader snippet uses older Doctrine DBAL calls (`ResultStatement`, `fetchColumn()`, `fetchAll()`); check them against the DBAL version your installation ships.
+- The credentials template uses `sw-field`, which is not registered as a component in the installed 6.7 Administration; `sw-text-field` and `sw-container` are.
+- The guide names the product definition `ProductEntityDefinition`; the core class is `ProductDefinition`.
+- A full example lives in the `swag-docs-create-migration-profile` repository under `shopwareArchive` on GitHub.
 
-## Code check (6.7.13.0)
-- absent `supportsTotal` — reader total-support method from the plugin, no hit in the installed code index
-- absent `setConnection` — reader helper from the plugin, no hit in the installed code index
-- absent `readTotal` — reader total-count method from the plugin, no hit in the installed code index
-- absent `shopware.migration.data_selection` — plugin service tag, not in installed Shopware packages
-- absent `shopware.migration.data_set` — plugin service tag, not in installed Shopware packages
-- corrected `Component.register` — docs: `import { Component } from 'src/core/shopware'`; code registers via global `Shopware.Component.register` — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:199
-- corrected `sw-field` — docs: generic `sw-field` input; code registers `sw-text-field` and `sw-password-field` — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:241
-- corrected `ProductEntityDefinition` — docs: `ProductEntityDefinition`; installed class is `ProductDefinition` — vendor/shopware/core/Content/Product/ProductDefinition.php:83
-- confirmed `Shopware\Core\Framework\Context` — context argument of gateway and converter methods — vendor/shopware/core/Framework/Context.php:17
-- unverified `shopware.migration.profile` — SwagMigrationAssistant is not installed under vendor/shopware, plugin tags out of scope
+## Code check (6.7.15.1)
+- absent `supportsTotal` — Migration Assistant reader method, not in the installed code index
+- absent `setConnection` — Migration Assistant reader method, not in the installed code index
+- absent `readTotal` — Migration Assistant reader method, not in the installed code index
+- absent `shopware.migration.data_selection` — plugin DI tag, not in the installed code index
+- absent `shopware.migration.data_set` — plugin DI tag, not in the installed code index
+- corrected `ProductDefinition` — docs: ProductEntityDefinition — vendor/shopware/core/Content/Product/ProductDefinition.php:83
+- confirmed `AbstractWriter::append()` — core's AbstractWriter is the ImportExport writer, unrelated to the plugin's migration AbstractWriter — vendor/shopware/core/Content/ImportExport/Processing/Writer/AbstractWriter.php:15
+- unverified `sw-field` — no Component.register for it in the installed 6.7 Administration src
+- confirmed `sw-text-field` — registered Administration component — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:203
+- confirmed `sw-container` — registered Administration component — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:440

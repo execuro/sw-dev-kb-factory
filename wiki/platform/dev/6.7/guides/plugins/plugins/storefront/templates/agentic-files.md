@@ -6,65 +6,69 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/templates/agentic-files.html
 sourceHash: 3065c51b31203e1366a6fbdb540d5946e801b636
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["agentic files", "llms.txt", "AGENTS.md", "ai-catalog.json", "SalesChannelFileRenderParametersExtension", "salesChannelFileContext", "agentic_llms_extensions", "agentic_agents_extensions", "agentic_ai_catalog_entries", "user_provided_content", "sales channel file", "ai agents", "mcp"]
-summary: "Public sales-channel files (llms.txt, AGENTS.md, ai-catalog.json) rendered from Twig in Resources/views/files/; extend, add files, pass Twig context."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["agentic files", "llms.txt", "agents.md", "ai-catalog.json", "SalesChannelFileRenderParametersExtension", "salesChannelFileContext", "agentic_llms_extensions", "agentic_ai_catalog_entries", "user_provided_content", "storeApiMcpServerUrl", "sales channel files", "ai agents", "agentic commerce"]
+summary: Agentic sales-channel files (/llms.txt, /agents.md, ai-catalog.json) - template paths, extension blocks, render parameters, admin snippets.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/tools/mcp-server/store-api.md"]
 ---
 ## What it is
 
-Agentic files are public, per-sales-channel files for AI assistants, rendered from Twig templates. The default `agentic` family ships `/llms.txt`, an agents guidance file and `/.well-known/ai-catalog.json`. Files are enabled per sales channel in the Administration, where merchants can add notes or override content.
+Agentic files are public, per-sales-channel files rendered from Twig templates that tell AI assistants how to interact with a shop. Core ships the `agentic` file family: `/llms.txt`, `/agents.md` and `/.well-known/ai-catalog.json` (an Agentic Resource Discovery catalog). Each file is enabled per sales channel in the Administration, where merchants can also add notes or override content sources.
 
 ## When to use
 
-A plugin, app or theme needs to add content to these files, ship its own public agent-facing file, or inject file-specific Twig data (e.g. an MCP server URL into the AI catalog).
+When a plugin, app or theme adds content to the default agentic files, ships an additional public file, or injects file-specific template data.
 
 ## Key steps / config
 
-1. **Path mapping**: templates below `Resources/views/files/<file-family>/`; the public path drops `files/<file-family>/` and `.twig` (`files/agentic/llms.txt.twig` serves `/llms.txt`). Disabled or unknown files return 404.
-2. **Extend a default file**: same template path, unqualified `sw_extends`, always `parent()` in the blocks `agentic_llms_extensions`, `agentic_agents_extensions`, `agentic_ai_catalog_entries`:
-   ```twig
-   {% sw_extends 'files/agentic/.well-known/ai-catalog.json.twig' %}
-   {% block agentic_ai_catalog_entries %}
-       {% set entries = entries|merge([{ identifier: '...', displayName: '...',
-           type: 'application/mcp-server-card+json', url: '...', description: '...',
-           tags: [], capabilities: [], representativeQueries: [] }]) %}
-       {{ parent() }}
-   {% endblock %}
-   ```
-3. **Add a file**: `PLUGIN_ROOT/src/Resources/views/files/agentic/my-integration.md.twig` serves `/my-integration.md`. Put `{% block user_provided_content %}{% endblock %}` near the end for merchant notes.
-4. **Template variables**: `context`, `salesChannel`, `salesChannelFile` (read-only metadata), `salesChannelFileContext` (for `.well-known/ai-catalog.json`: `baseUrl`, `publisher`, and for API sales channels `storeApiMcpServerUrl`, see [Store API MCP server](platform/dev/6.7/products/tools/mcp-server/store-api.md)).
-5. **Add Twig context**: subscribe to `SalesChannelFileRenderParametersExtension::onPost()`; return early unless `$extension->file->fileFamily === SalesChannelFile::DEFAULT_FILE_FAMILY`, `$extension->file->fileName` matches and `$extension->result` is an array; then merge your keys into `$extension->result['salesChannelFileContext']`, preserving existing ones. FQCNs: `Shopware\Core\System\SalesChannel\File\Rendering\Extension\SalesChannelFileRenderParametersExtension`, `Shopware\Core\System\SalesChannel\File\Discovery\SalesChannelFile`.
-6. **Administration description**: snippet key `sw-sales-channel.detail.agenticFiles.descriptions.<family>.<slug>`, slug = kebab-cased file name (`llms.txt` becomes `llms-txt`). No snippet, empty description.
+**Path mapping.** Templates live under `Resources/views/files/<file-family>/`; the public path is the template path minus `files/<file-family>/` and `.twig`: `files/agentic/llms.txt.twig` → `/llms.txt`, `files/agentic/.well-known/ai-catalog.json.twig` → `/.well-known/ai-catalog.json`, core's `files/agentic/AGENTS.md.twig` → `/AGENTS.md`. Only enabled files are served; others return 404.
+
+**Extend a default file.** Ship a template at the same path, use unqualified `sw_extends`, and always render `{{ parent() }}` in the extension block:
+
+```twig
+{% sw_extends 'files/agentic/llms.txt.twig' %}
+{% block agentic_llms_extensions %}
+    {{ parent() }}
+    ## My integration
+{% endblock %}
+```
+
+Additive blocks: `agentic_llms_extensions`, `agentic_agents_extensions`, `agentic_ai_catalog_entries`. In `agentic_ai_catalog_entries`, merge into `entries` before `{{ parent() }}`; entry keys: `identifier`, `displayName`, `type` (`application/mcp-server-card+json`), `url`, `description`, `tags`, `capabilities`, `representativeQueries`.
+
+**Add a custom file.** Every template below `Resources/views/files/<file-family>/` is public, e.g. `PLUGIN_ROOT/src/Resources/views/files/agentic/my-integration.md.twig` → `/my-integration.md`. Put `{% block user_provided_content %}{% endblock %}` near the end so merchants can add notes.
+
+**Template variables:** `context`, `salesChannel`, `salesChannelFile` (read-only metadata), `salesChannelFileContext`. For the AI catalog core sets `baseUrl` and `publisher` when a domain exists, plus `storeApiMcpServerUrl` for API-type sales channels ([Store API MCP server](platform/dev/6.7/products/tools/mcp-server/store-api.md)); the default entry renders only if both `storeApiMcpServerUrl` and `publisher` are set.
+
+**Add template context.** Subscribe to `SalesChannelFileRenderParametersExtension::onPost()`, return early unless `$extension->file->fileFamily === SalesChannelFile::DEFAULT_FILE_FAMILY` and `$extension->file->fileName` matches, then extend `$extension->result['salesChannelFileContext']`, preserving existing keys.
+
+**Administration description.** Snippet key `sw-sales-channel.detail.agenticFiles.descriptions.<family>.<file>` with both segments kebab-cased, e.g. `{"sw-sales-channel":{"detail":{"agenticFiles":{"descriptions":{"agentic":{"my-file-txt":"..."}}}}}}`. No snippet, no description.
 
 ## Essential identifiers
 
-- `Resources/views/files/<file-family>/`, family `agentic`
-- `SalesChannelFileRenderParametersExtension::onPost()`, `SalesChannelFile::DEFAULT_FILE_FAMILY`
-- Blocks `agentic_llms_extensions`, `agentic_agents_extensions`, `agentic_ai_catalog_entries`, `user_provided_content`
-- Twig vars `salesChannelFile`, `salesChannelFileContext`
+- `Shopware\Core\System\SalesChannel\File\Rendering\Extension\SalesChannelFileRenderParametersExtension`
+- `Shopware\Core\System\SalesChannel\File\Discovery\SalesChannelFile` (`DEFAULT_FILE_FAMILY = 'agentic'`)
+- `agentic_llms_extensions`, `agentic_agents_extensions`, `agentic_ai_catalog_entries`, `user_provided_content`
+- `salesChannelFileContext`, `storeApiMcpServerUrl`
 
 ## Gotchas
 
-- Every Twig file below `Resources/views/files/**` becomes a public file; keep partials elsewhere and include them namespaced (`@MyPlugin/agentic/includes/content.md.twig`).
-- Core ships `files/agentic/AGENTS.md.twig`, not `agents.md.twig` as the docs write; names match case-insensitively and case variants form one chain.
-- The docs' admin snippet uses the raw key `"my-file.txt"`; the Administration looks up `my-file-txt`.
-- Core's subscriber replaces the whole `salesChannelFileContext` for the catalog file; a listener running before it loses its keys.
-- `storeApiMcpServerUrl` requires the `MCP_SERVER` feature flag (default off); the default catalog entry needs it plus `publisher`.
+- Keep private partials outside `Resources/views/files/**` and include them with an explicit namespace (e.g. `@MyPlugin/agentic/includes/content.md.twig`).
+- The docs call the template `agents.md.twig`; core ships `AGENTS.md.twig`. Discovery lowercases file-name keys and groups case variants, so `/agents.md` resolves either way.
+- The docs' snippet example uses the key `my-file.txt`; the Administration kebab-cases it (`my-file-txt`).
 
 ## Version notes
 
-Core feature since 6.7.12.0. Older versions can serve compatible files via the Agentic Commerce plugin fallback (only where UCP is active; no Administration UI, overrides, discovery API or cache tagging). Unqualified `sw_extends` works in both modes; after upgrading clear the cache and rebuild assets.
+Core feature since 6.7.12.0. Older versions can use the Agentic Commerce plugin fallback (routes for the three files, only where UCP is active; no Administration UI, overrides, discovery API or cache tagging). Unqualified `sw_extends` keeps templates working in both modes; after upgrading, clear the cache and rebuild assets.
 
-## Code check (6.7.13.0)
-- confirmed `SalesChannelFile::DEFAULT_FILE_FAMILY` — value `agentic` — vendor/shopware/core/System/SalesChannel/File/Discovery/SalesChannelFile.php:15
-- confirmed `SalesChannelFileRenderParametersExtension` — public extension class with readonly `$file` — vendor/shopware/core/System/SalesChannel/File/Rendering/Extension/SalesChannelFileRenderParametersExtension.php:22
-- confirmed `Extension::onPost()` — inherited static event-name helper — vendor/shopware/core/Framework/Extensions/Extension.php:47
-- confirmed `agentic_llms_extensions` — block in core llms.txt template — vendor/shopware/core/Framework/Resources/views/files/agentic/llms.txt.twig:93
-- confirmed `agentic_ai_catalog_entries` — block in core catalog template — vendor/shopware/core/Framework/Resources/views/files/agentic/.well-known/ai-catalog.json.twig:9
-- corrected `AGENTS.md` — docs: `agents.md.twig`; core template is AGENTS.md.twig, names matched case-insensitively — vendor/shopware/core/System/SalesChannel/File/README.md:5
-- corrected `kebabCase` — docs: snippet key `my-file.txt`; file name is kebab-cased for the key — vendor/shopware/administration/Resources/app/administration/src/module/sw-sales-channel/view/sw-sales-channel-detail-agentic-file/index.js:465
-- confirmed `user_provided_content` — reserved merchant-notes block — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileRenderer.php:25
-- confirmed `salesChannelFileContext` — core subscriber assigns a fresh array — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileStoreApiMcpSubscriber.php:57
-- confirmed `MCP_SERVER` — gates `storeApiMcpServerUrl` for API sales channels — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileStoreApiMcpSubscriber.php:52
+## Code check (6.7.15.1)
+- confirmed `SalesChannelFileRenderParametersExtension` — extension class, result is the Twig parameter array — vendor/shopware/core/System/SalesChannel/File/Rendering/Extension/SalesChannelFileRenderParametersExtension.php:22
+- confirmed `SalesChannelFileRenderParametersExtension::onPost()` — core subscriber uses the same hook — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileStoreApiMcpSubscriber.php:28
+- confirmed `SalesChannelFile::DEFAULT_FILE_FAMILY` — value `'agentic'` — vendor/shopware/core/System/SalesChannel/File/Discovery/SalesChannelFile.php:15
+- confirmed `storeApiMcpServerUrl` — set only for API-type sales channels, alongside `baseUrl`/`publisher` — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileStoreApiMcpSubscriber.php:53
+- confirmed `agentic_llms_extensions` — empty extension block in core llms.txt template — vendor/shopware/core/Framework/Resources/views/files/agentic/llms.txt.twig:93
+- confirmed `agentic_agents_extensions` — empty extension block in core agents template — vendor/shopware/core/Framework/Resources/views/files/agentic/AGENTS.md.twig:37
+- confirmed `agentic_ai_catalog_entries` — default entry needs `storeApiMcpServerUrl` and `publisher` — vendor/shopware/core/Framework/Resources/views/files/agentic/.well-known/ai-catalog.json.twig:9
+- confirmed `user_provided_content` — merchant notes injected into this block — vendor/shopware/core/System/SalesChannel/File/Rendering/SalesChannelFileRenderer.php:145
+- corrected `SalesChannelFile::$templatePaths` — docs: `agents.md.twig`; core ships `AGENTS.md.twig`, case variants grouped — vendor/shopware/core/System/SalesChannel/File/Discovery/SalesChannelFile.php:30
+- corrected `sw-sales-channel.detail.agenticFiles.descriptions` — docs: key `my-file.txt`; segments are kebab-cased — vendor/shopware/administration/Resources/app/administration/src/module/sw-sales-channel/view/sw-sales-channel-detail-agentic-files/index.js:227

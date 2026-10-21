@@ -6,55 +6,52 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/flow-action-reference.html
 sourceHash: 35d0bef19e9d2af7ed3252a0d2da58ffb18c3681
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["flow.xml", "flow-1.0.xsd", "flow-extensions", "flow-actions", "flow-action", "flow builder", "app flow action", "input-field", "requirements", "orderAware", "customerAware", "webhook action", "flow variables"]
-summary: "Reference for app flow actions in Resources/flow.xml: meta, headers, parameters, input-field config, and the variables available per business event."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["flow.xml", "flow-1.0.xsd", "flow action", "app flow action", "flow builder", "flow-extensions", "flow-actions", "input-field", "requirements", "orderAware", "customerAware", "checkout.order.placed", "flow variables", "webhook action"]
+summary: Reference for app flow actions in Resources/flow.xml - meta, headers, parameters, input-field config, and the Twig variables each flow event exposes.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Annotated example of how an app registers custom Flow Builder actions (e.g. "Send slack message") that call an external URL with templated headers/parameters, plus a table of the template variables each triggering event provides.
+The reference for declaring app flow actions: Flow Builder actions that, when triggered, send an HTTP request to the app-defined `url` with configured headers and Twig-rendered parameters. It also lists which variables each flow event exposes to those parameter templates.
 
 ## When to use
 
-When an app adds its own action to Flow Builder and needs the exact XML element names, the `input-field` config, or the variables usable in parameter templates for a given event.
+When an app adds its own action (e.g. "Send slack message") to the Administration's Flow Builder, or when writing the parameter templates and needing to know which variables an event provides.
 
 ## Key steps / config
 
-1. Put the definition in `Resources/flow.xml` inside the app (the file the core reads).
-2. Root element is `<flow-extensions>` (schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Flow/Schema/flow-1.0.xsd`); actions go in its `<flow-actions>` child.
-3. Each `<flow-action>` has `meta`, `headers`, `parameters`, `config`.
+1. Put the definition in `Resources/flow.xml`, validated against `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Flow/Schema/flow-1.0.xsd`.
+2. The schema's root element is `<flow-extensions>`, which wraps `<flow-actions>` (and optionally `<flow-events>`). Each `<flow-action>` requires all four children `meta`, `headers`, `parameters`, `config`:
 
 ```xml
-<flow-extensions>
+<flow-extensions xmlns:xsi="..." xsi:noNamespaceSchemaLocation="...flow-1.0.xsd">
   <flow-actions>
     <flow-action>
       <meta>
-        <name>slack</name><label>Send slack message</label>
-        <url>https://hooks.slack.com/services/{id}</url>
-        <sw-icon>default-communication-speech-bubbles</sw-icon><icon>slack.png</icon>
+        <name>slack</name>
+        <label lang="de-DE">Slack-Nachricht senden</label>
+        <url>...</url>
+        <sw-icon>default-communication-speech-bubbles</sw-icon>
         <requirements>orderAware</requirements>
       </meta>
       <headers><parameter type="string" name="content-type" value="application/json"/></headers>
-      <parameters><parameter type="string" name="text" value="{{ subject }} ..."/></parameters>
-      <config><input-field type="text"><name>subject</name><label>Subject</label><required>true</required></input-field></config>
-    </flow-action>
-  </flow-actions>
-</flow-extensions>
+      <parameters><parameter type="string" name="text" value="{{ subject }} \n {{ message }}"/></parameters>
+      <config><input-field type="text"><name>subject</name><required>true</required></input-field></config>
 ```
 
-- `meta` optional texts: `headline`, `description` (translatable via `lang`).
-- `input-field` children: `name`, `label`, `place-holder`, `helpText`, `defaultValue`, `options`, `required`; attribute `type` (default `text`, e.g. `textarea`).
-- Config values are referenced in `parameters` via Twig, e.g. `{{ subject }}`, `{{ order.orderNumber }}`.
+- `meta`: `name` (lowercase, pattern `[a-z][a-z.]*[a-z]`), `label`, optional `headline`, `description`, `icon` (e.g. `slack.png`), `badge`, `sw-icon`, plus `url`, `requirements` (repeatable, e.g. `orderAware`, `customerAware`), `delayable`. Translatable elements take `lang`, default `en-GB`.
+- `parameter`: attributes `type`, `name`, `value` are all required; `value` may use Twig, e.g. `{{ order.orderNumber }}` or `{{ chatId }}` referencing a config field.
+- `input-field`: `name` (pattern `[a-zA-Z][a-zA-Z0-9]*`), `label`, `place-holder`, `helpText`, `defaultValue`, `options`, `required` (default `false`); attribute `type` defaults to `text`, allowed: `text`, `textarea`, `text-editor`, `url`, `password`, `int`, `float`, `bool`, `checkbox`, `datetime`, `date`, `time`, `colorpicker`, `single-select`, `multi-select`.
 
 ### Variables per event
 
-| Events | Variables |
+| Event(s) | Variables |
 |---|---|
 | `checkout.order.placed`, `state_enter.order.state.*`, `state_enter.order_transaction.state.*`, `state_enter.order_delivery.state.*` | `order` |
 | `customer.group.registration.accepted` / `.declined` | `customer`, `customerGroup` |
 | `user.recovery.request` | `userRecovery` |
-| `checkout.customer.double_opt_in_registration` / `_guest_order` | `customer`, `confirmUrl` |
+| `checkout.customer.double_opt_in_registration`, `checkout.customer.double_opt_in_guest_order` | `customer`, `confirmUrl` |
 | `customer.recovery.request` | `customerRecovery`, `customer`, `resetUrl`, `shopName` |
 | `contact_form.send` | `contactFormData` |
 | `checkout.customer.register` | `customer` |
@@ -63,23 +60,24 @@ When an app adds its own action to Flow Builder and needs the exact XML element 
 
 ## Essential identifiers
 
-- `Resources/flow.xml`, `flow-1.0.xsd`, `flow-extensions`, `flow-actions`, `flow-action`
-- `meta`, `headers`, `parameters`, `config`, `input-field`, `requirements`, `sw-icon`
+- `Resources/flow.xml`, `flow-1.0.xsd`
+- Elements `flow-extensions`, `flow-action`, `meta`, `headers`, `parameters`, `parameter`, `config`, `input-field`
+- Requirements `orderAware`, `customerAware`
 
 ## Gotchas
 
-- The source example labels the file `flow-action.xml` and uses `<flow-actions>` as root. The installed schema declares only `flow-extensions` as root and the core loads `Resources/flow.xml`.
-- `meta` `name` must match `[a-z][a-z.]*[a-z]`; `input-field` `name` must match `[a-zA-Z][a-zA-Z0-9]*`.
-- `meta` also accepts `badge` and a boolean `delayable` (not in the source example).
+- The source labels the sample `// flow-action.xml` and uses `<flow-actions>` as the document root. The installed loader reads only `Resources/flow.xml` and validates it against a schema whose root is `<flow-extensions>`, so wrap `<flow-actions>` in it.
+- Action names must be unique within `<flow-actions>`.
+- The listed `state_enter.*` events cover specific states only (e.g. `order.state.cancelled`, `order_transaction.state.paid_partially`, `order_delivery.state.returned`), not every state.
 
-## Code check (6.7.13.0)
+## Code check (6.7.15.1)
+- corrected `flow-extensions` — docs: root element `<flow-actions>`; schema root is `flow-extensions` — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:3
 - corrected `Resources/flow.xml` — docs: file named flow-action.xml — vendor/shopware/core/Framework/App/Lifecycle/Handler/FlowActionLifecycleHandler.php:83
-- corrected `flow-extensions` — docs: root element flow-actions; schema root is flow-extensions — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:3
-- confirmed `flow-actions` — read as child of the document — vendor/shopware/core/Framework/App/Flow/Action/Action.php:31
-- confirmed `flow-1.0.xsd` — schema used for validation — vendor/shopware/core/Framework/App/Flow/Action/Action.php:13
-- confirmed `flow-action` — meta, headers, parameters, config — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:31
-- confirmed `requirements` — meta child element — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:65
-- confirmed `delayable` — boolean meta flag, default false — vendor/shopware/core/Framework/App/Flow/Action/Xml/Metadata.php:56
-- confirmed `input-field` — type attribute default text — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:76
-- confirmed `checkout.order.placed` — event name — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:29
-- confirmed `contact_form.send` — event name — vendor/shopware/core/Content/ContactForm/Event/ContactFormEvent.php:21
+- confirmed `Action::createFromXmlFile()` — validates against flow-1.0.xsd — vendor/shopware/core/Framework/App/Flow/Action/Action.php:21
+- confirmed `uniqueActionName` — action names unique — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:24
+- confirmed `requirements` — meta element — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:65
+- confirmed `delayable` — optional meta element not in docs — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:66
+- confirmed `textarea` — allowed input-field type — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:122
+- confirmed `orderAware` — requirement value used by Flow Builder — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/service/flow-builder.service.spec.js:26
+- confirmed `checkout.order.placed` — event name — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:34
+- confirmed `user.recovery.request` — event name — vendor/shopware/core/System/User/Recovery/UserRecoveryRequestEvent.php:26

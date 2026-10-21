@@ -5,24 +5,23 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/performance/number-ranges.html
-sourceHash: 234a7a1a5517552a1a57f2463c6f3eeb8f8784d6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["number ranges", "order number", "invoice number", "shopware.number_range", "increment_storage", "config.connection", "redis", "mysql", "number-range:migrate", "IncrementRedisStorage", "IncrementSqlStorage", "atomic increment", "shopware.redis.connections"]
-summary: Store number range state in Redis (increment_storage redis + config.connection) and move state with number-range:migrate mysql redis.
-lastBuilt: 2026-09-15
+sourceHash: 04d5221309d559d52eefcc4da0141157df24849d
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["number range", "number_range", "increment_storage", "config.connection", "shopware.redis.connections", "number-range:migrate", "redis", "mysql", "order number", "invoice number", "volatile-lru", "IncrementRedisStorage"]
+summary: "Store Shopware number range states in Redis (number_range.increment_storage + config.connection) and migrate states with number-range:migrate."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Number ranges generate consecutive sequences (order numbers, invoice numbers, etc.). Generation is atomic, so no number is produced twice. State is stored in the database by default (`increment_storage: "mysql"`); under high throughput (thousands of orders per minute) that atomicity makes the database a bottleneck, and Redis handles atomic increments better.
+Number ranges generate consecutive sequences for order numbers, invoice numbers, etc. Generation is atomic, so numbers are consecutive and never issued twice. By default the state is stored in the database (`mysql` storage); Redis handles atomic increments better and can be used instead.
 
 ## When to use
 
-High order/document volume where number range generation contends on the database, or when moving existing number range state between MySQL and Redis during a deployment.
+High-throughput shops (e.g. thousands of orders per minute) where the database becomes a bottleneck because of the atomicity requirement.
 
 ## Key steps / config
 
-1. Declare a Redis connection and point the number range storage at it in `config/packages/shopware.yml`. In 6.7, `increment_storage` is an enum of `mysql` (default) and `redis`, and `config.connection` is required when it is `redis`:
-
+1. Define a Redis connection and point the number range storage at it in `config/packages/shopware.yml`:
    ```yaml
    shopware:
        redis:
@@ -34,46 +33,39 @@ High order/document volume where number range generation contends on the databas
            config:
                connection: 'persistent'
    ```
-
-2. Configure the Redis instance for durability: persistence via RDB snapshots and/or AOF, eviction policy `volatile-lru`.
-
-3. Migrate existing state between storages (storage names are the registered keys `mysql` and `redis`):
-
+   `increment_storage` accepts only `mysql` (default) or `redis`. With `redis`, `config.connection` is mandatory — the config fails validation otherwise. The connection name must exist under `shopware.redis.connections` (each entry requires `dsn`).
+2. Configure Redis for durability: enable persistence (RDB snapshots and/or AOF) so states survive a restart, and use the `volatile-lru` eviction policy (evicts only keys with a TTL) to avoid losing data.
+3. Migrate existing states between storages:
    ```shell
    bin/console number-range:migrate {from} {to}
    bin/console number-range:migrate mysql redis
    ```
-
-   The command asks for confirmation before copying every number range state from the source storage to the target.
+   Storage names are the registered storage keys `mysql` and `redis`. For any migration from or to Redis, the Redis connection (`number_range.config.connection`) must be configured, even if `increment_storage` is not currently `redis`.
 
 ## Essential identifiers
 
-- `shopware.number_range.increment_storage` (`mysql` | `redis`, default `mysql`)
+- `shopware.number_range.increment_storage` (`mysql` | `redis`)
 - `shopware.number_range.config.connection`
 - `shopware.redis.connections.<name>.dsn`
 - `number-range:migrate` (arguments `from`, `to`)
-- `Shopware\Core\System\NumberRange\ValueGenerator\Pattern\IncrementStorage\IncrementSqlStorage`
-- `Shopware\Core\System\NumberRange\ValueGenerator\Pattern\IncrementStorage\IncrementRedisStorage`
-- `Shopware\Core\System\NumberRange\ValueGenerator\Pattern\IncrementStorage\IncrementStorageRegistry`
+- Storages: `IncrementSqlStorage` (`mysql`), `IncrementRedisStorage` (`redis`)
 
 ## Gotchas
 
-- Migration is not atomic: generating numbers while migrating can produce duplicates. Run it during deployment/maintenance, not in normal operation.
-- To migrate from or to Redis, `shopware.number_range.config.connection` must be set even if `increment_storage` is still `mysql`; without it the Redis storage service is removed from the container. The docs name `shopware.number_range.redis_url` for this, a key the installed code does not have.
-- The docs' example `number-range:migrate SQL Redis` and value `"Redis"` do not match 6.7: storage keys and enum values are lowercase `mysql`/`redis`.
+- Migration is **not atomic**: generating numbers while migrating can produce duplicates. Run it during a deployment or maintenance window, not during normal operation; the command asks for confirmation and warns about this.
+- The docs write the storage names as `SQL`/`Redis` (and `"Redis"` for `increment_storage`); the installed code only knows lowercase `mysql`/`redis`.
+- The docs' info box refers to `shopware.number_range.redis_url`; that key does not exist in the installed code — configure `config.connection` instead.
 
 ## Version notes
 
-- Before 6.6.8.0 the docs configured `increment_storage: "Redis"` with a direct Redis URL key; since 6.6.8.0 the storage references a named connection from `shopware.redis.connections`.
+- Before v6.6.8.0 the Redis DSN was set directly on the number range config (`increment_storage: "Redis"` plus `redis_url`). Since v6.6.8.0 Redis is configured via named `shopware.redis.connections` referenced by `number_range.config.connection`; 6.7.15.1 supports only the latter.
 
-## Code check (6.7.13.0)
-- absent `shopware.number_range.redis_url` — not defined anywhere in the installed code; use `shopware.number_range.config.connection`
-- corrected `increment_storage` — docs: `"Redis"`; enum values are `mysql`, `redis`, default `mysql` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:937
-- confirmed `config.connection` — required when `increment_storage` is `redis` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:950
-- confirmed `shopware.number_range.config.connection` — when null the Redis storage definitions are removed — vendor/shopware/core/System/DependencyInjection/CompilerPass/NumberRangeIncrementerCompilerPass.php:15
-- confirmed `number-range:migrate` — console command name — vendor/shopware/core/System/NumberRange/Command/MigrateIncrementStorageCommand.php:15
-- corrected `IncrementSqlStorage` — docs: `SQL` storage name; registered under storage key `mysql` — vendor/shopware/core/System/DependencyInjection/number_range.xml:39
-- confirmed `IncrementRedisStorage` — registered under storage key `redis` — vendor/shopware/core/System/DependencyInjection/number_range.xml:51
-- confirmed `IncrementStorageRegistry::migrate()` — copies each state from source to target storage — vendor/shopware/core/System/NumberRange/ValueGenerator/Pattern/IncrementStorage/IncrementStorageRegistry.php:36
-- confirmed `dsn` — required per entry of `shopware.redis.connections` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1592
-- unverified `volatile-lru` — Redis server setting, outside vendor/shopware
+## Code check (6.7.15.1)
+- absent `shopware.number_range.redis_url` — not defined in the installed config tree; use `config.connection`
+- corrected `increment_storage` — docs: `"Redis"`; enum values are `mysql`, `redis`, default `mysql` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:973
+- confirmed `config.connection` — required when `increment_storage` is `redis` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:986
+- confirmed `connections` — named Redis connections, `dsn` required — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1633
+- confirmed `number-range:migrate` — command with `from`/`to` arguments — vendor/shopware/core/System/NumberRange/Command/MigrateIncrementStorageCommand.php:16
+- corrected `IncrementSqlStorage` — docs: storage name `SQL`; registered as `mysql` — vendor/shopware/core/System/DependencyInjection/number_range.php:64
+- corrected `IncrementRedisStorage` — docs: storage name `Redis`; registered as `redis` — vendor/shopware/core/System/DependencyInjection/number_range.php:85
+- confirmed `shopware.number_range.config.connection` — Redis client built from this connection name — vendor/shopware/core/System/DependencyInjection/number_range.php:102

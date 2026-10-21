@@ -1,30 +1,32 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/adding-directives.md
-title: Using Directives
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/mixins-directives/adding-directives.html
+id: platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/adding-directives.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md
 sourceHash: 1f0cf9d176da2ac9057a4900e8bdc08c651f1115
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Directive.register", "Shopware.Directive", "directives", "v-focus", "custom directive", "global directive", "local directive", "mounted", "Component.register", "main.js", "vue 3"]
-summary: "Register Administration directives globally via Shopware.Directive.register (imported in main.js) or locally in a component's directives option."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/mixins-directives/adding-directives.html
+title: Using Directives
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["directive", "Directive.register", "Shopware.Directive", "v-focus", "directives", "custom directive", "global directive", "local directive", "mounted", "inserted", "DirectiveFactory", "vue 3"]
+summary: Register Administration Vue directives globally with Shopware.Directive.register or locally via a component's directives option; 6.7 uses Vue 3 hooks.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to register custom Vue directives in the Shopware 6 Administration, either globally through the directive registry on the [Shopware object](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md) or locally on a single component.
+Directives in the Administration work as in any Vue application. The guide shows two scopes: global registration through the Shopware object's directive registry, and local registration on a single component.
 
 ## When to use
 
-A plugin needs custom DOM behaviour on elements (the example focuses an input when it appears) — globally for many components, or scoped to one component.
+You need custom DOM behavior (e.g. focusing an input) in Administration templates of your plugin. The registry lives on the global object, see [The Shopware object](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md).
 
 ## Key steps / config
 
-**Global** — e.g. `<plugin-root>/src/Resources/app/administration/app/src/directive/focus.js`, then import that file in your `main.js`:
+Global registration, e.g. in `<plugin-root>/src/Resources/app/administration/app/src/directive/focus.js`, then import that file in your `main.js`:
 
-```js
+```javascript
 const { Directive } = Shopware;
 
 Directive.register('focus', {
@@ -34,9 +36,9 @@ Directive.register('focus', {
 });
 ```
 
-**Local** — on the component (`.../component/swag-basic-example/index.js`):
+Local registration on one component, e.g. `swag-basic-example`:
 
-```js
+```javascript
 Shopware.Component.register('swag-basic-example', {
     directives: {
         focus: {
@@ -46,28 +48,31 @@ Shopware.Component.register('swag-basic-example', {
 });
 ```
 
-**Use** in the component template (`swag-basic-example.html.twig`): an input element with the attribute `v-focus=""`.
+Use it in the component template as a normal Vue directive:
 
-At application start the Vue adapter hands every entry of the directive registry to the Vue app as a global directive; `Directive.getByName('focus')` reads one back.
+```html
+<input type="text" v-focus="">
+```
+
+The directive object is a Vue 3 directive (`ObjectDirective` or `FunctionDirective`), so the element-inserted hook is `mounted`.
 
 ## Essential identifiers
 
 - `Shopware.Directive.register(name, directive)`
 - `Shopware.Directive.getByName(name)`
-- `directives: {}` component option (local registration)
-- `v-focus` (usage of a directive named `focus`)
+- `directives` component option (local scope)
+- `v-focus` — usage of a directive registered as `focus`
+- `mounted` — Vue 3 directive hook
 
 ## Gotchas
 
-- The directive must be in the component's scope — registered globally or locally on that component — before it is used.
-- `Directive.register` returns `false` and logs a warning when the name is empty or already registered; the existing directive is kept.
-- The docs copy the Vue 2 example with the `inserted` hook. The 6.7 Administration runs Vue 3 directive hooks (`beforeMount`, `mounted`, `unmounted`); Shopware's own directives use `mounted`/`beforeMount`.
+- The directive must be in the component's scope — registered globally or locally on that component — or it cannot be used.
+- The source's example (copied from the Vue 2 docs) uses the `inserted` hook. The installed Administration types directives as Vue 3 directives, whose hooks are `created`/`beforeMount`/`mounted`/...; core directives such as `autofocus` use `mounted`.
+- Registering a name that already exists, or an empty name, only logs a warning and returns `false`; the existing directive stays.
 
-## Code check (6.7.13.0)
-- confirmed `Directive.register` — maps to DirectiveFactory.registerDirective — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:185
-- confirmed `Directive.getByName` — maps to DirectiveFactory.getDirectiveByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:186
-- confirmed `registerDirective` — returns false with warning on empty or duplicate name — vendor/shopware/administration/Resources/app/administration/src/core/factory/directive.factory.ts:24
-- confirmed `initDirectives` — registry entries passed to the Vue app's directive() — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:712
-- corrected `mounted` — docs: Vue 2 `inserted` hook — vendor/shopware/administration/Resources/app/administration/src/app/directive/autofocus.directive.ts:6
-- confirmed `beforeMount` — Vue 3 hook used by the tooltip directive — vendor/shopware/administration/Resources/app/administration/src/app/directive/tooltip.directive.ts:581
-- confirmed `Component.register` — exposed on Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:130
+## Code check (6.7.15.1)
+- confirmed `Directive.register` — maps to DirectiveFactory.registerDirective — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:198
+- confirmed `Directive.getByName` — maps to DirectiveFactory.getDirectiveByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:199
+- confirmed `DirectiveFactory::registerDirective()` — accepts Vue FunctionDirective/ObjectDirective, rejects duplicate names — vendor/shopware/administration/Resources/app/administration/src/core/factory/directive.factory.ts:24
+- corrected `inserted` — docs: inserted hook; core directives use the Vue 3 `mounted` hook — vendor/shopware/administration/Resources/app/administration/src/app/directive/autofocus.directive.ts:6
+- confirmed `Component.register` — exposed on the Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:135

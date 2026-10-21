@@ -6,34 +6,32 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/plugin-fundamentals/add-custom-commands.html
 sourceHash: 37035ef67c9d345ed0f0d17e69b982267e4562c0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["console.command", "AsCommand", "Command", "bin/console", "services.php", "ExampleCommand", "swag:example", "cli command", "console command", "symfony console", "custom command", "execute"]
-summary: "Add a Symfony Console command to a Shopware plugin: service in services.php tagged console.command, class with AsCommand attribute."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["console.command", "AsCommand", "Command::SUCCESS", "bin/console", "services.php", "ExampleCommand", "swag:example", "execute", "cli command", "console command", "symfony console", "plugin command"]
+summary: Register a Symfony Console command in a Shopware 6.7 plugin via services.php tagged console.command, with an AsCommand class run through bin/console.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.md"]
 ---
 ## What it is
 
-Shopware CLI commands are plain Symfony Console commands. A plugin adds one by registering the command class as a service tagged `console.command`; it then shows up in `bin/console`.
+How to add a custom CLI command to a Shopware plugin. Shopware CLI commands are Symfony Console commands, so a plugin command follows the standard Symfony approach: a `Command` subclass registered as a service. Once registered, it is available via `bin/console` like any core command.
 
 ## When to use
 
-For manual or scripted CLI work in a plugin (maintenance, imports, one-off jobs). For recurring background work use a [scheduled task](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.md) instead.
+You want a plugin-specific maintenance, import or debug task that an operator runs from the shell (`bin/console <name>`), rather than through the Administration or on a schedule (for periodic work see [Adding a scheduled task](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.md)).
 
 ## Key steps / config
 
-1. Register the command in `<plugin root>/src/Resources/config/services.php` and tag it:
+1. Register the command as a service in the plugin's `src/Resources/config/services.php` and tag it `console.command`:
 
 ```php
 $services->set(Swag\BasicExample\Command\ExampleCommand::class)
     ->tag('console.command');
 ```
 
-2. Create the command class at `<plugin root>/src/Command/ExampleCommand.php`:
+2. Create the command class at `<plugin root>/src/Command/ExampleCommand.php`. Give it a name and description with the `#[AsCommand]` attribute, extend `Symfony\Component\Console\Command\Command`, and return an exit code from `execute()`:
 
 ```php
-namespace Swag\BasicExample\Command;
-
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -43,32 +41,28 @@ use Symfony\Component\Console\Output\OutputInterface;
 class ExampleCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
-    { $output->writeln('Hello from ExampleCommand'); return Command::SUCCESS; }
+    {
+        $output->writeln('Hello from ExampleCommand');
+        return Command::SUCCESS;
+    }
 }
 ```
 
 3. Run it with `bin/console swag:example`.
 
-The plugin base class (`Shopware\Core\Framework\Bundle::build()`) loads every `Resources/config/services.*` file next to the plugin class (XML, YAML or PHP loaders), so no extra wiring is needed beyond the service definition.
+Core commands in 6.7.15.1 follow the same pattern: `#[AsCommand(name: ..., description: ...)]` on a `Command` subclass, and a service definition tagged `console.command` in the bundle's DI config.
 
 ## Essential identifiers
 
-- `console.command` — service tag
-- `Symfony\Component\Console\Attribute\AsCommand` — name/description attribute
-- `Symfony\Component\Console\Command\Command` — base class; `execute()` returns `Command::SUCCESS`
-- `src/Resources/config/services.php` — service registration file
-- `bin/console` — CLI entry point
+- service tag `console.command`
+- `Symfony\Component\Console\Attribute\AsCommand`
+- `Symfony\Component\Console\Command\Command`, `Command::SUCCESS`
+- `execute(InputInterface $input, OutputInterface $output): int`
+- `src/Resources/config/services.php`, `bin/console`
 
-## Gotchas
-
-- Use a vendor prefix in the command name (the example uses `swag:`) to avoid collisions; core commands use prefixes such as `scheduled-task:`.
-- `execute()` must return an int exit code.
-
-## Code check (6.7.13.0)
-- confirmed `console.command` — tag applied to core command services — vendor/shopware/core/Framework/DependencyInjection/app.php:720
-- confirmed `AsCommand` — core commands use the same attribute — vendor/shopware/core/Framework/MessageQueue/Command/ScheduledTaskRunner.php:18
-- confirmed `Bundle::build()` — registers the bundle container files — vendor/shopware/core/Framework/Bundle.php:34
-- confirmed `Resources/config/services.*` — globbed and loaded with Xml/Yaml/Php loaders — vendor/shopware/core/Framework/Bundle.php:222
-- confirmed `scheduled-task:register` — example of a prefixed core command name — vendor/shopware/core/Framework/MessageQueue/Command/RegisterScheduledTasksCommand.php:13
-- unverified `Command::SUCCESS` — vendor/symfony/console, out of scope
-- unverified `Command::execute()` — vendor/symfony/console, out of scope
+## Code check (6.7.15.1)
+- confirmed `console.command` — tag used on core command service definitions — vendor/shopware/core/Framework/DependencyInjection/api.php:195
+- confirmed `AsCommand` — core commands declare name and description via the attribute — vendor/shopware/core/Framework/Event/Command/DebugDumpBusinessEventsCommand.php:15
+- confirmed `DebugDumpBusinessEventsCommand::execute()` — protected execute(InputInterface, OutputInterface): int — vendor/shopware/core/Framework/Event/Command/DebugDumpBusinessEventsCommand.php:29
+- confirmed `Resources/config` — bundles load service definition files from this directory — vendor/shopware/core/Framework/Bundle.php:224
+- unverified `Command::SUCCESS` — Symfony Console constant, vendor/symfony out of scope

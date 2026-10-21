@@ -1,64 +1,60 @@
 ---
 id: platform/hubs/dependency-injection.md
-title: dependency injection
-summary: "Symfony DI container usage across Shopware plugins, Administration, B2B Suite, and the XML-to-PHP config migration."
-keywords: ["dependency injection", "symfony container", "services.xml", "services.php", "plugin services", "administration services", "bottlejs", "service decoration", "b2b suite", "autowiring", "constructor injection", "domain boundaries"]
-members: ["platform/dev/6.6/concepts/extensions/plugins-concept.md", "platform/dev/6.6/guides/plugins/plugins/administration/services-utilities/add-custom-service.md", "platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/add-custom-service.md", "platform/dev/6.6/guides/plugins/plugins/storefront/add-translations.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/_index.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/dependency-injection.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/overload-classes.md", "platform/dev/6.6/resources/guidelines/code/dependency-injection-dependency-handling.md", "platform/dev/6.6/resources/references/adr/2023-05-16-symfony-dependency-management.md", "platform/dev/6.7/concepts/extensions/plugins-concept.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/_index.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/add-custom-service.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md", "platform/dev/6.7/guides/plugins/plugins/architecture/_index.md", "platform/dev/6.7/guides/plugins/plugins/architecture/dependency-injection-dependency-handling.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/_index.md", "platform/dev/6.7/guides/plugins/plugins/services/_index.md", "platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/_index.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/dependency-injection.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/overload-classes.md", "platform/dev/6.7/resources/references/adr/2026-07-30-migrate-container-configuration-from-xml-to-php.md"]
-lastBuilt: 2026-09-15
+title: "dependency injection"
+summary: "Navigation hub for dependency injection in Shopware plugins, the Administration (BottleJS) and the B2B Suite, across 6.6 and 6.7."
+keywords: ["dependency injection", "service container", "services.xml", "services.php", "autowiring", "service decoration", "constructor injection", "bottlejs", "b2b suite", "plugin services", "xml to php", "symfony"]
+members: ["platform/dev/6.6/concepts/extensions/plugins-concept.md", "platform/dev/6.6/guides/plugins/plugins/administration/services-utilities/add-custom-service.md", "platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/add-custom-service.md", "platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/dependency-injection.md", "platform/dev/6.6/guides/plugins/plugins/storefront/add-translations.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/_index.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/dependency-injection.md", "platform/dev/6.6/products/extensions/b2b-suite/guides/core/overload-classes.md", "platform/dev/6.6/resources/guidelines/code/dependency-injection-dependency-handling.md", "platform/dev/6.6/resources/references/adr/2023-05-16-symfony-dependency-management.md", "platform/dev/6.7/concepts/extensions/plugins-concept.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/add-custom-service.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/extending-services.md", "platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md", "platform/dev/6.7/guides/plugins/plugins/architecture/_index.md", "platform/dev/6.7/guides/plugins/plugins/architecture/dependency-injection-dependency-handling.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/services/_index.md", "platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/_index.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/dependency-injection.md", "platform/dev/6.7/products/extensions/b2b-suite/guides/core/overload-classes.md", "platform/dev/6.7/resources/references/adr/2026-07-30-migrate-container-configuration-from-xml-to-php.md"]
+lastBuilt: 2026-10-21
 ---
 
-This hub covers how Shopware wires dependencies: plugins as Symfony bundles registering
-services into the platform's DI container, Administration services registered via BottleJS,
-PHP-service (and legacy XML-service) registration in plugins, B2B Suite's own DIC layer, and
-the core-vs-storefront domain boundary rule for what may be injected. Come here instead of
-grepping `services.xml`/`services.php` directly when you need to decide *where* and *how* to
-register or override a service, or when to add a custom Administration service.
+# Dependency injection
 
-Cross-version/lifecycle note: plugin service registration moved from XML (`services.xml`) to
-PHP (`services.php`) between 6.6 and 6.7. The 6.7 ADR below documents that plugin XML config
-is deprecated in 6.7 and removed in 6.8; the installed 6.7.13.0 codebase still mixes XML and
-PHP. Use the 6.7 `services/add-custom-service.md`/`services/dependency-injection.md` pages
-for new plugin work; the 6.6 `plugin-fundamentals/add-custom-service.md` page documents the
-older XML-based approach still valid for 6.6.
+This hub covers how services are registered, injected, decorated and overridden: PHP services in plugins (Symfony service container), Administration services (BottleJS container), and the B2B Suite's own container setup. Come here to pick the right page for the version and layer you work in. Note the lifecycle change: in 6.7 plugin service registration is documented via `services.php`, and the ADR on migrating container configuration from XML to PHP states that plugin XML service/route/package config is deprecated in 6.7 and removed in 6.8. The 6.6 pages use `services.xml`.
 
-## Plugin & container concepts
+## 6.6
 
-- [Plugins](platform/dev/6.6/concepts/extensions/plugins-concept.md) — 6.6: plugins are Symfony bundles extending the Plugin base class, packaged as Composer packages, not usable on Shopware cloud.
-- [Plugins](platform/dev/6.7/concepts/extensions/plugins-concept.md) — 6.7 version of the same plugin concept page; near-duplicate of the 6.6 entry above with no substantive DI differences noted.
-- [Migrate container configuration from XML to PHP](platform/dev/6.7/resources/references/adr/2026-07-30-migrate-container-configuration-from-xml-to-php.md) — ADR: platform DI/route config moves from XML to PHP; plugin XML config deprecated in 6.7, removed in 6.8.
-- [Symfony Dependency Management](platform/dev/6.6/resources/references/adr/2023-05-16-symfony-dependency-management.md) — ADR: Shopware enables Symfony autowiring and PHP-based service configuration, attributes reserved for framework glue code.
+Plugin PHP services (`services.xml`):
+- [Plugins](platform/dev/6.6/concepts/extensions/plugins-concept.md) — plugins extend Symfony bundles, run inside the Core process, ship as Composer packages.
+- [Add custom service](platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/add-custom-service.md) — register a PHP service class via `services.xml` in the Symfony DI container.
+- [Dependency injection](platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/dependency-injection.md) — inject a service with an argument `type=service` and constructor injection, e.g. `SystemConfigService`.
+- [Add translations](platform/dev/6.6/guides/plugins/plugins/storefront/add-translations.md) — snippet files and using the translator service in Twig, controllers and PHP.
 
-## Registering plugin services (6.6, XML)
+Administration services:
+- [Adding Services](platform/dev/6.6/guides/plugins/plugins/administration/services-utilities/add-custom-service.md) — register, inject and decorate a custom Administration service via BottleJS.
 
-- [Add custom service](platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/add-custom-service.md) — register a custom PHP service class via a `services.xml` file in the Symfony DI container.
+Guidelines and ADR:
+- [Dependency Injection & Dependency Handling](platform/dev/6.6/resources/guidelines/code/dependency-injection-dependency-handling.md) — Core code must not access the PHP session; that belongs in Storefront.
+- [Symfony Dependency Management](platform/dev/6.6/resources/references/adr/2023-05-16-symfony-dependency-management.md) — ADR enabling autowiring and PHP-based service configuration.
 
-## Registering plugin services (6.7, PHP)
+B2B Suite:
+- [Core](platform/dev/6.6/products/extensions/b2b-suite/guides/core/_index.md) — index of B2B Suite Core features.
+- [Dependency injection](platform/dev/6.6/products/extensions/b2b-suite/guides/core/dependency-injection.md) — per-component `DependencyInjectionConfiguration` and `B2BContainerBuilder`.
+- [Overloading classes](platform/dev/6.6/products/extensions/b2b-suite/guides/core/overload-classes.md) — override a service id with a parent abstract service.
 
-- [Services](platform/dev/6.7/guides/plugins/plugins/services/_index.md) — index of plugin service guides: registering a custom service, dependency injection, and service decoration.
-- [Add Custom Service](platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md) — register a plugin service in `src/Resources/config/services.php` via `ContainerConfigurator`, autowire/autoconfigure or an explicit `set()` declaration.
-- [Dependency Injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md) — inject a service (e.g. `SystemConfigService`) into a plugin service via constructor, using autowiring or explicit `args([service(...)])` in `services.php`.
-- [Plugin Fundamentals](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/_index.md) — router for plugin basics including services, events, and migrations.
-- [Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md) — roadmap of 6.7 plugin development steps with links to focused guides, scaffolding via `plugin:create`.
+## 6.7
 
-## Domain boundaries (Core vs. Storefront)
+Plugin PHP services (`services.php`):
+- [Plugins](platform/dev/6.7/concepts/extensions/plugins-concept.md) — plugin concept; Symfony bundles extending `Shopware\Core\Framework\Plugin`.
+- [Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md) — ordered plugin development flow including services.
+- [Services](platform/dev/6.7/guides/plugins/plugins/services/_index.md) — index: custom services, injection, decoration.
+- [Add Custom Service](platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md) — register via `src/Resources/config/services.php`, autowire/autoconfigure or `set()`.
+- [Dependency Injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md) — constructor injection, autowired or `->args([service(...)])`.
 
-- [Dependency Injection & Dependency Handling](platform/dev/6.6/resources/guidelines/code/dependency-injection-dependency-handling.md) — 6.6 guideline: Core domain code must not access the PHP session; session data handling belongs in the Storefront domain.
-- [Dependency Injection & Dependency Handling](platform/dev/6.7/guides/plugins/plugins/architecture/dependency-injection-dependency-handling.md) — 6.7 architecture rule: Core services are stateless and constructor-injected, never use PHP session or request; sessions stay in Storefront.
-- [Plugin Architecture](platform/dev/6.7/guides/plugins/plugins/architecture/_index.md) — index of mandatory 6.7 plugin architecture rules covering cart, rule system, page loaders, events and dependency injection.
-- [Add translations](platform/dev/6.6/guides/plugins/plugins/storefront/add-translations.md) — Storefront snippet structure and using the injected translator service (`trans` filter/method, `TranslatorInterface`) in Twig, controllers and PHP.
+Architecture rules:
+- [Plugin Architecture](platform/dev/6.7/guides/plugins/plugins/architecture/_index.md) — index of mandatory plugin architecture rules.
+- [Dependency Injection & Dependency Handling](platform/dev/6.7/guides/plugins/plugins/architecture/dependency-injection-dependency-handling.md) — Core vs Storefront boundaries; no session or request access in Core services.
 
-## Administration services (BottleJS)
+Administration services:
+- [Adding Services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/add-custom-service.md) — register a service in the BottleJS container, add middleware or decorators.
+- [Extending Services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/extending-services.md) — decorate or add middleware to existing services via `Shopware.Application`.
+- [Injecting Services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md) — use a service in a Vue component through `inject`.
 
-- [Adding Services](platform/dev/6.6/guides/plugins/plugins/administration/services-utilities/add-custom-service.md) — register, inject, and decorate a custom Administration service via BottleJS in 6.6.
-- [Services and Utilities](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/_index.md) — index of 6.7 Administration guides: registering, injecting, extending services, filters, sanitizer, user feedback.
-- [Adding Services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/add-custom-service.md) — 6.7 version: register with `Shopware.Service().register`, inject via `Shopware.Application.getContainer`, add BottleJS middleware/decorators.
-- [Injecting Services](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/injecting-services.md) — how Administration services (BottleJS DI container) are injected into Vue components via the `inject` property, e.g. `repositoryFactory`.
+ADR:
+- [Migrate container configuration from XML to PHP](platform/dev/6.7/resources/references/adr/2026-07-30-migrate-container-configuration-from-xml-to-php.md) — XML service/route config deprecated in 6.7, removed in 6.8.
 
-## B2B Suite DI layer
+B2B Suite:
+- [Core](platform/dev/6.7/products/extensions/b2b-suite/guides/core/_index.md) — index of B2B Suite Core guides.
+- [Dependency injection](platform/dev/6.7/products/extensions/b2b-suite/guides/core/dependency-injection.md) — registration in a plugin's `build()` method; service tags.
+- [Overloading classes](platform/dev/6.7/products/extensions/b2b-suite/guides/core/overload-classes.md) — override a service id or its class parameter and set the abstract parent.
 
-- [Core](platform/dev/6.6/products/extensions/b2b-suite/guides/core/_index.md) — index of B2B Suite Core component features including DI, REST API, CRUD, audit log.
-- [Dependency injection](platform/dev/6.6/products/extensions/b2b-suite/guides/core/dependency-injection.md) — B2B Suite initializes its Symfony DIC per component via `DependencyInjectionConfiguration` and `B2BContainerBuilder`.
-- [Overloading classes](platform/dev/6.6/products/extensions/b2b-suite/guides/core/overload-classes.md) — override a service id with a parent abstract service instead of using events/hooks (e.g. `b2b_role.repository`).
-- [Core](platform/dev/6.7/products/extensions/b2b-suite/guides/core/_index.md) — 6.7 version of the same B2B Suite Core index; near-duplicate of the 6.6 entry.
-- [Dependency injection](platform/dev/6.7/products/extensions/b2b-suite/guides/core/dependency-injection.md) — 6.7 version, adds `ContactFrameworkConfiguration`/`registerConfigurations` details to the same DIC mechanism.
-- [Overloading classes](platform/dev/6.7/products/extensions/b2b-suite/guides/core/overload-classes.md) — 6.7 version: same override mechanism, documents `*_abstract` and `*_class` parameter forms.
+The 6.6 and 6.7 pages with the same titles (Plugins, Adding Services, Dependency injection, Core, Overloading classes) cover the same topics for their respective versions; the 6.7 plugin pages use `services.php` instead of `services.xml`.

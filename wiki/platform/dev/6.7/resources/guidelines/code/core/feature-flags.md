@@ -5,80 +5,84 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/core/feature-flags.html
-sourceHash: 457e651ff1e7b94ecbe4fee00a22c7d5fbebcdaa
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["feature flag", "feature toggle", "major flag", "FEATURE_ALL", "Feature::isActive", "Feature::ifActive", "Feature::triggerDeprecationOrThrow", "Feature::skipTestIfActive", "DisabledFeatures", "feature.yaml", "breaking change", "deprecation", "v6.8.0.0", "feature.isActive", "twig feature()"]
-summary: "Feature flags: .env toggles, FEATURE_ALL modes, Feature::isActive/ifActive/triggerDeprecationOrThrow, DisabledFeatures in unit tests, admin and Twig usage."
-lastBuilt: 2026-09-15
+sourceHash: e90f53d27c255849ff7c0162af4ebc2aa3f9adad
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["feature flags", "feature toggle", "major flag", "FEATURE_ALL", "V6_8_0_0", "Feature::isActive", "Feature::triggerDeprecationOrThrow", "silentUntil", "shopware.feature", "feature.yaml", "DisabledFeatures", "Feature::skipTestIfActive", "BCChange", "deprecation", "feature.helper"]
+summary: "Core guideline for Shopware feature flags: .env activation, FEATURE_ALL modes, service tags, Feature helpers in PHP, tests, admin, storefront and plugins."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Core guideline on feature flags: code hidden behind a flag can be merged to trunk before it is finished, and major flags (`v6.8.0.0` style) let breaking changes land early without being active. Covers toggling flags, using them in PHP, tests, administration, storefront and plugins.
+The Shopware core coding guideline for feature flags: code hidden behind a flag can be merged into trunk before it is finished, which is how breaking changes for the next major are merged early without being active. Major flags (e.g. `v6.5.0.0`, `v6.8.0.0`) stay registered after their release, so plugins can also use them as a version switch instead of `version_compare`.
 
 ## When to use
 
-When adding or guarding a breaking change, writing tests that depend on a flag state, hiding admin modules/config fields behind a flag, or making a plugin support several Shopware majors.
+- You prepare a breaking change or deprecation for the next major in core or a plugin.
+- You need to run, test or pin code paths for a specific flag state (PHP, tests, administration, storefront, `config.xml`).
 
 ## Key steps / config
 
-**Toggle a flag** in `.env`; dots are not allowed in env names, so use underscores:
+**Activate a flag** in `.env`; dots become underscores: `V6_5_0_0=1`. An explicit env value always wins over `FEATURE_ALL`. In 6.7.15.1, `FEATURE_ALL` has modes: any truthy value (`1`, `minor`) enables non-major flags; `FEATURE_ALL=major` enables major flags; `FEATURE_ALL=v6.8.0.0` enables only major flags arriving in that major or earlier.
+
+**Registering a flag** in core `feature.yaml` (installed shape, `major` is a boolean):
+
+```yaml
+      - name: v6.8.0.0
+        default: false
+        major: true
+        toggleable: false
 ```
-V6_5_0_0=1
+
+**Services**: tag a service with `shopware.feature` and a required `flag` attribute; `FeatureFlagCompilerPass` removes the definition while that flag is inactive.
+
+**PHP helpers** (`Shopware\Core\Framework\Feature`), always with the four-part ID (`v6.8.0.0`; the three-part `tag:v6.8.0` is the deprecation release label):
+
+- `Feature::isActive('v6.5.0.0')` — put the old behaviour inside `if (!Feature::isActive(...))` so the flag is easy to remove later.
+- `Feature::ifActive('v6.5.0.0', function () { ... })`, `Feature::ifNotActive(...)`.
+- `Feature::triggerDeprecationOrThrow('v6.5.0.0', $message)` — throws when the flag is active, otherwise emits a deprecation; silence internal legacy calls with `Feature::silent($flag, $closure)`.
+- Announce a deprecation whose replacement ships behind a later major with `silentUntil`:
+
+```php
+Feature::triggerDeprecationOrThrow(
+    'v6.9.0.0',
+    Feature::deprecatedMethodMessage(self::class, __METHOD__, 'v6.9.0.0', 'getDocumentFiles()'),
+    silentUntil: 'v6.8.0.0',
+);
 ```
-**Groups via `FEATURE_ALL`** (as implemented in `Shopware\Core\Framework\Feature::isActive()`):
-- `1`, `minor`, or any truthy value except `false` → all non-major flags.
-- `major` (`Feature::ALL_MAJOR`) → all major flags.
-- A flag set explicitly in the environment always wins over `FEATURE_ALL`.
-- Otherwise the flag's `default` from `feature.yaml` applies (`name`, `default`, `major`, `toggleable` keys).
 
-**PHP** (`use Shopware\Core\Framework\Feature;`):
-- `Feature::isActive('v6.5.0.0')` — condition; put the old behaviour inside the `if (!Feature::isActive(...))` block so removal is easy.
-- `Feature::ifActive('v6.5.0.0', function () use ($request) { ... })` / `Feature::ifNotActive(...)` — closure form.
-- `Feature::triggerDeprecationOrThrow('v6.5.0.0', 'Class is deprecated, use ... instead')` — throws if the major flag is active (or unknown when flags are registered), otherwise emits a deprecation.
+Until `v6.8.0.0` is active the call returns silently; such a deprecation may name a major flag that is not registered yet.
 
-**Planning API changes**: annotate a planned break for the next major with a contract-change attribute (not `@deprecated`); for legacy uses detectable at runtime keep old behaviour and call `Feature::triggerDeprecationOrThrow()` only for the incompatible use. Framework-invoked methods are exempt. Use `vX.Y.Z` versions, parameter names without `$`, `::class` references.
+**Planned API breaks** use attributes from the `Shopware\Core\Framework\Deprecation\BCChange` namespace, e.g. `#[ParameterTypeNarrowing(version: 'v6.8.0', parameterName: 'id', newType: 'string')]` — not deprecations; the current API stays usable. For `BecomesAbstract`, `NewRequiredParameter`, `ParameterRemoval`, `ParameterTypeNarrowing` call `Feature::triggerDeprecationOrThrow()` only for the incompatible legacy use. Do not use `@deprecated reason:*` for this.
 
-**Tests**:
-- Unit suite (`Shopware\Tests\Unit\` namespace): the PHPUnit feature-flag test extension sets every registered flag active per test; disable flags with `#[DisabledFeatures(['v6.5.0.0'])]` (`Shopware\Core\Test\Annotation\DisabledFeatures`) rather than `Feature::fake()`.
-- Integration suite: flag state comes from the job; `#[DisabledFeatures]` there throws a runtime error. Use `Feature::skipTestIfActive('v6.5.0.0', $this)` / `Feature::skipTestIfInActive(...)`, also in `setUp()`.
+**Tests**: in unit tests current major flags are active; test legacy behaviour with `#[DisabledFeatures(['v6.5.0.0'])]` (`Shopware\Core\Test\Annotation\DisabledFeatures`) instead of `Feature::fake()`. The attribute has no effect in the integration suite; use `Feature::skipTestIfActive('v6.5.0.0', $this)` / `Feature::skipTestIfInActive()` there (also in `setUp()`).
 
-**Administration**:
-```javascript
-Module.register('sw-awesome', { flag: 'v6.5.0.0', ... });
-inject: ['feature'], // this.feature.isActive(flag)
-```
-Template: `v-if="feature.isActive('v6.5.0.0')"`. In `config.xml`, an input field accepts a `flag` child element (`<flag>v6.5.0.0</flag>`).
+**Administration**: `Module.register('sw-awesome', { flag: 'v6.5.0.0', ... })`; in components `inject: ['feature']` and `this.feature.isActive(flag)`; in templates `v-if="feature.isActive('v6.5.0.0')"`. In `config.xml`, add a `flag` (attribute or `<flag>v6.5.0.0</flag>` element) to an `input-field`.
 
-**Storefront**: JS `import Feature from 'src/helper/feature.helper';` then `Feature.isActive('v6.5.0.0')`; Twig `{% if feature('v6.5.0.0') %}`.
-
-**Plugins**: major flags stay after release, so plugins can query them as a version switch instead of `version_compare`.
+**Storefront**: JS `import Feature from 'src/helper/feature.helper'` then `Feature.isActive('v6.5.0.0')`; Twig `{% if feature('v6.5.0.0') %}`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Feature`: `isActive`, `ifActive`, `ifNotActive`, `triggerDeprecationOrThrow`, `skipTestIfActive`, `skipTestIfInActive`, `fake`, `getAll`
-- `FEATURE_ALL`, `Feature::ALL_MAJOR`, `feature.yaml`
+- `Shopware\Core\Framework\Feature` — `isActive`, `ifActive`, `ifNotActive`, `silent`, `triggerDeprecationOrThrow`, `deprecatedMethodMessage`, `skipTestIfActive`, `skipTestIfInActive`, `fake`
+- `FEATURE_ALL`, `V6_8_0_0`, `feature.yaml`
+- service tag `shopware.feature`, `FeatureFlagCompilerPass`
 - `Shopware\Core\Test\Annotation\DisabledFeatures`
-- Twig function `feature`; admin service `feature`; `src/helper/feature.helper`
+- Twig function `feature()`, storefront `src/helper/feature.helper`
 
 ## Gotchas
 
-- `Feature::ifActiveCall()` from the source does not exist; use `Feature::ifActive()` with a closure.
-- Own plugin flags: the source's `Feature::setRegisteredFeatures()` does not exist. The installed API is `Feature::registerFeature()` / `Feature::registerFeatures()`, both marked `@internal` — the source itself warns this may break at any time.
-- The source says plugin suites can extend `#[DisabledFeatures]` handling via `FeatureFlagExtension::addTestNamespace()`; the code-index scan flagged `addTestNamespace` absent, although a static method of that name is declared on the PHPUnit `FeatureFlagExtension` class — verify before relying on it.
-- The planned-change attributes (`ParameterTypeNarrowing`, `CallSiteCompatibilityChange`, `ExtenderCompatibilityChange`, `BecomesAbstract`, `NewRequiredParameter`, `ParameterRemoval`, `NewOptionalParameter`) under `Shopware\Core\Framework\Deprecation\BCChange` are not in the installed 6.7.13.0 code.
+- Not in 6.7.15.1 (the docs describe newer trunk): `Feature::ifActiveCall()`, `Feature::throwIfActive()`, `FeatureFlagCompilerPass::ALIASES_TO_REMOVE`, `FeatureFlagExtension::addTestNamespace()`, the `shopware.inactiveFeature` tag, `#[ClassMoved]` with `ClassAliasRegistry::ALIASES`, and the `major: v6.8.0.0` sub-feature syntax.
+- Plugin flags via `Feature::setRegisteredFeatures()` do not exist in 6.7.15.1; the installed registration API is `Feature::registerFeature()`/`registerFeatures()`, marked `@internal`. The docs already call plugin flags internal and breakable.
+- Do not branch on `Feature::isActive()` in a PHP service configuration file — it runs before the feature registry is initialized.
+- `FEATURE_ALL=1` is not a release state; it also activates unrelated experimental features.
 
-## Version notes
-
-- Trunk-era text (two majors in flight, `FEATURE_ALL=v6.8.0.0` per-major lanes, a `majorVersion` key in `feature.yaml`) is not implemented in 6.7.13.0: `Feature::isActive()` knows only truthy/`major` modes, and the integration-major job runs with `FEATURE_ALL=major`.
-
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\Deprecation\BCChange` — attribute namespace not in installed code
-- absent `ifActiveCall` — no such Feature method; closure-based ifActive exists
-- absent `setRegisteredFeatures` — installed API is the internal registerFeatures
-- absent `addTestNamespace` — flagged by index scan; a static method of this name is declared on the PHPUnit FeatureFlagExtension
-- unverified `majorVersion` — feature.yaml key; no reader found in installed core, trunk-only per source
-- corrected `FEATURE_ALL` — docs: `v6.8.0.0` value selects major flags up to that version; code has only truthy/major modes — vendor/shopware/core/Framework/Feature.php:145
-- confirmed `Feature::ifActive()` — runs closure when flag active — vendor/shopware/core/Framework/Feature.php:178
-- confirmed `Feature::triggerDeprecationOrThrow()` — throws when major flag active — vendor/shopware/core/Framework/Feature.php:267
-- confirmed `Feature::skipTestIfActive()` — marks test skipped when flag active — vendor/shopware/core/Framework/Feature.php:247
-- confirmed `DisabledFeatures` — final attribute class with features array — vendor/shopware/core/Test/Annotation/DisabledFeatures.php:12
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Framework\Deprecation\BCChange\ClassMoved` — no such attribute in the installed BCChange namespace
+- absent `ifActiveCall` — Feature has ifActive/ifNotActive only
+- absent `setRegisteredFeatures` — installed API is registerFeature/registerFeatures (@internal)
+- absent `ALIASES_TO_REMOVE` — FeatureFlagCompilerPass only handles the shopware.feature tag
+- absent `throwIfActive` — not a Feature method in 6.7.15.1
+- absent `addTestNamespace` — not on the PHPUnit FeatureFlagExtension
+- absent `shopware.inactiveFeature` — no compiler pass or tag handling for it
+- confirmed `shopware.feature` — tagged services removed while flag inactive — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/FeatureFlagCompilerPass.php:22
+- corrected `FEATURE_ALL` — docs: any truthy value enables every flag; code: truthy = minor flags, major/v6.8.0.0 = major flags — vendor/shopware/core/Framework/Feature.php:131
+- corrected `major` — docs: omit for majors, sub-feature major: v6.8.0.0; installed feature.yaml uses boolean major: true — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:18

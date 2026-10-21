@@ -6,79 +6,82 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/extensions/code-structure.html
 sourceHash: 33e6790c632ffb096449d23966cef542bc7833c1
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["code structure", "extension type", "shopware-platform-plugin", "shopware-bundle", "bundle", "static plugin", "managed plugin", "store plugin", "app", "theme", "plugin dependency", "theme inheritance", "upgrade", "psr-4"]
-summary: Choosing Shopware extension types (bundle, static/managed plugin, app, theme) and structuring code, shared foundations and dependencies for easier upgrades.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/bundle.md", "platform/dev/6.7/guides/plugins/apps/app-base-guide.md", "platform/dev/6.7/guides/plugins/themes/theme-base-guide.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["code structure", "extension type", "shopware-platform-plugin", "shopware-bundle", "bundle", "static plugin", "managed plugin", "store plugin", "app", "theme", "psr-4", "plugin dependency", "theme inheritance", "upgrade friction", "shared foundation"]
+summary: Guidelines for choosing an extension type (bundle, static/managed plugin, app, theme) and structuring code, dependencies and shared foundations for upgrades.
+lastBuilt: 2026-10-20
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/bundle.md
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
+  - platform/dev/6.7/guides/plugins/apps/app-base-guide.md
+  - platform/dev/6.7/guides/plugins/themes/theme-base-guide.md
 ---
 ## What it is
 
-Guidance on picking the right Shopware extension type and structuring its code (projects/bundles, plugins, apps, themes, shared foundations) so that upgrades touch as little as possible.
+Structural guidelines for Shopware extensions: which extension type to pick, how to lay out bundles, plugins and apps, and how to organise shared functionality across an extension family so upgrades stay cheap.
 
 ## When to use
 
-When starting a new extension or restructuring existing ones: choosing between bundle, plugin, app, or theme, laying out folders and namespaces, or deciding where shared code and dependencies should live.
+When starting a new extension, deciding between bundle / plugin / app / theme, or restructuring a set of related extensions that share logic.
 
 ## Key steps / config
 
 ### Shared patterns
 
-- Namespaces follow PSR-4 and match folder names. Avoid deep nesting that hides ownership.
-- Centralize configuration defaults and document override points. Use environment variables only in the project layer, never in Store plugins.
-- Ship a short README with purpose, install/update steps and known constraints.
+- Match PSR-4 namespaces to folder names; avoid deep nesting that hides ownership.
+- Centralise configuration defaults and document override points. Environment variables belong in the project layer only, not in Store plugins.
+- Ship a brief README per extension: purpose, install/update steps, known constraints.
 
 ### Choose the extension type
 
-| Type | Use when |
+| Type | Use for |
 |---|---|
-| Custom project/bundle | Bespoke installation you fully control ([bundle guide](platform/dev/6.7/guides/plugins/plugins/bundle.md)) |
-| Static plugin | Project-specific plugin, the recommended option ([plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) |
-| Managed plugin | Same layout, hardened for Store review: strict metadata, no project hacks, testable, BC guarantees ([plugins overview](platform/dev/6.7/guides/plugins/plugins/_index.md)) |
-| App | Cannot host PHP in the shop, or need SaaS-style isolation ([app base guide](platform/dev/6.7/guides/plugins/apps/app-base-guide.md)) |
-| Theme | Storefront visual customization only ([theme base guide](platform/dev/6.7/guides/plugins/themes/theme-base-guide.md)) |
+| Custom project/bundle | Bespoke installations you fully control — see platform/dev/6.7/guides/plugins/plugins/bundle.md |
+| Static plugin | Project-specific plugins; the recommended option — start from platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md |
+| Managed plugin | Same layout, hardened for Store review: strict metadata, no project-only hacks, testability, BC guarantees — see platform/dev/6.7/guides/plugins/plugins/_index.md |
+| App | No PHP hosting in the shop, or SaaS-style isolation — see platform/dev/6.7/guides/plugins/apps/app-base-guide.md |
+| Theme | Visual Storefront customisation only — see platform/dev/6.7/guides/plugins/themes/theme-base-guide.md |
 
 ### Project/bundle structure
 
-- Keep domain logic in bundles (not templates or controllers) and expose it via dependency injection.
-- Use the Composer package type consistently and align namespaces with the bundle name. Core discovers plugins by the Composer type `shopware-platform-plugin`. The docs also name `shopware-bundle`.
-- Put integration points (events, DAL extensions, decorators) behind service classes.
+- Keep domain logic in bundles, not templates or controllers; expose services via dependency injection.
+- Use Composer `type: shopware-platform-plugin` (the type the plugin finder scans for) or `shopware-bundle` consistently; align namespaces with the bundle name.
+- Isolate integration points (events, DAL extensions) behind service classes.
 
 ### Plugin structure
 
-- Start from the default plugin skeleton. No bespoke autoloaders or custom entrypoints.
-- Keep configuration, migrations, administration and storefront assets in their default folders. A `Shopware\Core\Framework\Plugin` extends `Shopware\Core\Framework\Bundle`, which by default expects migrations in the `<BundleNamespace>\Migration` namespace and routes/config under `Resources/config`.
-- Put schema changes in migrations, and make install/update code idempotent.
-- Store plugins must not assume hostnames, queues, cron timing or file access. Document requirements and provide safe fallbacks.
+- Start from the default plugin skeleton; no bespoke autoloaders or custom entrypoints.
+- Keep configuration, migrations, administration and storefront assets in their default folders (the base `Bundle` class resolves migrations to the `<namespace>\Migration` namespace and matching folder by default).
+- Encapsulate schema changes in migrations; install/update code must be idempotent.
+- Store plugins: no hard project assumptions (hostnames, queues, cron timing, file access); document requirements and provide fallbacks.
 
 ### App structure
 
-- Keep the manifest minimal and explicit: permissions, webhooks, actions and extensions match documented entrypoints.
-- Separate the app backend (API/webhook handlers) from UI assets. Avoid stateful coupling to the shop runtime and design for multi-tenant hosting.
+- Minimal, explicit manifest: permissions, webhooks, actions and extensions match the documented entrypoints.
+- Separate the app backend (API/webhook handlers) from UI assets; design for multi-tenant hosting without stateful coupling to the shop runtime.
 
-### Shared foundations
+### Shared foundations and upgrades
 
-- Move logic into a shared foundation only when several extensions really need it. Keep dependent plugins and themes thin.
-- Declare a [plugin dependency](platform/dev/6.7/guides/plugins/plugins/dependencies/add-plugin-dependencies.md) when a plugin cannot work without the foundation.
-- Use [theme inheritance](platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md) for shared styling instead of coupling themes through business-logic plugins.
-- Draw the boundary around what changes together, not just what can be reused.
+- Put maintenance-heavy domain/integration logic in a shared foundation only when several extensions genuinely need it; keep dependent plugins/themes thin.
+- Declare a plugin dependency (platform/dev/6.7/guides/plugins/plugins/dependencies/add-plugin-dependencies.md) when a plugin cannot run without the foundation.
+- Prefer theme inheritance (platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inheritance.md) for shared presentation instead of coupling themes through business-logic plugins.
+- Keep related extensions in one repository with consistent tooling; keep events, decorators and DAL extensions behind service classes.
 
 ## Essential identifiers
 
-- `shopware-platform-plugin` — Composer `type` of a Shopware plugin
+- `shopware-platform-plugin` (Composer type for plugins)
+- `shopware-bundle` (Composer type for bundles)
 - `Shopware\Core\Framework\Plugin`, `Shopware\Core\Framework\Bundle`
-- `Bundle::getMigrationNamespace()` — defaults to `<namespace>\Migration`
 
 ## Gotchas
 
-- Every added dependency grows the set of version combinations to test during upgrades. Avoid dependency chains added only for convenience, and document the compatibility range of the ones you keep.
-- A shared foundation couples the release lifecycle of every extension that depends on it.
-- Spreading related logic across many independent plugins increases upgrade friction. Prefer one repository with consistent tooling for extensions maintained together.
+- Avoid dependency chains added only for convenience: each dependency multiplies the version combinations to test during upgrades. Document the compatibility range of dependencies you keep.
+- A shared foundation couples the release lifecycle of its dependents — draw the boundary by what changes together, not by what can technically be reused.
+- The more surface area exposed to the platform, the more upgrade effort.
 
-## Code check (6.7.13.0)
-- confirmed `PluginFinder::COMPOSER_TYPE` — value is shopware-platform-plugin, used to detect plugin packages — vendor/shopware/core/Framework/Plugin/Util/PluginFinder.php:20
-- unverified `shopware-bundle` — not referenced in vendor/shopware core/storefront; handled by Composer tooling outside scope
-- confirmed `Plugin` — abstract class Plugin extends Bundle — vendor/shopware/core/Framework/Plugin.php:17
-- confirmed `Bundle` — abstract base of bundles, registers container file, migration path, filesystems, events — vendor/shopware/core/Framework/Bundle.php:32
-- confirmed `Bundle::getMigrationNamespace()` — default namespace suffix \Migration — vendor/shopware/core/Framework/Bundle.php:45
-- confirmed `Bundle::configureRoutes()` — imports routes from Resources/config — vendor/shopware/core/Framework/Bundle.php:78
+## Code check (6.7.15.1)
+- confirmed `PluginFinder::COMPOSER_TYPE` — composer type scanned for plugins is `shopware-platform-plugin` — vendor/shopware/core/Framework/Plugin/Util/PluginFinder.php:20
+- confirmed `Plugin` — plugin base class extends the Shopware `Bundle` — vendor/shopware/core/Framework/Plugin.php:17
+- confirmed `Bundle` — Shopware bundle base class extends Symfony's bundle — vendor/shopware/core/Framework/Bundle.php:33
+- confirmed `Bundle::getMigrationNamespace()` — defaults to `<bundle namespace>\Migration` — vendor/shopware/core/Framework/Bundle.php:46
+- unverified `shopware-bundle` — composer type not referenced in vendor/shopware/core PHP; handled by composer tooling outside the checked roots

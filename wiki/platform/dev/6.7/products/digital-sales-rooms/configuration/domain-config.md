@@ -6,47 +6,50 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/digital-sales-rooms/configuration/domain-config.html
 sourceHash: 5b2324969ce5402d7ca4e16eb043e52dff37b7f8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["digital sales rooms", "dsr", "domain configuration", "sales channel domain", "sales_channel_domain", "available domains", "language path", "frontend app domain", "de-DE", "en-US", "appointments", "redeploy"]
-summary: "Digital Sales Rooms domains: add the frontend app URL per language path to a sales channel, then select them as Available domains."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["digital sales rooms", "dsr", "domain configuration", "sales channel domain", "sales_channel_domain", "SalesChannelDomainDefinition", "frontend app domain", "language path", "available domains", "appointments", "multi-language domains"]
+summary: Adding the Digital Sales Rooms frontend app domains (one per language path) to a sales channel and selecting them as Available domains.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/digital-sales-rooms/configuration/plugin-config.md"]
 ---
 ## What it is
 
-How to register the domain(s) of the standalone *Digital Sales Rooms* (DSR) frontend app as sales channel domains, so the DSR plugin can use them. The frontend app always runs under its own specific domain (example from the docs: `https://dsr.shopware.io`).
+How to register the domains of the *Digital Sales Rooms* frontend app on a sales channel so the app can resolve the sales channel and switch languages by URL path.
 
 ## When to use
 
-- After deploying or starting the DSR frontend app server and before configuring appointments.
-- When adding a new language to DSR (languages are switched by URL path).
+After deciding whether Digital Sales Rooms runs on an existing or a new sales channel, and once the frontend app server has its own domain (for example `https://dsr.shopware.io`).
 
 ## Key steps / config
 
-1. Decide on the sales channel: the merchant can add DSR to an existing sales channel or to a new one, depending on the business use case.
-2. In that sales channel, open the *Domains* section and add the DSR domains, each with its language. DSR switches language by path, so use a path per language. Recommended layout:
+1. Choose the sales channel (existing or new, depending on the business case).
+2. In the sales channel's *Domains* section, add one domain per language. DSR switches language by path, so the path can represent the language. Recommended:
 
 ```text
-https://dsr.shopware.io - English
-https://dsr.shopware.io/de-DE - Deutsch
-https://dsr.shopware.io/en-US - English (US)
+https://dsr.shopware.io        - English
+https://dsr.shopware.io/de-DE  - Deutsch
+https://dsr.shopware.io/en-US  - English (US)
 ```
 
-3. In the DSR plugin configuration, section *Appointments*, select these domains under *Available domains* — see [Plugin Configuration](platform/dev/6.7/products/digital-sales-rooms/configuration/plugin-config.md).
-4. Redeploy or rerun the frontend app so the domain changes are applied.
+Each domain is a `sales_channel_domain` record; the installed entity requires `url` (max 255 chars), `salesChannelId`, `languageId`, `currencyId` and `snippetSetId`, so every DSR domain needs a language, currency and snippet set.
+3. Select these DSR domains as *Available domains* in the plugin configuration's Appointments block (see platform/dev/6.7/products/digital-sales-rooms/configuration/plugin-config.md).
+4. Redeploy or rerun the frontend app so it picks up the domain changes.
 
 ## Essential identifiers
 
-- Sales channel *Domains* section (stored as `sales_channel_domain` entities, each requiring `url` and `languageId`)
-- DSR plugin config *Appointments* > *Available domains*
+- `sales_channel_domain` / `SalesChannelDomainDefinition` — entity behind each domain
+- *Domains* section of the sales channel; *Available domains* (plugin config, Appointments)
 
 ## Gotchas
 
-- Domain changes are not picked up by a running frontend app — redeploy or restart it.
-- The *Available domains* select box lists domains of all sales channels; pick only the DSR domains.
+- Domain changes are not applied to a running frontend app; it must be redeployed or restarted.
+- Domains not added to the sales channel do not show up in the *Available domains* select box.
 
-## Code check (6.7.13.0)
-- confirmed `sales_channel_domain` — entity behind the sales channel Domains section — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:31
-- confirmed `url` — required URL field of a sales channel domain — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:63
-- confirmed `languageId` — every sales channel domain requires a language — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:65
-- unverified `Available domains` — DSR plugin config field; licensed plugin code not in vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `SalesChannelDomainDefinition` — entity definition for sales channel domains — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:32
+- confirmed `sales_channel_domain` — entity name — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:34
+- confirmed `url` — required StringField, length 255 — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:66
+- confirmed `languageId` — required FK to language — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:68
+- confirmed `currencyId` — required FK to currency — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:69
+- confirmed `snippetSetId` — required FK to snippet set — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:70
+- unverified `Available domains` — setting of the separate Digital Sales Rooms plugin; not in vendor/shopware core

@@ -6,41 +6,44 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/concept/line-item-list.html
 sourceHash: 455214969ca3845d4e5407714ac8f7585f3d933b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["LineItemList", "LineItemReference", "line item list", "product list", "order context", "audit logging", "b2b suite", "line item", "persistable product lists", "vouchers"]
-summary: B2B Suite LineItemList component - LineItemList and LineItemReference entities as a unified abstraction over Shopware cart, order and product data.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "LineItemList", "LineItemReference", "line item list", "product list", "order context", "shopping list", "audit log", "persistable list", "line items", "vouchers"]
+summary: "B2B Suite LineItemList component: LineItemList and LineItemReference entities abstract carts, orders and product lists behind an order context."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The LineItemList component is the central representation of product lists in the B2B Suite and is reused by many child components. Design goals:
+The LineItemList component is the central representation of product lists in the B2B Suite. It is used by many child components across the suite. Its design goals:
 
-- central abstraction of product lists
-- minimal knowledge and inheritance of Shopware core services and data structures
-- persistable product lists
-- guaranteed audit logging
+- a central abstraction of product lists;
+- minimal knowledge and inheritance of Shopware core services and data structures;
+- persistable lists of products;
+- guaranteed audit logging.
 
 ## When to use
 
-When working with any B2B Suite feature that handles lists of products (e.g. carts, orders, stored lists) and you need to understand which objects to depend on instead of Shopware's own cart/order structures.
+Read this when building or extending a B2B Suite component that handles product lists (carts, orders, saved lists) and you need to know which objects to depend on instead of Shopware's own cart/order structures.
 
 ## Key steps / config
 
-- The component's central entities are `LineItemList` and `LineItemReference`. A `LineItemReference` references a line item — usually a product, but any valid purchasable item (e.g. a voucher) is possible.
-- To work with the Shopware cart, order and product listing, `LineItemReference` objects can be populated from different Shopware entities. Each reference borrows data from Shopware data structures, but consumers depend only on `LineItemReference` and `LineItemList` for unified access — both for not-yet-ordered and for ordered lists.
-- Order-specific data is abstracted away through an order context object, which is either generated during the Shopware checkout process or created dynamically through the API.
-- Rule stated by the source: the B2B Suite may store or provide IDs without having an actual concept of what they refer to.
+- The component's two central entities are `LineItemList` and `LineItemReference`. A `LineItemReference` references a line item — usually a product, but it may be any other valid purchasable type (e.g. a voucher).
+- To work with the Shopware cart, order and product listing, `LineItemReference`s can be populated from different Shopware entities. A not-yet-ordered list and an ordered list borrow their data from different Shopware structures, but consumers depend only on `LineItemList` and `LineItemReference` for unified access.
+- The same pattern applies to the other data structures of the component: specific data is abstracted behind an **order context** object, which is either generated during the Shopware checkout or created dynamically through the API.
+- Rule stated by the docs: *the B2B Suite may store or provide IDs without having an actual concept of what they refer to.*
 
 ## Essential identifiers
 
-- `LineItemList` — B2B Suite product list entity
-- `LineItemReference` — reference to a single purchasable line item within a list
+- `LineItemList` — list container entity
+- `LineItemReference` — reference to a single purchasable line item
+- order context — object carrying order-specific data for a list
 
 ## Gotchas
 
-- `LineItemList` here is a B2B Suite entity, not a Shopware core class; Shopware core's own cart item class is `LineItem`, which the B2B structures only borrow data from.
+- Code against `LineItemList`/`LineItemReference`, not against the underlying Shopware cart or order objects; the abstraction is what keeps B2B components forward compatible.
+- Referenced IDs are opaque to the suite — do not expect it to resolve or validate what they point to.
 
-## Code check (6.7.13.0)
-- unverified `LineItemList` — B2B Suite extension not installed; no class of that name in vendor/shopware/core, storefront or administration
-- unverified `LineItemReference` — B2B Suite extension not installed; no match under vendor/shopware roots
-- confirmed `LineItem` — core cart line item class the B2B references draw data from — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:21
+## Code check (6.7.15.1)
+- unverified `LineItemList` — B2B Suite entity, no occurrence in vendor/shopware/{core,storefront,administration}
+- unverified `LineItemReference` — B2B Suite entity, not in the installed Shopware packages
+- confirmed `LineItem` — the Shopware cart line item the references borrow data from — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:21
+- confirmed `LineItem::PROMOTION_LINE_ITEM_TYPE` — non-product purchasable type (vouchers/promotions) in the core cart — vendor/shopware/core/Checkout/Cart/LineItem/LineItem.php:26

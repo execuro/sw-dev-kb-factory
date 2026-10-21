@@ -6,58 +6,69 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/advanced-search/How-to-modify-completion.html
 sourceHash: eb362bd1c0403dc68ebfe8ffcc4ef2b030757a65
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["CompletionDefinitionEnrichment", "enrichMapping", "enrichData", "advanced_search.completion", "config/packages/advanced_search.yaml", "AbstractElasticsearchDefinition", "StringField", "completion", "autocomplete", "search suggestions", "advanced search", "elasticsearch aggregations"]
-summary: "Advanced Search completion: inject CompletionDefinitionEnrichment into an ES definition and configure completion fields via advanced_search.completion"
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["advanced search", "completion", "autocomplete", "CompletionDefinitionEnrichment", "enrichMapping", "enrichData", "advanced_search.completion", "advanced_search.yaml", "AbstractElasticsearchDefinition", "elasticsearch", "search suggestions", "StringField"]
+summary: Add Advanced Search completion keywords to a custom Elasticsearch definition via CompletionDefinitionEnrichment and the advanced_search.completion config.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Advanced Search (SwagCommercial) does not use Elasticsearch's built-in completion suggester, which only supports a fixed order and needs a lot of storage. Instead it uses aggregations to find the most important word combinations for the search input. This page shows how to add completion keywords to your own Elasticsearch definition and how to configure which fields feed them.
+How the Commercial Advanced Search builds search completions and how to add or change the completion keywords for your own Elasticsearch definition. Advanced Search does not use the native Elasticsearch completion (fixed order only, high storage size); it uses aggregations to find the most important word combinations for the search input.
 
 ## When to use
 
-- A custom Elasticsearch definition should contribute completion keywords to the suggest dropdown.
-- You want to change which fields of an entity serve as completion keywords.
-- You need completion keywords from another source (static texts, external data).
+You have a custom Elasticsearch definition for Advanced Search and want its documents to contribute completion suggestions, or you want to change which fields of an entity feed the completion.
 
 ## Key steps / config
 
-1. Inject `Shopware\Commercial\AdvancedSearch\Domain\Completion\CompletionDefinitionEnrichment` into your ES definition, alongside the constructor arguments from the custom definition guide. The source's constructor also declares `private readonly array $languageAnalyzerMapping`.
-2. In `getMapping()`, merge the completion mapping into the properties:
-   ```php
-   return [
-       '_source' => ['includes' => ['id']],
-       'properties' => array_merge($properties, $this->completionDefinitionEnrichment->enrichMapping()),
-   ];
-   ```
-3. In `fetch()`, enrich the documents before returning them:
-   `return $this->completionDefinitionEnrichment->enrichData($this->getEntityDefinition(), $documents);`
-4. Configure the completion fields per entity through the container parameter `%advanced_search.completion%`, e.g. in `config/packages/advanced_search.yaml`:
-   ```yaml
-   advanced_search:
-       completion:
-           your_custom_entity:
-               - email
-               - company
-   ```
-5. For full control, decorate the `CompletionDefinitionEnrichment` service and override `enrichData`.
+1. **Inject the enrichment service** `Shopware\Commercial\AdvancedSearch\Domain\Completion\CompletionDefinitionEnrichment` into your ES definition (a subclass of `AbstractElasticsearchDefinition`) and call it in `getMapping` and `fetch`:
+
+```php
+public function getMapping(Context $context): array
+{
+    return [
+        '_source' => ['includes' => ['id']],
+        'properties' => array_merge($properties, $this->completionDefinitionEnrichment->enrichMapping()),
+    ];
+}
+
+public function fetch(array $ids, Context $context): array
+{
+    return $this->completionDefinitionEnrichment->enrichData($this->getEntityDefinition(), $documents);
+}
+```
+
+The source's constructor takes `EntityDefinition $definition`, `Connection $connection`, `AbstractSearchLogic $searchLogic`, `CompletionDefinitionEnrichment $completionDefinitionEnrichment` and `array $languageAnalyzerMapping`.
+
+2. **Choose the completion fields** with the container parameter `%advanced_search.completion%`, e.g. in `config/packages/advanced_search.yaml`:
+
+```yaml
+advanced_search:
+    completion:
+        your_custom_entity:
+            - email
+            - company
+```
+
+By default each of Shopware's ES definitions has a set of string fields configured as completion keywords. If no fields are configured for your definition, all `StringField`s of the entity definition are used.
+
+3. **Full control** (static texts from files, a field from another data source): decorate `\Shopware\Commercial\AdvancedSearch\Domain\Completion\CompletionDefinitionEnrichment::enrichData` instead.
 
 ## Essential identifiers
 
 - `Shopware\Commercial\AdvancedSearch\Domain\Completion\CompletionDefinitionEnrichment`
-- `CompletionDefinitionEnrichment::enrichMapping()`, `CompletionDefinitionEnrichment::enrichData()`
-- Parameter `%advanced_search.completion%`, config file `config/packages/advanced_search.yaml`
+- `CompletionDefinitionEnrichment::enrichMapping()` / `CompletionDefinitionEnrichment::enrichData()`
+- `%advanced_search.completion%` / `advanced_search.completion.<entity>` in `config/packages/advanced_search.yaml`
+- `AbstractElasticsearchDefinition::getMapping()` / `::fetch()`
 
 ## Gotchas
 
-- If no completion fields are configured for a definition, every `StringField` of that entity definition is used as a completion keyword.
-- Each of Shopware's own ES definitions already ships a default set of string fields. Adding config for those entities changes the defaults.
+- Without an `advanced_search.completion` entry for your entity, every `StringField` becomes a completion source.
 
-## Code check (6.7.13.0)
-- confirmed `Shopware\Core\Framework\DataAbstractionLayer\Field\StringField` — DAL string field class used as default completion source — vendor/shopware/core/Framework/DataAbstractionLayer/Field/StringField.php:9
-- confirmed `Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition` — type returned by getEntityDefinition() — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:33
-- unverified `CompletionDefinitionEnrichment` — SwagCommercial plugin, not in installed vendor roots
-- unverified `CompletionDefinitionEnrichment::enrichData()` — SwagCommercial plugin, not in installed vendor roots
-- unverified `advanced_search.completion` — SwagCommercial container parameter, not in installed vendor roots
-- unverified `AbstractElasticsearchDefinition` — vendor/shopware/elasticsearch, out of scope
+## Code check (6.7.15.1)
+- confirmed `StringField` — DAL string field type used as default completion source — vendor/shopware/core/Framework/DataAbstractionLayer/Field/StringField.php:12
+- confirmed `EntityDefinition` — base class of the injected entity definition — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:33
+- confirmed `Context` — passed to `getMapping`/`fetch` — vendor/shopware/core/Framework/Context.php:18
+- unverified `AbstractElasticsearchDefinition` — lives in shopware/elasticsearch, outside the checked roots
+- unverified `CompletionDefinitionEnrichment` — Commercial plugin class, not in core/storefront
+- unverified `advanced_search.completion` — Commercial plugin parameter, not in core/storefront

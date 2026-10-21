@@ -6,14 +6,18 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/
 sourceHash: 873315feae1abb81693369eb493a56245a46d875
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["installation", "updates", "hosting", "cluster setup", "production template", "deployment", "infrastructure", "upgrade"]
-summary: Section index for Shopware 6.7 hosting installation and updates - cluster setup, production template and deployment to infrastructure.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["installation", "updates", "hosting", "cluster setup", "production template", "deployment", "infrastructure", "self-hosted", "install shopware", "update shopware"]
+summary: "Section index for Shopware 6.7 hosting: cluster setup for custom stores, the production template, and deploying to an infrastructure."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page of the hosting "Installation & Updates" section. It introduces the section's topics: cluster setup for custom stores, the Shopware 6 production template, and deploying Shopware to an infrastructure. The page itself contains no configuration or identifiers.
+The section index for installing and updating a self-hosted Shopware 6 shop. The pages grouped under it cover three topics: setting up a cluster for a custom store, working with the Shopware 6 production template, and deploying a shop to an infrastructure.
 
-## Code check (6.7.13.0)
-- unverified `installation-updates` — section index page, names no code identifiers to check
+## When to use
+
+Start here when you need to install Shopware for production, run it across several servers, or plan how updates and deployments reach your hosting environment; then open the child page for the specific topic.
+
+## Code check (6.7.15.1)
+- unverified `production template` — a separate project outside the core, storefront and administration packages; out of scope for the installed code check

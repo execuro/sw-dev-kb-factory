@@ -6,72 +6,82 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/payment-reference.html
 sourceHash: 8e1b1553b71e27dc7f8e5516106c8c509bc0676a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app payment", "payment reference", "pay url", "finalize url", "shopware-shop-signature", "orderTransaction", "returnUrl", "redirectUrl", "AppPaymentHandler", "PaymentPayload", "PaymentResponse", "payment status", "app system"]
-summary: "App payment pay and finalize requests: HMAC-signed JSON body (order, orderTransaction, source) and response fields redirectUrl, status, message."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["app payment", "pay url", "finalize url", "shopware-shop-signature", "orderTransaction", "OrderTransactionEntity", "OrderEntity", "returnUrl", "redirectUrl", "payment status", "source.shopId", "AppPaymentHandler"]
+summary: Request and response format of the app server pay and finalize endpoints for app payment methods - signed JSON body, redirectUrl, status values.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Reference for the HTTP requests Shopware sends to an app's payment endpoints: the `pay` request (sent when the customer hits *Confirm Order*) and the `finalize` request (sent when the customer returns to `returnUrl`). All bodies are JSON, sent as `POST`. In the installed code these calls are made by `Shopware\Core\Framework\App\Payment\Handler\AppPaymentHandler`.
+Reference for the two HTTP requests Shopware sends to an app server for an app-provided payment method: **pay** and **finalize**. These are the up to two endpoints defined per payment method in the manifest. All bodies are JSON encoded and every request carries the `shopware-shop-signature` header — the HMAC signature of the JSON body, signed with the shop secret returned from the registration request. Available since Shopware 6.4.1.0.
 
 ## When to use
 
-When implementing the app server side of an app-defined payment method (the pay/finalize URLs declared per payment method) and you need the exact request fields, signature header, and accepted response shapes.
+When implementing the app-server side of an app payment method: verifying the signature, reading the order/transaction payload, and returning a response Shopware can act on.
 
 ## Key steps / config
 
-1. **Verify the signature.** Every request carries the header `shopware-shop-signature`: the HMAC signature of the JSON body, signed with the shop secret from app registration.
-2. **Pay request** (`POST https://payment.app/pay` in the source example). Body fields:
-   - `order` — `OrderEntity` with associations (currency, addresses, line items, transactions, customer).
-   - `orderTransaction` — `OrderTransactionEntity`; use `orderTransaction.id` to match the later finalize call.
-   - `returnUrl` — only on asynchronous payments; redirect the customer back here.
-   - `source` — `source.url`, `source.shopId`, `source.appVersion`.
-   - The installed `PaymentPayload` additionally holds `requestData`, `validateStruct` and `recurring`.
-3. **Pay response** (HTTP 200):
-   ```json
-   { "redirectUrl": "https://..." }
-   { "status": "fail", "message": "..." }
-   ```
-   If `redirectUrl` is set, Shopware redirects the customer there. The pay URL is optional in code: without one no request is sent.
-4. **Finalize request** (`POST https://payment.app/finalize`): signed the same way; the installed handler builds the same `PaymentPayload` as for pay (including `order`, `orderTransaction`, `source`), with the return request's query parameters (minus `_sw_payment_token`) as `requestData` and no `returnUrl`.
-5. **Finalize response** (HTTP 200):
-   ```json
-   { "status": "paid" }
-   { "status": "fail", "message": "..." }
-   { "status": "cancel", "message": "..." }
-   ```
-6. `status` is applied as a state machine transition on the order transaction (e.g. `paid`, `paid_partially`, `authorize`, `process`, `fail`); without a status the transaction stays `open`.
+### Pay — e.g. `POST https://payment.app/pay`
+
+Called when the customer clicks *Confirm Order*.
+
+Body fields:
+
+- `order` (`OrderEntity`, required) — the order with its necessary associations (currency, shipping address, billing address, line items).
+- `orderTransaction` (`OrderTransactionEntity`, required) — the transaction to process; `orderTransaction.id` identifies it again on finalize.
+- `returnUrl` (string) — where the app or payment provider must redirect the customer back to after the external payment step. Only supplied for asynchronous payments.
+- `requestData` — the storefront request data posted on order confirmation.
+- `source` (required) — `source.url` (shop URL), `source.shopId` (the shop id registered with the app), `source.appVersion` (installed app version).
+
+Responses (`200`):
+
+```json
+{ "redirectUrl": "https://payment.app/user/go/here/..." }
+{ "status": "fail", "message": "The shop has not provided all credentials for the payment provider." }
+```
+
+If `redirectUrl` is set, Shopware redirects the customer there.
+
+### Finalize — e.g. `POST https://payment.app/finalize`
+
+Called once the customer returns to the `returnUrl`. Body: `orderTransaction` (with `orderTransaction.id`), `source` (`url`, `shopId`, `appVersion`); the installed code also sends `order` and, as `requestData`, the query parameters of the return request (without `_sw_payment_token`). Shopware throws if the payment method has no finalize URL.
+
+Responses (`200`):
+
+```json
+{ "status": "paid" }
+{ "status": "fail", "message": "The user did not have adequate funds." }
+{ "status": "cancel", "message": "The user did not finish payment." }
+```
+
+### How `status` is applied
+
+- No `status` → the transaction is left unchanged (stays `open` by default).
+- `cancel` → Shopware raises a customer-canceled payment exception with the given `message`.
+- Any other value is executed as a state machine transition on the order transaction — typically `paid`, `paid_partially`, `authorize`, `process`, `fail`.
 
 ## Essential identifiers
 
-- `shopware-shop-signature` (request header)
-- Body: `order`, `orderTransaction`, `orderTransaction.id`, `returnUrl`, `source.url`, `source.shopId`, `source.appVersion`
+- Header `shopware-shop-signature`
+- Body: `order`, `orderTransaction`, `orderTransaction.id`, `returnUrl`, `requestData`, `source.url`, `source.shopId`, `source.appVersion`
 - Response: `redirectUrl`, `status`, `message`
-- `Shopware\Core\Framework\App\Payment\Handler\AppPaymentHandler`
-- `Shopware\Core\Framework\App\Payment\Payload\Struct\PaymentPayload`
-- `Shopware\Core\Framework\App\Payment\Response\PaymentResponse`
+- `Shopware\Core\Framework\App\Payment\Handler\AppPaymentHandler`, `Shopware\Core\Framework\App\Payment\Payload\Struct\PaymentPayload`
 
 ## Gotchas
 
-- Any non-empty `message` in a response makes Shopware abort the payment, regardless of `status`.
-- `status: cancel` raises a customer-canceled payment exception instead of a normal transition.
-- A finalize URL is mandatory once finalize is triggered; the handler throws "Finalize URL not defined" otherwise.
-- The source lists `orderTransaction` and `source` as the only finalize body fields; the installed code also sends `order`.
-- Requests time out after 20 seconds (`PaymentPayloadService::PAYMENT_REQUEST_TIMEOUT`).
+- `returnUrl` is absent for synchronous payments; do not rely on it unless the method is asynchronous.
+- `status` values are state machine transition action names (e.g. `paid`, `fail`), not state ids.
+- The installed handler also supports validate, refund and recurring requests, which this page does not document.
 
 ## Version notes
 
-- The source states the feature is available starting with Shopware 6.4.1.0.
+- App payments are available from Shopware 6.4.1.0.
 
-## Code check (6.7.13.0)
-- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — header name `shopware-shop-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
-- confirmed `PaymentPayload::$orderTransaction` — payload property — vendor/shopware/core/Framework/App/Payment/Payload/Struct/PaymentPayload.php:23
-- confirmed `PaymentPayload::$returnUrl` — nullable, only passed on pay — vendor/shopware/core/Framework/App/Payment/Payload/Struct/PaymentPayload.php:32
-- confirmed `Source::$shopId` — source carries url, shopId, appVersion — vendor/shopware/core/Framework/App/Payload/Source.php:22
-- confirmed `AppPaymentHandler::pay()` — pay URL optional, redirect only when redirectUrl set — vendor/shopware/core/Framework/App/Payment/Handler/AppPaymentHandler.php:108
-- corrected `AppPaymentHandler::finalize()` — docs: finalize body is only orderTransaction and source; code sends full PaymentPayload incl. order — vendor/shopware/core/Framework/App/Payment/Handler/AppPaymentHandler.php:134
-- confirmed `PaymentResponse::$redirectUrl` — pay response field — vendor/shopware/core/Framework/App/Payment/Response/PaymentResponse.php:24
-- confirmed `PaymentResponse::$status` — transition action, default stays open — vendor/shopware/core/Framework/App/Payment/Response/PaymentResponse.php:19
-- confirmed `AbstractResponse::$message` — payment fails if provided — vendor/shopware/core/Framework/App/Payment/Response/AbstractResponse.php:19
-- confirmed `PaymentPayloadService::PAYMENT_REQUEST_TIMEOUT` — 20 seconds — vendor/shopware/core/Framework/App/Payment/Payload/PaymentPayloadService.php:22
+## Code check (6.7.15.1)
+- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — header `shopware-shop-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
+- confirmed `AppPaymentHandler::pay()` — posts payload to pay URL, redirects on `redirectUrl` — vendor/shopware/core/Framework/App/Payment/Handler/AppPaymentHandler.php:108
+- corrected `AppPaymentHandler::finalize()` — docs: body only `orderTransaction` and `source`; code also sends `order` and query params as `requestData` — vendor/shopware/core/Framework/App/Payment/Handler/AppPaymentHandler.php:134
+- confirmed `PaymentPayload::$returnUrl` — nullable, only set when provided — vendor/shopware/core/Framework/App/Payment/Payload/Struct/PaymentPayload.php:32
+- confirmed `PaymentResponse::$status` — paid, paid_partially, authorize, process, fail; default stays open — vendor/shopware/core/Framework/App/Payment/Response/PaymentResponse.php:19
+- confirmed `PaymentResponse::$redirectUrl` — redirect target after pay — vendor/shopware/core/Framework/App/Payment/Response/PaymentResponse.php:24
+- confirmed `StateMachineTransitionActions::ACTION_CANCEL` — `cancel` raises customer-canceled exception — vendor/shopware/core/Framework/App/Payment/Handler/AppPaymentHandler.php:246

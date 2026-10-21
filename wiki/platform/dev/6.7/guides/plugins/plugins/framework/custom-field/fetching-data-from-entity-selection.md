@@ -6,23 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/custom-field/fetching-data-from-entity-selection.html
 sourceHash: beed0cd38b139dbe3893e2c6f7be5d6a4936b49e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["entity selection", "custom field", "custom_linked_product", "ProductSubscriber", "ProductEvents::PRODUCT_LOADED_EVENT", "EntityLoadedEvent", "product.repository", "EntityRepository", "Criteria", "addExtension", "getCustomFields", "resolve custom field id", "entity extension"]
-summary: Resolve the entity ID stored by an entity-selection custom field into an entity via a product.loaded subscriber, one batched repository search, addExtension.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ProductEvents::PRODUCT_LOADED_EVENT", "EntityLoadedEvent", "product.repository", "addExtension", "getCustomFields", "kernel.event_subscriber", "Criteria", "custom_linked_product", "entity selection custom field", "resolve custom field id", "entity extension", "product subscriber"]
+summary: Resolve the ID stored by an entity-selection custom field to a full entity via a product.loaded subscriber, product.repository and addExtension.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An entity-selection custom field (set up in the Administration) stores only the `id` of the selected entity in the custom field JSON. This page shows how to turn that ID into a loaded entity object by subscribing to the product loaded event, loading all referenced entities with one repository search, and attaching them to each product as an entity extension.
+An entity-selection custom field (e.g. `custom_linked_product` on products, typed as a product) stores only the `id` of the selected entity. This guide resolves that id to the real entity with an event subscriber that runs whenever products are loaded and attaches the result as an entity extension.
 
 ## When to use
 
-You have a custom field such as `custom_linked_product` (type: product) assigned to products, and Storefront/API code needs the linked product entity rather than its raw ID.
+You configured a custom field of type entity selection in the Administration and need the linked entity object (not just its id) wherever the owning entity is loaded.
 
 ## Key steps / config
 
-1. Create `Swag\BasicExample\Subscriber\ProductSubscriber` as a Symfony event subscriber whose `getSubscribedEvents()` maps `ProductEvents::PRODUCT_LOADED_EVENT` (value `product.loaded`) to a handler `onProductLoaded(EntityLoadedEvent $event): void`.
-2. Register it in `src/Resources/config/services.php`, injecting the product repository and tagging it:
+1. Create `Swag\BasicExample\Subscriber\ProductSubscriber` implementing `Symfony\Component\EventDispatcher\EventSubscriberInterface`, subscribing `ProductEvents::PRODUCT_LOADED_EVENT` (`product.loaded`) to `onProductLoaded(EntityLoadedEvent $event)`.
+2. Register it in `<plugin root>/src/Resources/config/services.php`, injecting the product repository:
 
 ```php
 $services->set(ProductSubscriber::class)
@@ -30,49 +30,35 @@ $services->set(ProductSubscriber::class)
     ->tag('kernel.event_subscriber');
 ```
 
-3. Accept `EntityRepository $productRepository` in the constructor.
-4. In `onProductLoaded`, collect the custom-field IDs from `$event->getEntities()` (an array of entities), drop empty values, search once, then attach results:
-
-```php
-$ids = array_filter(array_map(
-    fn (ProductEntity $e) => $e->getCustomFields()['custom_linked_product'] ?? null,
-    $event->getEntities()
-));
-$products = $this->productRepository->search(new Criteria($ids), $event->getContext())->getEntities();
-foreach ($event->getEntities() as $entity) {
-    $id = $entity->getCustomFields()['custom_linked_product'] ?? null;
-    if ($id && $linked = $products->get($id)) {
-        $entity->addExtension('my_custom_demo_product', $linked);
-    }
-}
-```
-
-Loading all IDs in one `Criteria` avoids one query per product (the source calls this a big performance boost).
+3. Constructor takes `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository $productRepository`.
+4. In `onProductLoaded`: collect the custom-field values of all `$event->getEntities()` (`$entity->getCustomFields()['<field>'] ?? null`), `array_filter` them, then load all linked products in one call: `$this->productRepository->search(new Criteria($ids), $event->getContext())`. One search for the whole batch instead of one per product.
+5. Loop the loaded entities again; for each with a set id, attach the result: `$entity->addExtension('my_custom_demo_product', $products->get($id))`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Product\ProductEvents` / `ProductEvents::PRODUCT_LOADED_EVENT`
+- `Shopware\Core\Content\Product\ProductEvents::PRODUCT_LOADED_EVENT`
 - `Shopware\Core\Framework\DataAbstractionLayer\Event\EntityLoadedEvent` (`getEntities()`, `getContext()`)
-- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository` (`search()`)
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository::search()`
 - `Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria`
-- `Shopware\Core\Content\Product\ProductEntity` (`getCustomFields()`, `addExtension()`)
-- Service id `product.repository`, tag `kernel.event_subscriber`
+- `product.repository`, `kernel.event_subscriber`
+- `Entity::addExtension()`, `getCustomFields()` / `setCustomFields()`
 
 ## Gotchas
 
-- The source's final example reads the key `custom_demo_test` while the prose uses `custom_linked_product` — use your actual custom field name consistently.
-- The source calls `$products->get($id)` directly on the search result; in 6.7.13.0 `EntitySearchResult::get()` is deprecated (removed in 6.8, use `getEntities()->get()`).
-- `addExtension()` requires a `Struct` argument, not `null`; the source passes the lookup result unchecked, so an ID pointing at a missing product fails. Guard the value as above.
-- An intermediate source snippet loops over custom fields and calls `setCustomFields()` without changing anything; only the final batched version is needed.
+- The source is inconsistent: the intro uses the field name `custom_linked_product`, the final implementation reads `custom_demo_test`. Use your actual custom field's technical name in both places.
+- `addExtension()` is typed `addExtension(string $name, Struct $extension)`; `$products->get($id)` returns null when the linked product no longer exists, which would throw a `TypeError`. Check the result before adding it.
+- `getCustomFields()` returns `?array`; the intermediate loop in the source (`foreach ($customFields ...)`) fails on products without custom fields.
+- `Criteria` drops empty ids itself (`array_filter`), but if no product has the field set the id list is empty; skip the search in that case.
+- The subscriber runs on every product load, so keep it to one repository call per event.
 
-## Code check (6.7.13.0)
-- confirmed `ProductEvents::PRODUCT_LOADED_EVENT` — constant with value product.loaded — vendor/shopware/core/Content/Product/ProductEvents.php:35
-- confirmed `EntityLoadedEvent::getEntities()` — returns an array of loaded entities — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityLoadedEvent.php:42
-- confirmed `EntityLoadedEvent::getContext()` — provides the Context for the follow-up search — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityLoadedEvent.php:52
-- confirmed `EntityRepository::search()` — takes Criteria and Context — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:62
-- confirmed `Criteria::__construct()` — accepts an optional array of IDs — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:129
-- corrected `EntitySearchResult::getEntities()` — docs: call get() directly on the search result — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:109
-- deprecated `EntitySearchResult::get()` — removed in v6.8.0, use getEntities()->get() — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:254
-- confirmed `EntityCustomFieldsTrait::getCustomFields()` — returns nullable array — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCustomFieldsTrait.php:21
-- confirmed `ExtendableTrait::addExtension()` — signature requires a Struct argument — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:21
-- unverified `EventSubscriberInterface` — vendor/symfony, out of scope
+## Code check (6.7.15.1)
+- confirmed `ProductEvents::PRODUCT_LOADED_EVENT` — constant with value `product.loaded` — vendor/shopware/core/Content/Product/ProductEvents.php:35
+- confirmed `EntityLoadedEvent::getEntities()` — returns the loaded entity array — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityLoadedEvent.php:42
+- confirmed `EntityLoadedEvent::getContext()` — returns the `Context` passed to the repository — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityLoadedEvent.php:52
+- confirmed `ExtendableTrait::addExtension()` — signature `(string $name, Struct $extension)`, not nullable — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:21
+- confirmed `EntityCustomFieldsTrait::getCustomFields()` — returns `?array` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCustomFieldsTrait.php:21
+- confirmed `EntityCustomFieldsTrait::setCustomFields()` — accepts `?array` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityCustomFieldsTrait.php:82
+- confirmed `EntityRepository::search()` — `(Criteria $criteria, Context $context)` — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:66
+- confirmed `Criteria::__construct()` — accepts `?array $ids` and filters empty values — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:133
+- confirmed `product.repository` — service id used by core service definitions — vendor/shopware/core/Content/DependencyInjection/cms.php:101
+- unverified `kernel.event_subscriber` — Symfony tag, vendor/symfony out of scope

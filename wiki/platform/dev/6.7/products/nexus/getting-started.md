@@ -6,32 +6,38 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/nexus/getting-started.html
 sourceHash: 4bcdd443a0131c158b0f244507aa83cf8d2a62ae
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware nexus", "nexus getting started", "early access", "prerequisites", "shopware services", "shopware sso", "ory", "oidc", "shopware business platform", "shopware account", "known limitations", "idempotent workflows"]
-summary: "Nexus Early Access prerequisites (Shopware 6.7+, services T&C, shop registration), SSO login, shop connection limits and known workarounds."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware nexus", "nexus getting started", "early access", "shopware services", "shopware sso", "ory", "oidc", "business platform", "shop connection", "known limitations", "idempotent workflows", "staging shop"]
+summary: "Nexus prerequisites (Shopware 6.7+, Early Access, active Shopware services), SSO login, shop connection via the Business Platform, Early Access limits."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Onboarding steps for Shopware Nexus in Early Access: what must be in place before use, how login and shop connection work, and the known limitations with workarounds.
+This page covers how to start with Shopware Nexus: what you need, how you log in, how shops get connected, and the known Early Access limitations.
 
 ## When to use
 
-When setting up Nexus access for a merchant shop for the first time, or when a shop does not show up in Nexus.
+Use it when you set up Nexus for a shop for the first time, or when a workflow does nothing because the shop is not connected yet.
 
 ## Key steps / config
 
-1. Prerequisites:
-   - Shopware 6.7 or newer
-   - Early Access granted by Shopware and the Nexus service activated
-   - Active Shopware services: accept the Shopware Service T&C's, activate the Nexus service, register the shop in your Shopware Account if not already done
-2. Log in via Shopware SSO (Ory / OIDC). After authentication Nexus redirects to a demo workflow, which becomes functional once your shop is connected.
-3. Shops are pulled from the Shopware Business Platform; no manual connection data is entered.
-4. Create workflows following the [user documentation](https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-nexus?category=shopware-6-en/insider-previews).
+Prerequisites:
+
+- Shopware 6.7 or newer
+- Early Access granted by Shopware
+- Nexus service activated
+- Active Shopware services: accept the Shopware Services T&Cs, activate the Nexus service, and register the shop in your Shopware Account if not already done
+
+Access and connection:
+
+1. Log in through Shopware SSO (Ory / OIDC).
+2. After you log in, Nexus redirects you to a demo workflow. It starts working once your shop is connected.
+3. Shops are pulled from the Shopware Business Platform. You do not add them in Nexus.
+4. To create a workflow, follow the Shopware Nexus user documentation on docs.shopware.com (Shopware Services, insider previews).
 
 ## Gotchas
 
-- Early Access: only the first company linked to your user account is used, so only shops linked to that company are available.
+- Early Access uses only the first company linked to your user account. Only shops linked to that company appear in Nexus.
 - Known limitations and workarounds:
 
 | Limitation | Workaround |
@@ -41,6 +47,8 @@ When setting up Nexus access for a merchant shop for the first time, or when a s
 | No undo / redo | Save frequently |
 | At-least-once delivery | Design idempotent workflows |
 
-## Code check (6.7.13.0)
-- unverified `Shopware 6.7 or newer` — prerequisite of the external Nexus service; not expressed in vendor/shopware code
-- unverified `Ory / OIDC` — Nexus login runs on Shopware SSO outside the installed code, out of scope
+## Code check (6.7.15.1)
+- confirmed `api.service.activate` — core Admin API route that activates a Shopware service by name — vendor/shopware/core/Service/Api/ServiceController.php:64
+- confirmed `services:install` — CLI command that installs all Shopware services; fails if services are disabled — vendor/shopware/core/Service/Command/Install.php:16
+- unverified `Shopware SSO (Ory / OIDC)` — Nexus-side login, not in Shopware code
+- unverified `Shopware Business Platform` — external account system that supplies the shop list

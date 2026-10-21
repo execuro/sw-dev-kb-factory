@@ -6,67 +6,61 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/core/crud-service.html
 sourceHash: c6d235a00de18d610b88dd091047dcf7054d5429
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "crud service", "AbstractCrudService", "CrudServiceRequest", "CrudEntity", "IdValue", "RoleCrudService", "RoleRepository", "RoleValidationService", "ValidationException", "OwnershipContext", "create update delete", "entity repository pattern"]
-summary: "B2B Suite CRUD pattern: CrudEntity entities, DBAL repositories with typed exceptions, ValidationService, and AbstractCrudService with CrudServiceRequest."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "crud service", "AbstractCrudService", "CrudServiceRequest", "CrudEntity", "IdValue", "RoleCrudService", "RoleRepository", "RoleValidationService", "ValidationBuilder", "ValidationException", "OwnershipContext", "create update delete", "entity repository"]
+summary: B2B Suite CRUD pattern - CrudEntity entity, DBAL repository, ValidationService and AbstractCrudService with CrudServiceRequest whitelists.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The CRUD service is the repeating pattern the B2B Suite uses to create, update and delete its own entities. Every entity uses the same naming convention and objects: Entity, Repository, ValidationService and CrudService (example: the Role component, namespace `Shopware\B2B\Role\Framework`).
+The B2B Suite ships its own entities and implements create/update/delete for all of them with one naming convention and pattern: an **entity**, a **repository**, a **validation service** and a **CRUD service**. The example used throughout is the role component (`Shopware\B2B\Role\Framework`).
 
 ## When to use
 
-When implementing or extending a B2B Suite entity, or calling a B2B component service to write data.
+When you add your own B2B Suite entity, or call/extend an existing B2B entity's write path (e.g. roles) and need to know which object does what.
 
 ## Key steps / config
 
-1. **Entity** — uniquely identifiable storage object with public properties and a few convenience methods, optionally implementing `Shopware\B2B\Common\CrudEntity`. Ids are `Shopware\B2B\Common\IdValue` (`IdValue::null()`, `IdValue::create()`, `getValue()`, `getStorageValue()`). The Role example's shape:
-
-```php
-class RoleEntity implements CrudEntity
-{
-    public IdValue $id;
-    public IdValue $contextOwnerId;
-    public function isNew(): bool { /* ... */ }
-    public function toDatabaseArray(): array { /* ... */ }
-    public function fromDatabaseArray(array $roleData): CrudEntity { /* ... */ }
-    public function setData(array $data) { /* ... */ }
-    public function toArray(): array { /* ... */ }
-    public function jsonSerialize(): array { /* ... */ }
-}
-```
-
-2. **Repository** — all storage/retrieval via `Doctrine\DBAL\Connection` (no ORM, no exposed queries, no validation). `fetchOneById()`, `addRole()`, `updateRole()`, `removeRole()` throw typed exceptions: `NotFoundException`, `Shopware\B2B\Common\Repository\CanNotInsertExistingRecordException`, `CanNotUpdateExistingRecordException`, `CanNotRemoveExistingRecordException`.
-3. **Validation service** — `RoleValidationService` built from `Shopware\B2B\Common\Validator\ValidationBuilder` and Symfony `ValidatorInterface`; `createInsertValidation()` / `createUpdateValidation()` return a `Shopware\B2B\Common\Validator\Validator` whose assertions a controller prints.
-4. **CRUD service** — extends `Shopware\B2B\Common\Service\AbstractCrudService`; the I/O-independent entry point, never depending on HTTP. It builds `Shopware\B2B\Common\Service\CrudServiceRequest` objects whitelisting fields:
+1. **Entity** - a uniquely identifiable storage object with public properties and few convenience methods. It may implement the convenience interface `Shopware\B2B\Common\CrudEntity` (not required to assign context). Ids are `Shopware\B2B\Common\IdValue` (`IdValue::null()`, `IdValue::create()`, `getValue()`, `getStorageValue()`). The `RoleEntity` example has `isNew()`, `toDatabaseArray()`, `fromDatabaseArray(array): CrudEntity`, `setData(array)`, `toArray()` and `jsonSerialize()`.
+2. **Repository** - handles all storage and retrieval. Unlike Shopware default repositories it does not use the ORM (DAL) and does not expose queries; it works on a `Doctrine\DBAL\Connection`. No validation here. Methods throw typed exceptions:
+   - `fetchOneById(int $id)` - `NotFoundException`
+   - `addRole(RoleEntity)` - `Shopware\B2B\Common\Repository\CanNotInsertExistingRecordException`
+   - `updateRole(RoleEntity)` - `...\CanNotUpdateExistingRecordException`
+   - `removeRole(RoleEntity)` - `...\CanNotRemoveExistingRecordException`
+3. **Validation service** - one per entity (`RoleValidationService`), built from `Shopware\B2B\Common\Validator\ValidationBuilder` and Symfony `ValidatorInterface`; `createInsertValidation(RoleEntity): Validator` and `createUpdateValidation(RoleEntity): Validator` return assertions a controller can evaluate and print.
+4. **CRUD service** - the real entry point; reusable, independent of I/O, must not depend on HTTP. It extends `Shopware\B2B\Common\Service\AbstractCrudService` and builds request objects that whitelist the allowed fields:
 
 ```php
 public function createNewRecordRequest(array $data): CrudServiceRequest
 {
     return new CrudServiceRequest($data, ['name', 'contextOwnerId', 'parentId']);
 }
+
+public function createExistingRecordRequest(array $data): CrudServiceRequest
+{
+    return new CrudServiceRequest($data, ['id', 'name', 'contextOwnerId']);
+}
 ```
 
-`createExistingRecordRequest()` allows `id`, `name`, `contextOwnerId`.
-5. Call the action with the request plus e.g. an `OwnershipContext`: `create()`, `update()` (may throw `Shopware\B2B\Common\Validator\ValidationException`), `remove()`, `move()`.
+5. Pass the filled `CrudServiceRequest` to the action - `create`, `update`, `remove`, `move` - together with an `OwnershipContext`; `create`/`update` throw `Shopware\B2B\Common\Validator\ValidationException`. Other parameters may be needed, e.g. an `Identity` deciding whether the logged-in user may access the data.
 
 ## Essential identifiers
 
-- `AbstractCrudService`, `CrudServiceRequest`, `CrudEntity`, `IdValue`
-- `ValidationBuilder`, `Validator`, `ValidationException`
+- `Shopware\B2B\Common\Service\AbstractCrudService`, `Shopware\B2B\Common\Service\CrudServiceRequest`
+- `Shopware\B2B\Common\CrudEntity`, `Shopware\B2B\Common\IdValue`
+- `Shopware\B2B\Common\Validator\ValidationBuilder`, `Shopware\B2B\Common\Validator\ValidationException`
+- `Shopware\B2B\Common\Repository\CanNotInsertExistingRecordException`, `CanNotUpdateExistingRecordException`, `CanNotRemoveExistingRecordException`
+- `Shopware\B2B\Role\Framework\RoleCrudService`, `RoleRepository`, `RoleValidationService`, `RoleEntity`
 
 ## Gotchas
 
-- `CrudEntity` is a convenience interface, not required to assign context; whether an entity can be stored/retrieved is only securely determined by matching repository methods existing.
-- Request objects filter a larger input down to allowed data points; content is still validated by the ValidationService.
-- The B2B Suite classes are not in the installed Shopware packages, so the pattern could not be checked against code.
+- Whether an entity can be stored or retrieved can only be determined securely by the existence of the corresponding repository methods, not by `CrudEntity`.
+- The `CrudServiceRequest` field list both filters a larger request and limits what enters the service; content validation still happens in the validation service.
 
-## Code check (6.7.13.0)
-- unverified `Shopware\B2B\Common\CrudEntity` — B2B Suite interface, not in vendor/shopware core/storefront/administration
-- unverified `Shopware\B2B\Common\IdValue` — B2B Suite class, out of scope of installed packages
-- unverified `Shopware\B2B\Common\Service\AbstractCrudService` — B2B Suite base class, required members cannot be read
-- unverified `Shopware\B2B\Common\Service\CrudServiceRequest` — B2B Suite class, out of scope
-- unverified `Shopware\B2B\Common\Validator\ValidationException` — B2B Suite class, out of scope
-- unverified `Symfony\Component\Validator\Validator\ValidatorInterface` — vendor/symfony, out of scope
-- unverified `Doctrine\DBAL\Connection` — vendor/doctrine, out of scope
+## Code check (6.7.15.1)
+- unverified `Shopware\B2B\Common\Service\AbstractCrudService` — B2B Suite plugin code, not in the installed core/storefront/administration packages
+- unverified `Shopware\B2B\Common\Service\CrudServiceRequest` — B2B Suite plugin code, out of scope
+- unverified `Shopware\B2B\Common\CrudEntity` — B2B Suite plugin code, out of scope
+- unverified `Shopware\B2B\Common\Validator\ValidationBuilder` — B2B Suite plugin code, out of scope
+- confirmed `Doctrine\DBAL\Connection` — DBAL connection type used by core services — vendor/shopware/core/Checkout/Customer/Validation/CustomerEmailUniqueChecker.php:6
+- confirmed `Symfony\Component\Validator\Validator\ValidatorInterface` — Symfony validator also injected by core — vendor/shopware/core/Framework/Validation/DataValidator.php:9

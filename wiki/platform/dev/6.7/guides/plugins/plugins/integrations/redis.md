@@ -1,89 +1,81 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/integrations/redis.md
-title: Redis
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/integrations/redis.html
+id: platform/dev/6.7/guides/plugins/plugins/integrations/redis.md
 sourceHash: 58264e6875d3e1da5bf68ad4e2af24f508c34ec3
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["redis", "RedisConnectionProvider", "getConnection", "hasConnection", "shopware.redis.connections", "dsn", "redis connection", "service factory", "RedisAdapter::createConnection", "Relay", "RedisCluster", "Predis", "optional dependency"]
-summary: "Plugin access to shopware.redis.connections: inject RedisConnectionProvider, use it as service factory, or inject the connection service id."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/integrations/redis.html
+title: Redis
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["RedisConnectionProvider", "Shopware\\Core\\Framework\\Adapter\\Redis\\RedisConnectionProvider", "getConnection", "hasConnection", "shopware.redis.connections", "RedisAdapter::createConnection", "RedisConnectionFactory", "redis", "redis connection", "named connection", "plugin redis access", "cache"]
+summary: Access named Redis connections in plugins via RedisConnectionProvider (inject, factory, or service id); connection types, reuse and lazy init (6.6.8+).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Since Shopware 6.6.8.0, Redis connections are defined centrally by name and can be consumed by project and plugin code. This page shows the three ways to get such a connection in your services and the behaviour of the connection objects.
+How plugin code obtains the named Redis connections configured for a Shopware installation (available since Shopware 6.6.8.0). Connections are defined in the Redis hosting configuration and exposed through `Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider`.
 
 ## When to use
 
-Your plugin or project service needs a Redis connection that is configured in the shop's Redis configuration (hosting guide "Redis configuration") instead of creating its own client.
+Your plugin or project service needs a Redis client and should reuse a connection configured centrally instead of building its own DSN handling.
 
 ## Key steps / config
 
-Connections are named entries under `shopware.redis.connections`, each with a required `dsn`:
+Three ways to get a connection:
 
-```yaml
-shopware:
-    redis:
-        connections:
-            <name>:
-                dsn: '...'
-```
-
-1. **Inject the provider** `Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider` and look connections up by name:
+1. Inject the provider and look up by name at runtime (safe if the name may not exist):
 
 ```php
 $services->set(MyCustomService::class)
-    ->args([service(RedisConnectionProvider::class), '<name>']);
-
-// in MyCustomService
+    ->args([service(Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider::class), '%your.parameter%']);
+// in the service:
 if ($this->redisConnectionProvider->hasConnection($this->connectionName)) {
     $connection = $this->redisConnectionProvider->getConnection($this->connectionName);
 }
 ```
 
-`getConnection()` throws for an unknown name; check `hasConnection()` first.
-
-2. **Use the provider as a factory** to define a shared connection service:
+2. Use the provider as a factory so several services share one connection service:
 
 ```php
 $services->set('my.custom.redis_connection', \Redis::class)
-    ->factory([service(RedisConnectionProvider::class), 'getConnection'])
-    ->args(['<name>']);
-$services->set(MyCustomService::class)
-    ->args([service('my.custom.redis_connection')]);
+    ->factory([service(Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider::class), 'getConnection'])
+    ->args(['%your.parameter%']);
+$services->set(MyCustomService::class)->args([service('my.custom.redis_connection')]);
 ```
 
-Type the constructor argument loosely (the source uses `object $redisConnection`). Useful when several services share one connection.
+Type the constructor argument loosely (the source uses `object`), since the concrete class varies.
 
-3. **Inject the connection service directly** by its container id (id format under Gotchas).
+3. Inject the connection service directly by id. Each entry under the `shopware.redis.connections` parameter is registered as service `shopware.redis.connection.` followed by its configured name. Renaming the connection in config breaks the container build.
+
+`%your.parameter%` above stands for a container parameter holding the connection name.
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider` — `getConnection(string $connectionName)`, `hasConnection(string $connectionName): bool`
-- Config `shopware.redis.connections.<name>.dsn`
+- Container parameter `shopware.redis.connections` (each entry needs a `dsn`)
+- Service id prefix `shopware.redis.connection.`
 - `\Symfony\Component\Cache\Adapter\RedisAdapter::createConnection`
 
 ## Gotchas
 
-- Direct injection: the source example `service('shopware.redis.connection.connection_name')` is a placeholder — the real id is `shopware.redis.connection.` followed by your configured connection name. Renaming a connection in config breaks the container build for services that reference the id directly.
-- Connection objects come from `\Symfony\Component\Cache\Adapter\RedisAdapter::createConnection` and, depending on extensions/libraries and DSN, may be `\Redis|Relay|\RedisArray|\RedisCluster|\Predis\ClientInterface` — avoid strict `instanceof`/type hints.
-- Connections are cached in a static variable and reused: the core factory keys the cache by DSN plus connection options and prefix, so identical DSNs share one object. Closing it or changing options affects every service using it.
-- The connection is established when `RedisConnectionProvider::getConnection` is called, when the connection service is requested from the container, or when a service depending on it is instantiated (connection services are not lazy).
-- Redis is optional in Shopware; plugins must not assume it is available.
+- The source shows `service('shopware.redis.connection.connection_name')` — `connection_name` is a placeholder for your configured connection name, not a real service.
+- Connection objects may be `\Redis|Relay|\RedisArray|\RedisCluster|\Predis\ClientInterface` depending on installed extensions and the DSN — avoid strict `instanceof`/type hints.
+- Connections are cached in a static variable keyed by DSN; connections sharing a DSN share one object, so closing it or changing options affects every user.
+- The connection is established when `RedisConnectionProvider::getConnection` is called, when the connection service is requested, or when a service depending on it is instantiated. Connection services are not lazy; for deferred connection, inject the provider.
+- `getConnection()` throws for an unknown name; check with `hasConnection()` first.
+- Redis is optional in Shopware — plugins must handle installations without it.
 
 ## Version notes
 
-- Improved named-connection support was introduced in Shopware 6.6.8.0.
+- Improved Redis connection support starts with Shopware 6.6.8.0.
 
-## Code check (6.7.13.0)
-- absent `shopware.redis.connection.connection_name` — literal example id; real ids are built from the configured connection name
-- confirmed `RedisConnectionProvider::getConnection()` — throws for unknown names — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionProvider.php:28
+## Code check (6.7.15.1)
+- absent `shopware.redis.connection.connection_name` — doc placeholder; real ids are built from configured names
+- confirmed `RedisConnectionProvider::getConnection()` — throws `unknownRedisConnection` if missing — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionProvider.php:28
 - confirmed `RedisConnectionProvider::hasConnection()` — checks the service locator — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionProvider.php:37
-- confirmed `RedisConnectionsCompilerPass::prepareConnections()` — registers one service per configured name with the prefixed id — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:33
-- confirmed `connections` — shopware.redis.connections keyed by name — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1588
-- confirmed `dsn` — required per connection — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1592
-- corrected `RedisConnectionFactory::create()` — docs: reuse based on DSN only; code keys by DSN, options hash and prefix — vendor/shopware/core/Framework/Adapter/Cache/RedisConnectionFactory.php:44
-- confirmed `RedisAdapter::createConnection` — called by the core factory — vendor/shopware/core/Framework/Adapter/Cache/RedisConnectionFactory.php:52
-- confirmed `setLazy` — connection services are defined non-lazy — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:77
+- confirmed `shopware.redis.connection.` — service id prefix per configured name — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:50
+- confirmed `shopware.redis.connections` — parameter read; each entry requires `dsn` — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:37
+- confirmed `setLazy` — connection service definitions are set non-lazy — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:72
+- confirmed `RedisConnectionFactory::$connections` — static cache reused across requests — vendor/shopware/core/Framework/Adapter/Cache/RedisConnectionFactory.php:28
+- confirmed `RedisAdapter::createConnection` — used to create the client — vendor/shopware/core/Framework/Adapter/Cache/RedisConnectionFactory.php:52

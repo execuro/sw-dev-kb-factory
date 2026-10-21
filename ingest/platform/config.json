@@ -112,8 +112,8 @@
     "codeCheckouts": {
       "6.7": {
         "repo": "shopware/shopware",
-        "tag": "v6.7.13.0",
-        "commit": "61765d982b0d999f0f443c32466ff70ba7e52e54",
+        "tag": "v6.7.15.1",
+        "commit": "fc6b754982a0328200ffd3f8d795664a0a6e8447",
         "expect": [
           "src/Core/Framework/Resources/config/packages/feature.yaml",
           "src/Storefront/Controller",
@@ -125,8 +125,8 @@
       },
       "6.6": {
         "repo": "shopware/shopware",
-        "tag": "v6.6.10.24",
-        "commit": "c59216f4581ffd42c165b0ead6d5b85672d7bd3a",
+        "tag": "v6.6.10.29",
+        "commit": "a166844a146684e9bc4150ef30f98fb95112f2d6",
         "expect": [
           "src/Core/Framework/Resources/config/packages/feature.yaml",
           "src/Storefront/Controller",

@@ -1,73 +1,67 @@
 ---
 id: platform/dev/6.7/guides/plugins/apps/lifecycle/app-signature-verification.md
-title: Signing & Verification in the App System
+title: "Signing & Verification in the App System"
 docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/lifecycle/app-signature-verification.html
-sourceHash: 4abef8f9051ef49a7c286da324d5c90b05a990c4
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-shop-signature", "shopware-app-signature", "hmac-sha256", "hash_hmac", "hash_equals", "RequestVerifier", "ResponseSigner", "RequestSigner", "QuerySigner", "app secret", "request verification", "response signing", "app server security"]
-summary: "App system HMAC-SHA256 signing: verify shopware-shop-signature on incoming shop requests, sign app responses with shopware-app-signature."
-lastBuilt: 2026-09-15
+sourceHash: 3f64d5c3d4f1e86aaa4b86720515978505be77e1
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-shop-signature", "shopware-app-signature", "shopware-shop-signature-previous", "hmac-sha256", "hash_hmac", "RequestVerifier", "ResponseSigner", "app secret", "request signing", "signature verification", "re-registration", "secret rotation", "app php sdk"]
+summary: "HMAC-SHA256 signing of Shopware-to-app requests and app responses: shopware-shop-signature, shopware-app-signature and re-registration headers."
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md"]
 ---
 ## What it is
 
-Shopware signs every request it sends to an app server with an HMAC-SHA256 signature keyed with the app secret. The app verifies that signature to confirm origin and integrity, and must itself sign its responses so Shopware can verify them.
+Shopware signs every outgoing request to an app server with an HMAC-SHA256 signature computed with the app secret — over the query string for `GET` requests, over the request body for `POST` requests. The app verifies this signature, and in turn signs its responses so Shopware can verify they come from the app server.
 
 ## When to use
 
-Building an app backend that receives registration confirmations, webhooks, action buttons, module/iframe loads or other shop-to-app calls, and that returns responses Shopware checks.
+When building an app backend that receives registration, webhook, action-button, iframe/module or other requests from a shop, and must return signed responses (e.g. registration, payment responses). Not needed when using the App PHP SDK or the Symfony app bundle, which verify and sign automatically.
 
 ## Key steps / config
 
-### Verify incoming requests
+1. **GET requests (query-signed):** take the raw query string, read `shopware-shop-signature` from it, strip `&shopware-shop-signature=<value>` from the raw string, then compute `hash_hmac('sha256', $queryString, $appSecret)` and compare with `hash_equals()`. Do not re-parse and re-encode the query string — parameter order and URL encoding differ between languages.
+2. **POST requests (body-signed):** compute `hash_hmac('sha256', $request->getBody()->getContents(), $appSecret)`, rewind the body stream, compare with the `shopware-shop-signature` header via `hash_equals()`.
+3. **Sign responses:** compute `hash_hmac('sha256', $body, $shopSecret)` over the response body and set it as the `shopware-app-signature` response header.
+4. **App PHP SDK:** `\Shopware\App\SDK\Authentication\RequestVerifier` (e.g. `authenticateRegistrationRequest($request, new AppConfiguration('AppName', 'AppSecret', 'register-confirm-url'))`) for verification; `Shopware\App\SDK\Authentication\ResponseSigner::sign($response, $shop)` for signing.
+5. Base verification on the whole query string / whole body, never on a selection of parameters — Shopware may add signed parameters without treating it as a breaking change.
 
-- **GET requests (URLs opened by the shop):** the signature is a query parameter `shopware-shop-signature`. Remove it from the raw query string (do not re-parse/re-encode — order and encoding differ between languages), then compare:
-  ```php
-  $signature = hash_hmac('sha256', $queryString, $appSecret);
-  $valid = hash_equals($signature, $compare);
-  ```
-- **POST requests:** the signature is the `shopware-shop-signature` header; the HMAC covers the raw request body. Rewind the PSR-7 body stream after reading it:
-  ```php
-  $signature = hash_hmac('sha256', $request->getBody()->getContents(), $appSecret);
-  $request->getBody()->rewind();
-  $valid = hash_equals($signature, $request->getHeader('shopware-shop-signature')[0]);
-  ```
-- Base the calculation on the **entire** query string or body — Shopware may add signed parameters without treating it as a breaking change.
+### Re-registration (secret rotation, shop-ID change)
 
-### Sign responses
+Both handshake requests carry a second signature; validate both with the same HMAC check:
 
-Compute `hash_hmac('sha256', $body, $shopSecret)` over the response body and set it as the `shopware-app-signature` header (`$response->withHeader('shopware-app-signature', $signature)`), rewinding the body stream after reading.
+| request | header | signed with |
+|---|---|---|
+| registration `GET` (query) | `shopware-app-signature` | app identity secret (manifest `<setup><secret>` for private apps) |
+| registration `GET` (query) | `shopware-shop-signature` | app secret the shop thinks the app currently holds |
+| confirmation `POST` (body) | `shopware-shop-signature` | new secret the app returned in the handshake |
+| confirmation `POST` (body) | `shopware-shop-signature-previous` | secret held before this re-registration |
 
-### SDK / bundle alternatives
-
-- App PHP SDK: `\Shopware\App\SDK\Authentication\RequestVerifier` (e.g. `authenticateRegistrationRequest($request, new AppConfiguration('AppName', 'AppSecret', 'register-confirm-url'))`) and `Shopware\App\SDK\Authentication\ResponseSigner` (`$responseSigner->sign($response, $shop)`).
-- Symfony app bundle: verification and signing happen automatically.
+Both `shopware-shop-signature` variants are absent on a first registration. See [app registration setup](platform/dev/6.7/guides/plugins/apps/lifecycle/app-registration-setup.md) for the rotation procedure.
 
 ## Essential identifiers
 
-- `shopware-shop-signature` — query parameter (GET) or header (POST) sent by the shop
-- `shopware-app-signature` — response header the app must set
-- `Shopware\Core\Framework\App\Hmac\RequestSigner` — core signer (`SHOPWARE_SHOP_SIGNATURE`, `SHOPWARE_APP_SIGNATURE`)
-- `\Shopware\App\SDK\Authentication\RequestVerifier`, `Shopware\App\SDK\Authentication\ResponseSigner` — App PHP SDK
-- `hash_hmac('sha256', ...)`, `hash_equals()`
+- Headers / query param: `shopware-shop-signature`, `shopware-app-signature`, `shopware-shop-signature-previous`
+- Algorithm: HMAC-SHA256 (`hash_hmac('sha256', ...)`)
+- SDK: `Shopware\App\SDK\Authentication\RequestVerifier`, `Shopware\App\SDK\Authentication\ResponseSigner`
+- Core: `Shopware\Core\Framework\App\Hmac\RequestSigner`, `Shopware\Core\Framework\App\Hmac\QuerySigner`
 
 ## Gotchas
 
-- Core signs POST requests only when the body is non-empty; a POST without body carries no signature header.
-- The signed GET query contains `shop-id`, `shop-url`, `timestamp`, `sw-version`, `app-version`, `in-app-purchases`, `sw-context-language`, `sw-user-language`, `sw-user-id` in the installed code — more than older docs list; never whitelist parameters.
-- On re-registration the confirmation request additionally carries `shopware-shop-signature-previous`, signed with the current (old) secret, next to `shopware-shop-signature` signed with the new one.
-- The response is verified with `hash_equals` against the HMAC of the body; a missing `shopware-app-signature` header fails verification.
-- The source's SDK response example mixes `MockShop` and `Shop`; only the `sign($response, $shop)` call is relevant.
+- Rewind PSR-7 body streams after reading them, or later reads get an empty body.
+- Shopware treats a response as authentic only if it carries `shopware-app-signature` matching the HMAC of the body.
+- The signed query string includes more than `shop-id`/`shop-url`/`timestamp` (e.g. `sw-version`, `app-version`, `in-app-purchases`, language and user IDs) — another reason to verify over the raw string.
 
-## Code check (6.7.13.0)
-- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — value `shopware-shop-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
+## Code check (6.7.15.1)
 - confirmed `RequestSigner::SHOPWARE_APP_SIGNATURE` — value `shopware-app-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:13
-- confirmed `RequestSigner::signRequest()` — header added only for POST with non-empty body — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:17
-- confirmed `RequestSigner::isResponseAuthentic()` — requires `shopware-app-signature` header, compared with hash_equals — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:34
+- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — value `shopware-shop-signature` — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
+- confirmed `RequestSigner::signRequest()` — only POST requests with a non-empty body get the body signature header — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:17
+- confirmed `RequestSigner::isResponseAuthentic()` — response without `shopware-app-signature` is rejected; compared with hash_equals — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:34
 - confirmed `RequestSigner::signPayload()` — hash_hmac with default algorithm sha256 — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:48
-- confirmed `QuerySigner::signUri()` — GET query signed and appended as `shopware-shop-signature` query value — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:34
-- confirmed `shopware-shop-signature-previous` — extra header on re-registration confirmation — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:138
-- unverified `RequestVerifier` — App PHP SDK class, not in vendor/shopware scope
-- unverified `ResponseSigner` — App PHP SDK class, not in vendor/shopware scope
+- confirmed `QuerySigner::signUri()` — GET URLs signed over the query string, appended as `shopware-shop-signature` — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:34
+- confirmed `shopware-app-signature` — private-app registration GET signed over query with the manifest secret — vendor/shopware/core/Framework/App/Lifecycle/Registration/PrivateHandshake.php:44
+- confirmed `shopware-shop-signature` — added to registration GET only when a current app secret exists (re-registration) — vendor/shopware/core/Framework/App/Lifecycle/Registration/PrivateHandshake.php:51
+- confirmed `shopware-shop-signature-previous` — confirmation POST carries it only on re-registration, signed with the current secret — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:253
+- unverified `RequestVerifier` — App PHP SDK class, not part of the installed Shopware packages

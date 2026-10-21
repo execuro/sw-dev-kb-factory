@@ -6,67 +6,61 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-02-28-consistent-deprecation-notices-in-core.html
 sourceHash: b13b46b2f2e962881b8622d428d95ee3c379f1d6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Feature::triggerDeprecationOrThrow", "trigger_deprecation", "@deprecated", "Feature::deprecatedMethodMessage", "Feature::deprecatedClassMessage", "FeatureException", "deprecation notice", "runtime deprecation", "major feature flag", "breaking change", "adr", "deprecation message format"]
-summary: "ADR: every @deprecated annotation in core also triggers a runtime notice via Feature::triggerDeprecationOrThrow; message format and CI-skip keywords."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["deprecation", "deprecation notice", "@deprecated", "trigger_deprecation", "Feature::triggerDeprecationOrThrow", "Feature::deprecatedMethodMessage", "Feature::deprecatedClassMessage", "Feature", "major feature flag", "runtime deprecation", "breaking change", "adr"]
+summary: "ADR: every @deprecated in core also triggers a runtime notice via Feature::triggerDeprecationOrThrow, which throws when the major flag is active."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2022) deciding that Shopware core pairs every `@deprecated` annotation with a runtime deprecation notice emitted through Symfony's `trigger_deprecation`, routed through one common helper on the `Feature` class. Before the decision, `@deprecated` only produced IDE warnings with no runtime effect.
+An architecture decision record (dated 2022-02-09 in its metadata, area core). `@deprecated` annotations only warn in the IDE and have no runtime effect; PHP/Symfony's `trigger_deprecation` was used only sparsely. The decision: wherever core uses a `@deprecated` annotation it also emits a runtime deprecation notice, through one common implementation in the `Feature` class.
 
 ## When to use
 
-- You deprecate a class or method in core (or follow the same convention in a plugin) and need to know how the runtime notice is triggered.
-- You run a plugin's test suite against a new Shopware version and want to understand where deprecation notices and stack traces come from.
-- You wonder why deprecated code throws an exception once a major feature flag is active.
+When deprecating a core method, class or parameter, or when running a plugin's test suite against a new Shopware version to collect all deprecations with message and stack trace.
 
 ## Key steps / config
 
-1. Keep the `@deprecated` annotation and additionally trigger a runtime notice at the same place. Notices may be conditional: if a parameter becomes required, only trigger when the method is called the old way.
-2. Use the common helper in `Shopware\Core\Framework\Feature` (installed signature — flag first, message second):
-
-```php
-Feature::triggerDeprecationOrThrow(
-    'v6.8.0.0',   // major flag in which the deprecation is removed
-    Feature::deprecatedMethodMessage(self::class, __METHOD__, 'v6.8.0.0', 'NewFeature::method()')
-);
-```
-
-3. Behaviour of the installed helper: if the major flag is active (or flags are registered and the flag is unknown), it throws `FeatureException::error(...)` ("Tried to access deprecated functionality: ..."); otherwise it adds a script-trace notice outside CLI and calls `trigger_deprecation`, except when `TESTS_RUNNING` is set. The core test pipeline runs with the major flag active, so core itself cannot rely on deprecated code.
-4. Special cases that get an `@deprecated` annotation but no runtime notice are marked with keywords in the annotation so the CI check skips them — in the installed code these are `reason:becomes-internal` (will be `@internal` next major) and `reason:return-type-change` (return type changes), e.g. `@deprecated tag:v6.8.0 - reason:return-type-change - Will return self`.
-5. A CI step (PHPStan rule or unit test) checks that every `@deprecated` method triggers a notice and vice versa.
-
-### Message format
-
-A message must name the deprecated method/class, the version in which it is removed, and the replacement:
-
-- Bad: `Will be removed, use NewFeature::method() instead`
-- Good: `Method OldFeature::method() will be removed in v6.5.0.0, use NewFeature::method() instead`
-
-`Feature::deprecatedMethodMessage()` and `Feature::deprecatedClassMessage()` build messages in this shape (`Method "X::y()" is deprecated and will be removed in <version>. Use "<replacement>" instead.`).
+1. Add the `@deprecated` annotation **and** a runtime notice. Notices may be conditional: if only a new parameter becomes required, trigger only when the method is called the old way.
+2. Call the common helper. In 6.7 the signature is:
+   ```php
+   public static function triggerDeprecationOrThrow(string $majorFlag, string $message, ?string $introducedIn = null, ?string $silentUntil = null): void
+   ```
+   Core usage:
+   ```php
+   Feature::triggerDeprecationOrThrow(
+       'v6.8.0.0',
+       Feature::deprecatedMethodMessage(self::class, __METHOD__, 'v6.8.0.0', '<replacement>')
+   );
+   ```
+   If the major flag is active (or, with registered features, unknown) it throws `Tried to access deprecated functionality: <message>`; otherwise it emits a deprecation notice. This keeps core itself from relying on deprecated code, since a test pipeline runs with the major flag on.
+3. Use a consistent message containing: the deprecated method/class, the version in which it is removed, and what to use instead. Good: `Method OldFeature::method() will be removed in v6.5.0.0, use NewFeature::method() instead`. Bad: `Will be removed, use NewFeature::method() instead`. `Feature::deprecatedMethodMessage()` and `Feature::deprecatedClassMessage()` build this format (`Method "X::y()" is deprecated and will be removed in <version>. Use "<replacement>" instead.`).
+4. CI (a custom PHPStan rule or unit test) checks that every `@deprecated` method also triggers a notice and vice versa. Exempt via special keywords in the annotation: members that become `internal` in the next major, and methods whose return type changes.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Feature`
-- `Feature::triggerDeprecationOrThrow(string $majorFlag, string $message, ?string $introducedIn = null)`
+- `Shopware\Core\Framework\Feature::triggerDeprecationOrThrow()`
 - `Feature::deprecatedMethodMessage()`, `Feature::deprecatedClassMessage()`
-- `trigger_deprecation` (Symfony)
-- `FeatureException`
+- `Feature::isActive()`, `Feature::has()`
+- `@deprecated`, `trigger_deprecation`
 
 ## Gotchas
 
-- The ADR's proof-of-concept snippet has the parameters as `(string $message, string $majorFlag)` and throws `\RuntimeException`; the installed method takes the major flag first and throws a `FeatureException`.
-- The ADR announced deprecating the older `Feature::triggerDeprecated()` because it only fired when the flag was already active (when the deprecated code is already removed). That method is not present in the installed code.
-- Deprecations are silently skipped inside `Feature::silent()`/`Feature::callSilentIfInactive()` for the given flag.
+- The ADR's POC takes `(string $message, string $majorFlag)`; the installed method takes the major flag **first**, then the message.
+- The ADR mentions `Feature::triggerDeprecated()` as the old helper to be deprecated; it no longer exists in 6.7 core.
+- Notices are skipped while `TESTS_RUNNING` is set, when deprecations are not emitted, when the flag is silenced, or when `$silentUntil` names an inactive flag.
 
-## Code check (6.7.13.0)
-- absent `triggerDeprecated` — old helper named in the ADR; not found in the installed code index
-- corrected `Feature::triggerDeprecationOrThrow()` — docs: signature (message, majorFlag) throwing RuntimeException; installed is (majorFlag, message, introducedIn) throwing FeatureException — vendor/shopware/core/Framework/Feature.php:267
-- confirmed `trigger_deprecation` — called when flag inactive and not in tests — vendor/shopware/core/Framework/Feature.php:287
-- confirmed `Feature::isActive()` — used to decide throw vs notice — vendor/shopware/core/Framework/Feature.php:273
-- confirmed `Feature::has()` — unknown flag leads to exception when flags registered — vendor/shopware/core/Framework/Feature.php:330
-- confirmed `Feature::deprecatedMethodMessage()` — builds method deprecation message — vendor/shopware/core/Framework/Feature.php:295
-- confirmed `Feature::deprecatedClassMessage()` — builds class deprecation message — vendor/shopware/core/Framework/Feature.php:315
-- deprecated `reason:becomes-internal` — skip keyword, found on a deprecated annotation — vendor/shopware/core/Framework/Migration/MakeVersionableMigrationHelper.php:17
-- deprecated `reason:return-type-change` — skip keyword, found on a deprecated annotation — vendor/shopware/core/Framework/Rule/RuleException.php:30
+## Version notes
+
+- The message example targets v6.5.0.0; 6.7 core calls use `v6.8.0.0`.
+- 6.7 adds `$introducedIn` (passed as the version to the deprecation triggerer with package `shopware/core`) and `$silentUntil` to the original POC.
+
+## Code check (6.7.15.1)
+- absent `triggerDeprecated` — old Feature helper named in the ADR, removed from core
+- corrected `Feature::triggerDeprecationOrThrow()` — docs: `(string $message, string $majorFlag)`; code: `(string $majorFlag, string $message, ?string $introducedIn, ?string $silentUntil)` — vendor/shopware/core/Framework/Feature.php:281
+- corrected `Feature::triggerDeprecationOrThrow()` — docs: throws `\RuntimeException('Deprecated Functionality: ...')`; code throws FeatureException with `Tried to access deprecated functionality:` — vendor/shopware/core/Framework/Feature.php:301
+- confirmed `Feature::deprecatedMethodMessage()` — builds the standard method message — vendor/shopware/core/Framework/Feature.php:327
+- confirmed `Feature::deprecatedClassMessage()` — builds the standard class message — vendor/shopware/core/Framework/Feature.php:347
+- confirmed `Feature::isActive()` — flag check used by the helper — vendor/shopware/core/Framework/Feature.php:139
+- confirmed `Feature::has()` — registered-flag check — vendor/shopware/core/Framework/Feature.php:362
+- confirmed `TESTS_RUNNING` — suppresses the triggered notice in tests — vendor/shopware/core/Framework/Feature.php:313

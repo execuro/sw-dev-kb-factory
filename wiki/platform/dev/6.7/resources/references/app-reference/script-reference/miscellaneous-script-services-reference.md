@@ -6,83 +6,91 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/script-reference/miscellaneous-script-services-reference.html
 sourceHash: 960463ce3b8555bbfdb883d45d1ca249d1a101e2
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["services.request", "RequestFacade", "services.acl", "AclFacade", "ArrayFacade", "services.config", "SystemConfigFacade", "system_config:read", "app scripts", "script services", "twig script request headers", "app config value"]
-summary: "App script services services.request (RequestFacade), services.acl (AclFacade), services.config (SystemConfigFacade) and the ArrayFacade array wrapper."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["services.request", "services.acl", "services.config", "RequestFacade", "AclFacade", "ArrayFacade", "SystemConfigFacade", "system_config:read", "app scripts", "request headers", "app config", "privilege check", "array manipulation"]
+summary: App script services services.request, services.acl and services.config, plus the ArrayFacade wrapper and its methods for array manipulation in scripts.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Reference for the miscellaneous services available inside app scripts (Twig): `services.request` to read the current request, `services.acl` to check app privileges, `services.config` to read system/app configuration, and `ArrayFacade`, the wrapper used for arrays such as `product.payload`.
+Reference for helper services available inside app scripts: `services.request` (`Shopware\Core\Framework\Routing\Facade\RequestFacade`) for reading the current request, `services.acl` (`Shopware\Core\Framework\Script\Api\AclFacade`) for privilege checks, `services.config` (`Shopware\Core\System\SystemConfig\Facade\SystemConfigFacade`) for config values, and the `Shopware\Core\Framework\Script\Facade\ArrayFacade` wrapper used for arrays such as a line item `payload`.
 
 ## When to use
 
-Use when writing an app script (e.g. a custom API/Store-API endpoint script or a cart/page hook) that must inspect the incoming request, gate logic on granted privileges, read configuration, or manipulate a script-side array.
+- Custom endpoint scripts that need to inspect the HTTP method, body, query or headers of the request and return a response.
+- Scripts that must check whether the app was granted a privilege before loading data.
+- Reading the app's own `config.xml` values or shop-wide system config.
+- Manipulating array data (e.g. `product.payload`) inside cart or other scripts.
 
 ## Key steps / config
 
-### `services.request` — `Shopware\Core\Framework\Routing\Facade\RequestFacade`
+### `services.request`
 
-- `method()` — request method in upper case (`string`).
-- `uri()` — request URI with resolved URL; `pathInfo()` — path info (may be an internal link when a SEO URL is used); `scheme()`; `ip()` — real client IP (`string|null`).
-- `query()` — query parameters; `request()` — POST parameters, on `application/json` requests also the parsed JSON body.
-- `headers()` — only `content-type`, `content-length`, `accept`, `accept-language`, `user-agent`, `referer` are accessible.
-- `cookies()` — all request cookies as array.
+All methods take no arguments:
+
+| Method | Returns |
+|---|---|
+| `method()` | request method in upper case (`string`) |
+| `request()` | post parameters (`array`); on `application/json` requests also the parsed JSON body |
+| `query()` | query parameters (`array`) |
+| `headers()` | request headers (`array`), restricted to `content-type`, `content-length`, `accept`, `accept-language`, `user-agent`, `referer` |
+| `cookies()` | request cookies (`array`) |
+| `ip()` | real client IP (`string` or `null`) |
+| `scheme()` | request scheme |
+| `pathInfo()` | path info; may be an internal link when a SEO URL is used |
+| `uri()` | request URI with the resolved URL |
 
 ```twig
 {% block response %}
   {% if services.request.method != "POST" %}
-    {% set response = services.response.json({'error': '...'}, 405) %}
+    {% set response = services.response.json({ 'error': 'Only POST requests are allowed' }, 405) %}
     {% do hook.setResponse(response) %}
     {% return %}
   {% endif %}
-  {% set response = services.response.json(services.request.request) %}
-  {% do hook.setResponse(response) %}
+  {% do hook.setResponse(services.response.json(services.request.request)) %}
 {% endblock %}
 ```
 
-### `services.acl` — `Shopware\Core\Framework\Script\Api\AclFacade`
+### `services.acl`
 
-- `can(string privilege): bool` — e.g. `services.acl.can('product:read')` before `services.repository.search('product', criteria)`.
+`can(string privilege): bool` — e.g. `services.acl.can('product:read')`, then query data only if `true`.
 
-### `Shopware\Core\Framework\Script\Facade\ArrayFacade`
+### `services.config`
 
-Accessible like a normal Twig array (iterable, array access, countable). Methods: `all()`, `count()`, `merge(array|ArrayFacade)` (recursive merge), `replace(array|ArrayFacade)` (recursive replace), `push(value)`, `set(key, value)`, `remove(value)` (no-op if missing), `removeBy(index)`, `reset()`.
+- `app(string key, ?string salesChannelId = null)` — reads your own app's configuration (key as named in `config.xml`, e.g. `exampleTextField`); no extra privileges needed.
+- `get(string key, ?string salesChannelId = null)` — reads any system config value (e.g. `core.listing.productsPerPage`); requires the `system_config:read` privilege.
+- Without `salesChannelId`, the sales channel of the current context is used.
+
+### `ArrayFacade`
+
+Usable like a normal Twig array, plus: `all()`, `count()`, `push(value)`, `set(key, value)`, `remove(value)` (no-op if absent), `removeBy(index)`, `reset()`, `merge(array|ArrayFacade)` (recursive merge), `replace(array|ArrayFacade)` (recursive replace).
 
 ```twig
-{% set my_array = array({'bar': 'foo', 'baz': true}) %}
-{% do product.payload.merge(my_array) %}
 {% do product.payload.set('test', 1) %}
+{% do product.payload.merge(array({'bar': 'foo', 'baz': true})) %}
 ```
-
-### `services.config` — `Shopware\Core\System\SystemConfig\Facade\SystemConfigFacade`
-
-- `get(string key, ?string salesChannelId = null)` — any system config value, e.g. `core.listing.productsPerPage`; requires the app privilege `system_config:read`.
-- `app(string key, ?string salesChannelId = null)` — value from the app's own `config.xml` (e.g. `exampleTextField`); no extra privilege. The installed code prefixes the key with `<AppName>.config.`.
-- When `salesChannelId` is omitted, the current context's sales channel is used.
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\Routing\Facade\RequestFacade` (`services.request`)
 - `Shopware\Core\Framework\Script\Api\AclFacade` (`services.acl`)
-- `Shopware\Core\Framework\Script\Facade\ArrayFacade`
 - `Shopware\Core\System\SystemConfig\Facade\SystemConfigFacade` (`services.config`)
-- `system_config:read`
+- `Shopware\Core\Framework\Script\Facade\ArrayFacade`
+- privilege `system_config:read`
 
 ## Gotchas
 
-- `services.request.headers()` does not expose arbitrary headers — only the six listed above.
-- `services.config.get()` throws a missing-privilege error when the app lacks `system_config:read`.
-- `services.config.app()` throws a `BadMethodCallException` when called outside app scripts.
+- `headers()` silently drops every header not on the allow-list above (e.g. authorization or custom headers are not readable).
+- `services.config.get()` fails without `system_config:read`; use `app()` for your own app's settings instead.
 
-## Code check (6.7.13.0)
-- confirmed `RequestFacade::headers()` — filtered to the six-entry allowlist — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:127
-- confirmed `RequestFacade::request()` — returns post parameters — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:116
+## Code check (6.7.15.1)
+- confirmed `RequestFacade::ALLOWED_PARAMETERS` — header allow-list content-type, content-length, accept, accept-language, user-agent, referer — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:34
+- confirmed `RequestFacade::method()` — returns `string` — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:75
 - confirmed `RequestFacade::ip()` — returns `?string` — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:55
+- confirmed `RequestFacade::headers()` — filtered via `array_intersect_key` against the allow-list — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:127
+- confirmed `RequestFacade::cookies()` — returns `array` — vendor/shopware/core/Framework/Routing/Facade/RequestFacade.php:139
 - confirmed `AclFacade::can()` — `can(string $privilege): bool` — vendor/shopware/core/Framework/Script/Api/AclFacade.php:29
-- confirmed `ArrayFacade` — implements `IteratorAggregate`, `ArrayAccess`, `Countable` — vendor/shopware/core/Framework/Script/Facade/ArrayFacade.php:29
+- confirmed `SystemConfigFacade::get()` — guarded by `system_config:read` — vendor/shopware/core/System/SystemConfig/Facade/SystemConfigFacade.php:49
+- confirmed `SystemConfigFacade::app()` — `app(string $key, ?string $salesChannelId = null)` — vendor/shopware/core/System/SystemConfig/Facade/SystemConfigFacade.php:77
 - confirmed `ArrayFacade::merge()` — accepts `array|ArrayFacade` — vendor/shopware/core/Framework/Script/Facade/ArrayFacade.php:106
-- confirmed `ArrayFacade::removeBy()` — accepts `string|int` index — vendor/shopware/core/Framework/Script/Facade/ArrayFacade.php:70
-- confirmed `system_config:read` — privilege constant checked by `get()` — vendor/shopware/core/System/SystemConfig/Facade/SystemConfigFacade.php:20
-- confirmed `SystemConfigFacade::get()` — optional `?string $salesChannelId = null` — vendor/shopware/core/System/SystemConfig/Facade/SystemConfigFacade.php:49
-- confirmed `SystemConfigFacade::app()` — only callable from app scripts; key prefixed with app name — vendor/shopware/core/System/SystemConfig/Facade/SystemConfigFacade.php:77
+- confirmed `ArrayFacade::removeBy()` — `removeBy(string|int $index)` — vendor/shopware/core/Framework/Script/Facade/ArrayFacade.php:70

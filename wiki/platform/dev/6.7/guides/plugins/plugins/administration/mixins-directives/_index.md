@@ -1,39 +1,38 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/_index.md
-title: Mixins and Directives
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/mixins-directives/
+id: platform/dev/6.7/guides/plugins/plugins/administration/mixins-directives/_index.md
 sourceHash: f52fff7eeb08243a7e3679ea271bed4d2da1dbc9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["mixins", "directives", "Shopware.Mixin", "Shopware.Directive", "Mixin.register", "Mixin.getByName", "Directive.register", "administration extension", "reuse component logic", "custom dom behavior", "vue"]
-summary: "Overview of Administration mixins (shared component behaviour, Shopware.Mixin registry) and directives (custom DOM behaviour, Shopware.Directive registry)."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/mixins-directives/
+title: Mixins and Directives
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["mixins", "directives", "Shopware.Mixin", "Shopware.Directive", "Mixin.register", "Mixin.getByName", "Directive.register", "administration", "reuse logic", "custom DOM behavior", "vue patterns"]
+summary: Overview of Administration mixins (shared component behavior) and directives (custom DOM behavior) and the guides for using, adding and registering them.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section index for extending the Shopware Administration with Vue-based reuse patterns: mixins share behaviour across multiple components, directives add custom DOM behaviour. The section covers using existing mixins, adding your own mixins, and adding directives.
+Section overview for extending the Shopware Administration with Vue-based patterns: mixins share behavior across multiple components, directives add custom DOM behavior. The section contains three guides: Using Mixins, Add Mixins, and Adding Directives.
 
 ## When to use
 
-Start here when Administration logic has to be reused across several plugin components (mixin) or when an element needs custom DOM handling such as focusing or tooltips (directive), and pick the matching sub-guide: Using Mixins, Add Mixins, Adding Directives.
+You want to reuse logic between several Administration components of your plugin (mixin), or attach behavior directly to DOM elements in templates (directive), and need to find the matching guide.
 
 ## Key steps / config
 
-Both patterns go through registries on the global Shopware object:
-
-- Mixins: `Shopware.Mixin.register(name, mixin)` adds a mixin to the registry; `Shopware.Mixin.getByName(name)` returns it for a component's `mixins: []` array.
-- Directives: `Shopware.Directive.register(name, directive)` adds a global directive; `Shopware.Directive.getByName(name)` reads it back. At app start the Vue adapter passes every registry entry to the Vue app as a global directive.
+- Mixins are kept in a registry on the global object: `Shopware.Mixin.register(name, mixin)` adds one, `Shopware.Mixin.getByName(name)` fetches it for a component's `mixins` array.
+- Directives are kept in a registry as well: `Shopware.Directive.register(name, directive)` registers one globally; `Shopware.Directive.getByName(name)` returns it.
 
 ## Essential identifiers
 
 - `Shopware.Mixin.register`, `Shopware.Mixin.getByName`
 - `Shopware.Directive.register`, `Shopware.Directive.getByName`
 
-## Code check (6.7.13.0)
-- confirmed `Mixin.register` — maps to MixinFactory.register — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:174
-- confirmed `Mixin.getByName` — maps to MixinFactory.getByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:175
-- confirmed `Directive.register` — maps to DirectiveFactory.registerDirective — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:185
-- confirmed `Directive.getByName` — maps to DirectiveFactory.getDirectiveByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:186
-- confirmed `initDirectives` — registers each registry entry via the Vue app's directive() — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:712
+## Code check (6.7.15.1)
+- confirmed `Shopware.Mixin` — object with register/getByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:186
+- confirmed `Mixin.register` — maps to MixinFactory.register — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:187
+- confirmed `Mixin.getByName` — maps to MixinFactory.getByName — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:188
+- confirmed `Shopware.Directive` — object with register/getByName/getDirectiveRegistry — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:197
+- confirmed `Directive.register` — maps to DirectiveFactory.registerDirective — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:198

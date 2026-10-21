@@ -4,45 +4,45 @@ title: Storefront code guidelines
 docType: guideline
 version: "6.7"
 summary: "Storefront rules: thin controllers over PageLoader/Page and Store API, route defaults, HTTP cache, JS plugins, theme styling, accessible rendering."
-keywords: ["storefront", "controller", "page loader", "pagelet", "store api", "js plugin", "http cache", "theme json", "scss", "snippets"]
-sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/storefront-controller.html", hash: "7124252319e62ddcdf76462708c0ca84470b5e717cdbd76b2978e4bdd2e87289"}, {url: "platform/dev/6.7/guides/plugins/plugins/storefront/**", hash: "c2c6156e8a1de6ca07b3e5c55348bb65563c08a6dc26f75340827696fcd74239"}, {url: "platform/dev/6.7/guides/plugins/themes/**", hash: "c9a596adf946aed6280f7f99d0812d6599754c29e6c9c096ab3b5e1061948744"}, {url: "https://developer.shopware.com/docs/resources/references/adr/2021-08-10-storefront-coding-standards.html", hash: "7be70f1bd7dacb1d6c8131ac21605a239bd7d30040333566c7d48da2a067a1b6"}]
-codeVersion: "6.7.13.0+3e5b9bc0"
-lastBuilt: 2026-09-17
+keywords: ["storefront", "controller", "page loader", "pagelet", "store api", "js plugin", "http cache", "theme json", "scss", "snippets", "cookie consent"]
+sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/storefront-controller.html", hash: "7124252319e62ddcdf76462708c0ca84470b5e717cdbd76b2978e4bdd2e87289"}, {url: "platform/dev/6.7/guides/plugins/plugins/storefront/**", hash: "4dcf3e83d73a25d1e1ea8e1e289885d6806f1eec7a317667087062677f709157"}, {url: "platform/dev/6.7/guides/plugins/themes/**", hash: "e3b6ddc2990c7ae5ea2c95088221a22043511f840024e7054841ca9a0b6b731e"}, {url: "https://developer.shopware.com/docs/resources/references/adr/2021-08-10-storefront-coding-standards.html", hash: "7be70f1bd7dacb1d6c8131ac21605a239bd7d30040333566c7d48da2a067a1b6"}]
+codeVersion: "6.7.15.1+7d4303db"
+lastBuilt: 2026-10-21
 ---
 
 ## controller structure
 
-- Extend `Shopware\Storefront\Controller\StorefrontController` and set the class scope `#[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StorefrontRouteScope::ID]])]`.
-- Give each action a `#[Route]` with `path`, explicit `methods`, a return type hint and a `name` starting `frontend.` (or `widgets.`/`payment.` — the only prefixes `Router` treats as Storefront); one route, one purpose.
-- Inject services through the constructor into private properties declared in the DI definition, register the controller public, and import it in `Resources/config/routes.php` — no import, no URL.
-- Use `renderStorefront()`, `redirectToRoute()`, `forwardToRoute()`, `trans()`; report user errors through Symfony flash bags.
+- Extend `Shopware\Storefront\Controller\StorefrontController`; set the class scope `#[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StorefrontRouteScope::ID]])]`.
+- Each action: `#[Route]` with `path`, explicit `methods`, a return type, one purpose, and a `name` starting `frontend.`/`widgets.`/`payment.` — the only prefixes `Router` treats as Storefront, besides names in `storefront.router.allowed_routes` (6.7.2.0+).
+- Inject services via the constructor into private properties; register the controller public with `call('setContainer', ...)` and import it in `Resources/config/routes.php` — no import, no URL.
+- Use `renderStorefront()`, `redirectToRoute()`, `forwardToRoute()`, `trans()`; report user errors via flash bags.
 
 Read more: https://developer.shopware.com/docs/resources/guidelines/code/storefront-controller.html
 
 ## controller page loader page
 
-- No business logic and no repository access in a controller: reads and writes go through a Store API route or a page loader, so every Storefront feature also exists in the Store API.
-- A GET page route calls a loader returning a `Page`: `$this->genericPageLoader->load($request, $context)`, `ExamplePage::createFrom($page)`, fill from Store API routes, dispatch the loaded event, return it.
-- Page structs extend `Shopware\Storefront\Page\Page`, their events `PageLoadedEvent` (`getPage()`); fragments use `Pagelet`/`PageletLoadedEvent` (`getPagelet()`). Give own loaders an interface so they stay decoratable.
-- Add data to an existing page by subscribing to its `*LoadedEvent` and `addExtension('<key>', $struct)`; read it in Twig as `page.extensions.<key>`.
+- No business logic and no repository in a controller: reads and writes go through a Store API route or a page loader, so every feature also exists in the Store API.
+- A GET page route calls a loader that runs `genericPageLoader->load($request, $context)`, `ExamplePage::createFrom($page)`, fills it from Store API routes, dispatches its loaded event and returns the `Page`.
+- Pages extend `Shopware\Storefront\Page\Page` with a `PageLoadedEvent` (`getPage()`); fragments use `Pagelet`/`PageletLoadedEvent` (`getPagelet()`). Give own loaders an interface so they stay decoratable.
+- Add data to an existing page via its `*LoadedEvent` and `addExtension('<key>', $struct)`; read it as `page.extensions.<key>`.
 - Write actions call the matching Store API route and return `createActionResponse($request)`.
 
 Read more: https://developer.shopware.com/docs/resources/references/adr/2021-08-10-storefront-coding-standards.html
 
 ## route defaults
 
-- Set `'XmlHttpRequest' => true` on every route called via AJAX; without it `StorefrontSubscriber` denies XHR calls to Storefront routes.
-- Use `PlatformRequest::ATTRIBUTE_LOGIN_REQUIRED` (`_loginRequired`), plus `ATTRIBUTE_LOGIN_REQUIRED_ALLOW_GUEST` where guests may pass, instead of checking the customer in the action.
-- Add `options: ['seo' => false]` to AJAX and utility routes that are not landing pages.
+- Set `'XmlHttpRequest' => true` on every AJAX route; otherwise `StorefrontSubscriber` rejects the XHR call.
+- Use `_loginRequired` (`PlatformRequest::ATTRIBUTE_LOGIN_REQUIRED`), plus `ATTRIBUTE_LOGIN_REQUIRED_ALLOW_GUEST` where guests may pass, instead of checking the customer in the action.
+- Add `options: ['seo' => false]` to AJAX and utility routes.
 
 Read more: platform/dev/6.7/guides/plugins/plugins/storefront/controllers/add-dynamic-content-via-ajax-calls.md
 
 ## http cache
 
-- Set `PlatformRequest::ATTRIBUTE_HTTP_CACHE` (`_httpCache`) only on routes whose output is identical for all customers in the same context.
-- Load cacheable data through Store API routes: their cache tags reach the response, so invalidation works. Data loaded any other way is never invalidated.
+- Set `_httpCache` (`PlatformRequest::ATTRIBUTE_HTTP_CACHE`) only on GET routes whose output is identical for all customers in the same context.
+- Load cacheable data through Store API routes so their cache tags reach the response; anything else needs its own invalidation.
 - Do not build on `CacheAttribute::$states`; deprecated, removed in 6.8.0.
-- Pass data into the ESI header/footer only as scalars, via `headerParameters`/`footerParameters`; they become query parameters.
+- Pass data into the ESI header/footer only as scalars via `headerParameters`/`footerParameters`.
 
 Read more: platform/dev/6.7/guides/plugins/plugins/storefront/advanced/add-caching-to-custom-controller.md
 
@@ -74,43 +74,38 @@ Read more: platform/dev/6.7/guides/plugins/themes/inheritance/add-theme-inherita
 
 ## javascript plugin system
 
-- Write behaviour as a class extending `window.PluginBaseClass`: implement `init()`, declare `static options`, work on `this.el`/`this.options`.
-- Register in `src/Resources/app/storefront/src/main.js` with `window.PluginManager.register(name, class, selector)` — always a selector, preferably `() => import(...)`.
-- Configure from Twig with `data-<plugin-name>-options="{{ options|json_encode|escape('html_attr') }}"`.
-- Change core plugins by, in order: `$emitter` events on the instance, `PluginManager.override()`, `PluginManager.deregister(name, selector)`.
-- Fetch data with `fetch` against routes flagged `XmlHttpRequest`; ship the compiled `dist/storefront/js/<name>/<name>.js`. Add script tags only for external libraries, in `layout_head_javascript_assets`, with `{{ parent() }}` and `defer`.
+- Extend `window.PluginBaseClass`: implement `init()`, declare `static options`, use `this.el`/`this.options`.
+- Register in `src/Resources/app/storefront/src/main.js` via `window.PluginManager.register(name, class, selector)` — always a selector, preferably `() => import(...)`.
+- Configure from Twig with `data-<plugin-name>-options="{{ options|json_encode|escape('html_attr') }}"`; merge core options with `replace_recursive`.
+- Change core plugins by, in order: `$emitter` events, `PluginManager.override()`, `PluginManager.deregister(name, selector)`.
+- Fetch with `fetch` against `XmlHttpRequest` routes; ship the compiled `dist/storefront/js/<name>/<name>.js`. Add external libraries in `layout_head_javascript_assets` with `{{ parent() }}` and `defer`.
 
 Read more: platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md
 
 ## styling assets and snippets
 
-- Plugin SCSS entry is `src/Resources/app/storefront/src/scss/base.scss` (only that file at depth 0 is picked up); declare variables with `!default`.
-- A theme declares ordered `views`, `style`, `script`, `asset`, `config.fields`, `configInheritance` in `src/Resources/theme.json`, `overrides.scss` before `@Storefront` in `style`, `base.scss` after. Run `theme:refresh` after editing it, `theme:compile` after SCSS changes.
-- Expose merchant-configurable values as theme config fields; use a `ThemeCompilerEnrichScssVariablesEvent` subscriber (`addVariable()`) only for computed or per-sales-channel values.
-- Serve static files from `src/Resources/public` after `assets:install` and reference them with `asset()`.
-- Never hard-code customer-visible text: ship `Resources/snippet/<domain>.<locale>.json`, use `|trans`, and pass markup-bearing output through `|sw_sanitize`.
+- Plugin SCSS entry is `src/Resources/app/storefront/src/scss/base.scss` (depth 0 only); declare variables with `!default`.
+- A theme declares `views`, `style`, `script`, `asset`, `config.fields`, `configInheritance` in `src/Resources/theme.json`; `overrides.scss` before `@Storefront` in `style`, `base.scss` after. Run `theme:refresh` after editing it, `theme:compile` after SCSS changes.
+- Merchant-configurable values are theme config fields; use `ThemeCompilerEnrichScssVariablesEvent::addVariable()` only for computed values.
+- Serve static files from `src/Resources/public` after `assets:install`, referenced with `asset()`.
+- No hard-coded customer-visible text: `Resources/snippet/<domain>.<locale>.json` plus `|trans`; pass markup output through `|sw_sanitize`.
 
-Read more: platform/dev/6.7/guides/plugins/plugins/storefront/styling/add-custom-styling.md
 Read more: platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md
 
 ## accessible and seo correct rendering
 
-- Render icons with `sw_icon`: decorative ones keep the default `ariaHidden`, meaningful ones set `ariaHidden: false` plus `ariaLabel`.
-- Render images with `sw_thumbnails` and pass `sizes`, `alt`/`title` and `loading: 'lazy'` for off-screen images.
-- Build links with `seoUrl('<route>', params)` or `path()`, never concatenated URLs.
-- Register every cookie a feature sets via `CookieGroupCollectEvent`; load tracking only after consent (`COOKIE_CONFIGURATION_UPDATE` on `document.$emitter`).
+- `sw_icon`: decorative icons keep the default `ariaHidden`; meaningful ones set `ariaHidden: false` plus `ariaLabel`.
+- `sw_thumbnails` with `sizes`, `alt`/`title`, and `loading: 'lazy'` off-screen.
+- Build links with `seoUrl()` or `path()`, never concatenated URLs.
+- Register every cookie via `CookieGroupCollectEvent`; load tracking only after consent (`COOKIE_CONFIGURATION_UPDATE` on `document.$emitter`).
 
-Read more: platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md
+Read more: platform/dev/6.7/guides/plugins/plugins/storefront/advanced/add-cookie-to-manager.md
 
-## Code check (6.7.13.0+3e5b9bc0)
+## Code check (6.7.15.1+7d4303db)
 
-- confirmed `StorefrontController` — abstract base — storefront/Controller/StorefrontController.php:40
-- confirmed `createActionResponse()` — protected, takes Request — storefront/Controller/StorefrontController.php:125
-- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — `_httpCache` — core/PlatformRequest.php:80
-- confirmed `PlatformRequest::ATTRIBUTE_LOGIN_REQUIRED` — `_loginRequired` — core/PlatformRequest.php:82
+- confirmed `createActionResponse()` — protected, takes Request — storefront/Controller/StorefrontController.php:126
+- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — `_httpCache` — core/PlatformRequest.php:82
 - confirmed `XmlHttpRequest` — required for XHR — storefront/Framework/Routing/StorefrontSubscriber.php:245
-- confirmed `GenericPageLoaderInterface::load()` — returns Page — storefront/Page/GenericPageLoaderInterface.php:12
 - deprecated `CacheAttribute::$states` — removed in v6.8.0 — core/Framework/Adapter/Cache/Http/CacheAttribute.php:27
-- confirmed `window.PluginBaseClass` — global — storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:799
-- confirmed `base.scss` — depth-0 entry — storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:202
 - confirmed `frontend.` — Storefront route prefix — storefront/Framework/Routing/Router.php:204
+- confirmed `CookieGroupCollectEvent` — cookie registration — core/Content/Cookie/Event/CookieGroupCollectEvent.php:18

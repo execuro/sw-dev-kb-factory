@@ -3,26 +3,29 @@ id: platform/guidelines/6.6/code-guidelines.md
 title: Code guidelines
 docType: guideline
 version: "6.6"
-summary: "Cross-area Shopware 6.6 code rules: domain exceptions, static-analysis-friendly types, Context propagation, no hardcoded IDs, deprecations."
-keywords: ["code guidelines", "domain exceptions", "httpexception", "error code", "phpstan", "static analysis", "type narrowing", "assert", "phpdoc", "context", "defaults", "deprecation", "feature flag"]
+summary: "Cross-cutting Shopware 6.6 code rules: domain exceptions with unique error codes, PHPStan-friendly type narrowing, deprecation annotations."
+keywords: ["code guidelines", "domain exceptions", "httpexception", "error code", "factory method", "phpstan", "static analysis", "type narrowing", "assert", "phpdoc", "deprecation", "backward compatibility"]
 sources: [{url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/domain-exceptions.html", hash: "5e8e71b69f4cc607c00d5b4f87877a846290e166138f7b69b816108fd9fd1a68"}, {url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/writing-code-for-static-analysis.html", hash: "696de3dd7a78cccdda190b70557743e0a400b27744e84c7f14dbbe8aca876c24"}, {url: "https://developer.shopware.com/docs/v6.6/resources/references/adr/2022-02-24-domain-exceptions.html", hash: "3990cfe177e4f85b1adaca91ff2316f06cbd49e3f02b7cb5a7f32461e838e30f"}]
-codeVersion: "6.6.10.24+87965325"
-lastBuilt: 2026-09-15
+codeVersion: "6.6.10.29+c8b59f9d"
+lastBuilt: 2026-10-21
 ---
+
 ## Index
 
-- [platform/guidelines/6.6/be-code-guidelines.md](platform/guidelines/6.6/be-code-guidelines.md) — read before backend PHP work: decoration/DI, entity definitions, migrations, routes, ACL, bounded Criteria.
-- [platform/guidelines/6.6/admin-code-guidelines.md](platform/guidelines/6.6/admin-code-guidelines.md) — read before Administration work: registries and `$super`, modules and ACL, repositories, Twig blocks, Meteor components, Pinia.
-- [platform/guidelines/6.6/storefront-code-guidelines.md](platform/guidelines/6.6/storefront-code-guidelines.md) — read before Storefront work: `sw_extends`, Controller -> PageLoader -> Page, JS plugins, cache-safe accessible rendering.
+- [platform/guidelines/6.6/be-code-guidelines.md](platform/guidelines/6.6/be-code-guidelines.md) — backend PHP: decoration/DI (`AbstractX`, `getDecorated()`), entity definitions and flags, migrations, routes, route scope, ACL, bounded Criteria.
+- [platform/guidelines/6.6/admin-code-guidelines.md](platform/guidelines/6.6/admin-code-guidelines.md) — Administration: registries and `$super`, module structure and ACL, repository/Criteria, Twig blocks, Meteor components and Pinia.
+- [platform/guidelines/6.6/storefront-code-guidelines.md](platform/guidelines/6.6/storefront-code-guidelines.md) — Storefront: Controller to PageLoader to Page, route defaults and HTTP cache, JS plugin system, styling, assets, snippets, cache-safe rendering.
 
 ## domain exceptions
 
-- Throw domain-specific exceptions only; never throw a bare `\RuntimeException` or `\InvalidArgumentException` from domain code. Rationale: every failure must carry a unique, traceable error code that reaches API consumers.
-- Use one exception factory class per top-level domain (e.g. `Checkout\Cart` -> `CartException`, `Checkout\Customer` -> `CustomerException`, `Content\Product` -> `ProductException`, `Content\Cms` -> `CmsException`), stored directly in that domain's namespace root.
-- Extend `Shopware\Core\Framework\HttpException` and create instances through `public static` factory methods, e.g. `CustomerException::customerGroupNotFound(string $id): self`. In 6.6 the `HttpException` constructor is `public`, not private — still create instances only via the factories.
-- Declare each error code as a `public const` on the domain class, prefixed with the area and unique within the domain, e.g. `CUSTOMER_GROUP_NOT_FOUND = 'CHECKOUT__CUSTOMER_GROUP_NOT_FOUND'`.
-- Pass message placeholders as `{{ name }}` with a parameters array; reuse `self::$couldNotFindMessage` (`Could not find {{ entity }} with {{ field }} "{{ value }}"`) for not-found cases.
-- Mark the class with `#[Package('<area>')]` (`Shopware\Core\Framework\Log\Package`).
+- Never throw a bare `\RuntimeException`, `\InvalidArgumentException` or other untraceable generic exception from domain code. Throw through the domain's exception factory instead.
+- One exception class per top-level domain, placed directly in that domain's namespace root (e.g. `Shopware\Core\Checkout\Customer\CustomerException`, `Shopware\Core\Content\Product\ProductException`). Top-level domains are areas like `Checkout\Cart`, `Checkout\Customer`, `Content\Category`, `Content\Product`.
+- The domain class extends `Shopware\Core\Framework\HttpException` (abstract, itself extending `ShopwareHttpException`) and acts as a factory: one `public static function` per failure case, returning `self` or a catchable subclass.
+- Create instances only through those static factories. The docs describe a `private` constructor, but in 6.6 `HttpException::__construct(int $statusCode, string $errorCode, string $message, array $parameters = [], ?\Throwable $previous = null)` is `public` — the factory-only rule is a convention, enforced by review, not by visibility.
+- Declare every error code as a `public const` on the domain class, unique within the domain, prefixed with the area (e.g. `CUSTOMER_GROUP_NOT_FOUND = 'CHECKOUT__CUSTOMER_GROUP_NOT_FOUND'`). The code is passed to API consumers as `code` in the error response — one code per distinct failure, never a shared generic one.
+- Use `{{ placeholder }}` tokens in the message and pass values via the `$parameters` array; never interpolate values into the message string.
+- Give each exception a specific HTTP status from `Symfony\Component\HttpFoundation\Response` constants (`Response::HTTP_BAD_REQUEST`, `Response::HTTP_NOT_FOUND`, ...), not a blanket 500.
+- Tag the class with `#[Package('<area>')]` matching its domain's owning package.
 
 ```php
 #[Package('checkout')]
@@ -42,71 +45,56 @@ class CustomerException extends HttpException
 }
 ```
 
+Rationale: a unique, documented code per error lets API consumers identify the root cause; a generic not-found exception everywhere does not.
+
+Enforced by: review
+
 Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/domain-exceptions.html
 Read more: https://developer.shopware.com/docs/v6.6/resources/references/adr/2022-02-24-domain-exceptions.html
 
-## catchable exceptions
+## catchable exception subclasses
 
-- Only when code must `catch` a specific case, add a dedicated subclass of the domain exception in the domain's `Exception\` subfolder (e.g. `Shopware\Core\Checkout\Customer\Exception\CustomerNotFoundException extends CustomerException`), and still return it from a factory on the domain class (`CustomerException::customerNotFound(string $email): CustomerNotFoundException`).
-- Do not create a subclass for exceptions nobody catches; a factory method returning `self` is enough.
-- To branch on a non-subclassed domain exception, check its code with `HttpException::is(string ...$code)` (e.g. `$e->is(CustomerException::CUSTOMER_GROUP_NOT_FOUND)`) instead of adding a class.
-
-Read more: https://developer.shopware.com/docs/v6.6/resources/references/adr/2022-02-24-domain-exceptions.html
-
-## http status codes
-
-- Give every factory a specific status from `Symfony\Component\HttpFoundation\Response` constants (`Response::HTTP_NOT_FOUND`, `Response::HTTP_BAD_REQUEST`, ...); use `HTTP_INTERNAL_SERVER_ERROR` only for genuine server faults.
-- The status is exposed via `getStatusCode()` and the code via `getErrorCode()`; do not override them per factory.
+- Domain exceptions are not meant to be caught. Only when the system itself must `try`/`catch` a case, add a dedicated subclass of the domain exception in the domain's `Exception` subfolder, and return it from the factory with the subclass as return type.
+- Example in code: `Shopware\Core\Checkout\Customer\Exception\AddressNotFoundException extends CustomerException`, created by `CustomerException::addressNotFound(string $id): AddressNotFoundException`.
+- To branch on a caught `HttpException`, compare codes with `$e->is(CustomerException::CUSTOMER_GROUP_NOT_FOUND)` or `getErrorCode()` rather than adding a subclass only for matching.
 
 Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/domain-exceptions.html
+Read more: platform/dev/6.6/resources/guidelines/code/core/domain-exceptions.md
 
-## static analysis type narrowing
+## static analysis and type narrowing
 
-Narrow mixed/nullable types in this order of preference:
+Write code PHPStan can type-check: native types everywhere possible. When a value is wider than expected (`Foo|null`, `mixed`, `object`), narrow it in this order of preference:
 
-1. Explicit runtime checks — `if ($foo === null)`, `if (!is_string($foo))`, `if (!$foo instanceof Foo)` — and handle the error case (throw a domain exception or return a default). Preferred: mismatches cannot propagate.
-2. `assert($foo !== null)` / `assert($foo instanceof Foo)` — only where a mismatch is theoretical; asserts are disabled in production, so they give no runtime safety there.
-3. `/** @var Foo $foo */` — last resort; it is ignored at runtime and a wrong annotation hides real mismatches.
+1. Explicit runtime checks — `if ($foo === null)`, `!is_string($foo)`, `!$foo instanceof Foo` — and handle the failure (throw a domain exception, return a default). Preferred: no type mismatch can propagate.
+2. `assert($foo !== null)` / `assert(is_string($foo))` / `assert($foo instanceof Foo)` — for cases that cannot happen in practice. Asserts are disabled in production, so they give no runtime guarantee there.
+3. `/** @var Foo $foo */` — last resort only; it is not checked at runtime and a wrong annotation hides real mismatches.
 
-- Avoid type casts such as `(string) $foo` unless every possible input is known; PHP juggling (e.g. `null` -> `''`) hides root causes and is invisible to PHPStan.
-- In unit tests use PHPUnit asserts (`static::assertNotNull()`, `static::assertIsString()`, `static::assertInstanceOf()`) instead of any of the above.
-
-Enforced by: PHPStan
-Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/writing-code-for-static-analysis.html
-
-## phpdoc annotations
-
-- Write native types (including union and intersection types) in signatures; do not duplicate them in `@param`/`@return`/`@var`.
-- Add PHPDoc types only for what the language cannot express: generics, array shapes, and PHPStan types such as `class-string` or integer ranges.
+- Avoid type casts like `(string) $foo` as a narrowing tool — PHP juggling can silently turn `null` into `''` and hide the root cause. Cast only when every possible input and its result are known.
+- In unit tests use PHPUnit asserts — `static::assertNotNull()`, `static::assertIsString()`, `static::assertInstanceOf()` — instead of any of the above.
+- Use `@var`/`@param`/`@return` only for what the language cannot express: generics, array shapes, PHPStan-specific types (`class-string`, integer ranges). Write union and intersection types natively.
 
 Enforced by: PHPStan
+
 Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/code/core/writing-code-for-static-analysis.html
 
-## context and ids
+## deprecation annotations
 
-- Propagate the `Shopware\Core\Framework\Context` (or `SalesChannelContext`) received from the caller through every repository and service call; never create a fresh one mid-request. `Context::createDefaultContext()` is `@internal` — outside tests use the context you were given, or `Context::createCLIContext()` in CLI commands.
-- Never hardcode UUIDs of system records; reference `Shopware\Core\Defaults` constants (`Defaults::LANGUAGE_SYSTEM`, `Defaults::LIVE_VERSION`, `Defaults::CURRENCY`, `Defaults::SALES_CHANNEL_TYPE_STOREFRONT`) or resolve IDs via the DAL.
+- Mark public code scheduled for removal with `@deprecated tag:v<major>.0 - <reason or replacement>` in its docblock, as core does (e.g. `@deprecated tag:v6.7.0 - Constant CUSTOMER_IS_INACTIVE will be removed as it is unused`).
+- Never remove or break public API (constants, method signatures, class names, Twig blocks) in a minor release; deprecate first and remove in the tagged major.
 
-Read more: platform/dev/6.6/concepts/framework/data-abstraction-layer.md
+Enforced by: review
 
-## deprecations in code
+Read more: platform/dev/6.6/resources/guidelines/code/backward-compatibility.md
 
-- Pair every `@deprecated tag:v6.7.0 - <reason / replacement>` annotation with a runtime notice at the start of the deprecated code path: `Feature::triggerDeprecationOrThrow('v6.7.0.0', $message)` — flag first, message second.
-- Build messages with `Feature::deprecatedMethodMessage($class, $method, $majorVersion, $replacement)` or `Feature::deprecatedClassMessage($class, $majorVersion, $replacement)` so they name the element, the removal version and the replacement.
+## Code check (6.6.10.29+c8b59f9d)
 
-Read more: platform/dev/6.6/resources/references/adr/2022-02-28-consistent-deprecation-notices-in-core.md
-
-## Code check (6.6.10.24+87965325)
-
-- absent `anExceptionIDontCatchAnywhere` — ADR placeholder, not present in this codeVersion
-- corrected `private __construct` — code uses a `public` constructor on `HttpException` instead, core/Framework/HttpException.php:12
-- confirmed `HttpException` — abstract base of domain exceptions — core/Framework/HttpException.php:8
-- confirmed `HttpException::is` — error-code check — core/Framework/HttpException.php:32
-- confirmed `CustomerException::customerGroupNotFound` — factory returning self — core/Checkout/Customer/CustomerException.php:65
-- confirmed `CUSTOMER_GROUP_NOT_FOUND` — domain error code — core/Checkout/Customer/CustomerException.php:36
-- confirmed `CustomerException::customerNotFound` — returns catchable subclass — core/Checkout/Customer/CustomerException.php:205
-- confirmed `CustomerNotFoundException` — subclass in Exception folder — core/Checkout/Customer/Exception/CustomerNotFoundException.php:10
-- confirmed `Context::createDefaultContext` — marked internal — core/Framework/Context.php:79
-- confirmed `Defaults::LANGUAGE_SYSTEM` — system language constant — core/Defaults.php:18
-- corrected `Feature::triggerDeprecationOrThrow(message, majorFlag)` — code uses `triggerDeprecationOrThrow(string $majorFlag, string $message)` instead, core/Framework/Feature.php:236
-- confirmed `Feature::deprecatedMethodMessage` — message builder — core/Framework/Feature.php:259
+- confirmed `HttpException` — abstract base for domain exceptions, extends `ShopwareHttpException` — core/Framework/HttpException.php:8
+- corrected `private __construct` — code uses `public function __construct(int $statusCode, string $errorCode, ...)` instead, core/Framework/HttpException.php:12
+- confirmed `is` — compares the error code against given codes — core/Framework/HttpException.php:32
+- confirmed `CUSTOMER_GROUP_NOT_FOUND` — domain-prefixed error code constant — core/Checkout/Customer/CustomerException.php:36
+- confirmed `customerGroupNotFound` — static factory returning `self` — core/Checkout/Customer/CustomerException.php:65
+- corrected `customer-order` — code uses `#[Package('checkout')]` instead, core/Checkout/Customer/CustomerException.php:26
+- confirmed `addressNotFound` — factory returning catchable subclass — core/Checkout/Customer/CustomerException.php:145
+- confirmed `AddressNotFoundException` — subclass in `Exception` subfolder — core/Checkout/Customer/Exception/AddressNotFoundException.php:10
+- confirmed `getErrorCode` — emitted as `code` in the error response — core/Framework/ShopwareHttpException.php:69
+- absent `anExceptionIDontCatchAnywhere` — ADR placeholder method, not present in this codeVersion

@@ -6,36 +6,38 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/api/admin-api.html
 sourceHash: 133aecf370cfa6fb574724cc107db32c35f87680
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["admin api", "/api", "ApiRouteScope", "/api/oauth/token", "/api/_action/sync", "ApiController", "AdminApiSource", "crud", "integration", "backend api", "data synchronization", "management api"]
-summary: Admin API concept - Shopware's administrative/integration HTTP surface with CRUD for every entity, used for imports, exports, sync and system-to-system work.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["admin api", "administration api", "management api", "crud", "integration", "data synchronization", "import export", "ApiController", "/api/_action/sync", "/api/oauth/token", "oauth", "backend integration"]
+summary: "Admin API concept: Shopware's administrative/integration surface with CRUD for every entity, aimed at backend integrations, sync, imports and exports."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-The Admin API is the administrative and integration surface of Shopware. It gives structured access to core business entities (products, orders, customers, media, configuration) and provides CRUD operations for every entity.
+The Admin API is Shopware's administrative and integration surface. It gives structured access to core business entities such as products, orders, customers, media and configuration, and provides CRUD operations for every entity in Shopware.
 
 ## When to use
 
-Backend integrations, automation, data synchronization, imports/exports, notifications and other system-to-system communication. These workloads prioritize consistency, error handling, validation and transactional integrity, and throughput under high data loads over fast response times. For customer-facing frontends use the Store API instead.
+For backend integrations, automation, data synchronization and system-to-system communication — typically structured data exchange, imports, exports and notifications with external systems.
 
 ## Key steps / config
 
-- Routes live under the `/api` prefix (route scope `api`); access requires an admin API context source.
-- Obtain a token via `POST /api/oauth/token`.
-- Generic entity CRUD/search is served by `Shopware\Core\Framework\Api\Controller\ApiController`; bulk writes go through `POST /api/_action/sync`.
-- For endpoints, authentication methods, schemas and request formats, the source defers to the Stoplight Admin API reference (`https://shopware.stoplight.io/docs/admin-api/8d53c59b2e6bc-shopware-admin-api`).
+- Integrations on this API prioritise consistency, error handling, validation and transactional integrity; performance matters in terms of high data volumes rather than fast response times.
+- Generic CRUD for any entity is handled by `Shopware\Core\Framework\Api\Controller\ApiController` (`search`, `create`, `update`, `delete`).
+- Bulk writes for synchronization go through `POST /api/_action/sync`.
+- Authenticate via OAuth (`POST /api/oauth/token`) before calling other routes.
+- For endpoints, authentication methods, schemas and request formats, refer to the Admin API reference (Stoplight: "Admin API – Stoplight Reference", `https://shopware.stoplight.io/docs/admin-api/8d53c59b2e6bc-shopware-admin-api`).
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Routing\ApiRouteScope` (`ID = 'api'`)
-- `Shopware\Core\Framework\Api\Context\AdminApiSource`
-- `api.oauth.token`, `api.action.sync` route names
+- `Shopware\Core\Framework\Api\Controller\ApiController`
+- `/api/_action/sync`
+- `/api/oauth/token`
 
-## Code check (6.7.13.0)
-- confirmed `ApiRouteScope::ID` — scope id and allowed path `api` — vendor/shopware/core/Framework/Routing/ApiRouteScope.php:15
-- confirmed `AdminApiSource` — authenticated routes require an AdminApiSource context — vendor/shopware/core/Framework/Routing/ApiRouteScope.php:33
-- confirmed `/api/oauth/token` — token endpoint, auth not required — vendor/shopware/core/Framework/Api/Controller/AuthController.php:33
-- confirmed `/api/_action/sync` — bulk sync endpoint — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
-- confirmed `ApiController` — generic entity detail/search/aggregate actions — vendor/shopware/core/Framework/Api/Controller/ApiController.php:58
-- unverified `Stoplight reference` — external documentation, out of scope
+## Code check (6.7.15.1)
+- confirmed `ApiController` — generic Admin API entity controller — vendor/shopware/core/Framework/Api/Controller/ApiController.php:58
+- confirmed `ApiController::search()` — entity search action — vendor/shopware/core/Framework/Api/Controller/ApiController.php:278
+- confirmed `ApiController::create()` — entity create action — vendor/shopware/core/Framework/Api/Controller/ApiController.php:313
+- confirmed `ApiController::update()` — entity update action — vendor/shopware/core/Framework/Api/Controller/ApiController.php:326
+- confirmed `ApiController::delete()` — entity delete action — vendor/shopware/core/Framework/Api/Controller/ApiController.php:339
+- confirmed `/api/_action/sync` — bulk sync route — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
+- confirmed `/api/oauth/token` — OAuth token route — vendor/shopware/core/Framework/Api/Controller/AuthController.php:38

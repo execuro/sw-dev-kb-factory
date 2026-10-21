@@ -1,50 +1,37 @@
 ---
 id: platform/func/extensions/image-editor.md
-docType: functional
 title: Image Editor
+docType: functional
 version: "6.5"
 versions: ["6.5", "6.6", "6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/extensions/image-editor
-sourceHash: 057d9c7a23fcf59537a346d792d93ca6dceff7d7e790b2e84c57d814f15c9d13
+sourceHash: 0f5736e293e9bf103d37dbd4f8657697b852f1122f831b25bdbdb3eb9843c735
 revision:
   current: true
-  range: current
+  range: "current"
   swMax: null
   swMin: null
-keywords: ["image editor", "product image editing", "cut out product", "background removal", "add shadow", "recolor object", "crop object", "add object", "Finegrain API", "Content > Image Editor", "Shopware Intelligence+", "AI image editing", "crop image", "erase object"]
-summary: "Admin tool under Content > Image Editor to cut out, place, shadow, recolor and crop product images using the AI-based Finegrain API."
-lastBuilt: "2026-09-15"
+keywords: ["image editor", "Content > Image Editor", "crop object", "add shadow", "recolor object", "erase object", "add to background", "Finegrain API", "Intelligence+", "AI image editing", "background removal", "bildeditor"]
+summary: "AI Image Editor under Content > Image Editor: cut out objects, add shadows, recolor, erase, crop and set backgrounds; discontinued after October 31, 2026."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-The Image Editor is an admin tool under **Content > Image Editor** for editing product images: cutting out objects, placing them on new backgrounds, adding shadows, recoloring, erasing objects, and cropping. It uses the `Finegrain API`, an AI-based image processing service, in the background.
+The Image Editor is an AI-assisted tool in the Administration (**Content > Image Editor**) for editing product images: cutting out products and merging them into backgrounds with matching light and shadow.
 
 ## When to use
 
-Use it when preparing product photography for the shop — for example removing a product from its original background and compositing it onto a new one, changing an object's color, or cropping an image to a specific size or fixed aspect ratio.
+When preparing product images, for example removing a background, placing a product on a new background, recolouring or erasing an object.
 
 ## Key steps / config
 
-1. Open **Content > Image Editor**.
-2. Add an image via **Open media** (select an already uploaded image) or **Upload image** (upload a new file from your computer).
-3. Supported file formats: JPG, PNG, WebP.
-4. Use the editing tools at the top right of the window:
-   - Add object — place a cut-out object on a background.
-   - Crop object — remove the background of an image.
-   - Add shadow — add a natural shadow to a cropped object.
-   - Recolor object — change the color of an object.
-   - Erase object — remove an object from an existing image.
-   - Crop — crop the image to a specific size or fixed aspect ratio.
-   - Add to background — only available for images with an alpha channel (transparency); insert the object onto a single background color or another image.
-5. The **or open a recent image** section lists recently opened/edited images for continued editing.
-6. Zoom controls and the current image dimensions in pixels are shown in the lower-left of the editing window.
-
-## Essential identifiers
-
-- Admin path: **Content > Image Editor**
-- `Finegrain API` — underlying AI image service
-- Supported formats: JPG, PNG, WebP
+- Add an image through **Open media** (from media management) or **Upload image**. Supported formats: JPG, PNG, WebP. Recently edited images appear under "or open a recent image".
+- Tools: Add object (place a cut-out on a background), Crop object (remove the background, PNG output), Add shadow, Recolor object, Erase object, Crop (size or fixed aspect ratio), Add to background (only for images with an alpha channel; background is a single colour or an image).
+- View settings: zoom (+ and -) and current dimensions in pixels.
+- Example: cut out shoes with Crop object, then place them with Add object in Image mode on a new background; for recolouring, select the object with the selection frame and choose the new colour.
 
 ## Gotchas
 
-A limited number of free requests is available per month; once that quota is exhausted, an active Shopware Intelligence+ subscription is required for additional requests. AI results are not checked manually, so verify the output before using it further.
+- The Image Editor is no longer available after October 31, 2026.
+- Uses the Finegrain API (AI); results are not checked manually and can contain errors.
+- A limited number of free requests exists per month; further requests need an active Shopware Intelligence+ subscription.

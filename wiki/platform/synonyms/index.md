@@ -2,6 +2,7 @@
 
 Over the single-file size cap — split by canonical-term range.
 
-platform/synonyms/part-1.md — /api/_action/custom-price … Magento migration first steps
-platform/synonyms/part-2.md — Magento to Shopware terminology dictionary … storefront pagelet data extension
-platform/synonyms/part-3.md — storefront performance … webhook outbox transport
+platform/synonyms/part-1.md — !cancelled() … Context::SYSTEM_SCOPE
+platform/synonyms/part-2.md — ContextGatewayClient … academy
+platform/synonyms/part-3.md — acceptance test suite … storefront components
+platform/synonyms/part-4.md — storefront controller route attributes … write data

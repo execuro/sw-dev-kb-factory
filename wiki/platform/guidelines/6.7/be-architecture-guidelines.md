@@ -3,79 +3,82 @@ id: platform/guidelines/6.7/be-architecture-guidelines.md
 title: Backend architecture guidelines
 docType: guideline
 version: "6.7"
-summary: DAL vs plain SQL, entity modelling, migrations, indexers, Messenger, scheduled tasks, Rule and Flow Builder, admin data layer
-keywords: ["dal", "plain sql", "entity extension", "custom fields", "versioning", "inheritance", "migrations", "entity indexer", "message queue", "scheduled task", "rule builder", "flow builder"]
-sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/core/database-migations.html", hash: "251c4ce00237d146b47d3ad2bf62b3d70f77129ccbfe998da5107e011cad5758"}, {url: "code:administration/Resources/app/administration/technical-docs/04-data-layer/**", hash: "5b86c345a6d37b8f56928247fb0325f8a2623053b0ab0ac7867897887f519aba"}, {url: "https://developer.shopware.com/docs/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.html", hash: "fb40de448f661d3ab61526c6eef2a93aa76ca2171b85adb743dcd89319564e77"}]
-codeVersion: "6.7.13.0+8da531fe"
-lastBuilt: 2026-09-15
+summary: Backend architecture rules for Shopware 6.7 - DAL vs plain SQL, migrations, indexers, inheritance and Admin data-layer persistence.
+keywords: ["dal", "plain sql", "migration", "updatedestructive", "entity indexer", "expand and contract", "blue-green", "inheritance", "repository", "changeset", "translations", "migration test"]
+sources: [{url: "https://developer.shopware.com/docs/resources/guidelines/code/core/database-migations.html", hash: "36f6f5681eb586bf345f02ec15dc97dd5927c433d6675ba04f1b36066302c422"}, {url: "code:administration/Resources/app/administration/technical-docs/04-data-layer/**", hash: "d550f43508f6c0ec4064f052014913ce0e1af4ddd30a22fd2632c72e81285881"}, {url: "https://developer.shopware.com/docs/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.html", hash: "fb40de448f661d3ab61526c6eef2a93aa76ca2171b85adb743dcd89319564e77"}]
+codeVersion: "6.7.15.1+7d4303db"
+lastBuilt: 2026-10-21
 ---
 
 ## dal or plain sql
 
-- Use entity repositories in Store API routes, storefront loaders/controllers and Admin API code; data there must stay extensible and ACL-protected.
-- Write only through the DAL. Exception: entity indexers and deep core components may use `Doctrine\DBAL\Connection`.
+- Use the DAL (entity repositories) for everything returned through the Store API, the Admin API, and Storefront page loaders/controllers. Third parties must be able to extend the data, load extra associations, and rely on ACL.
+- Write data only through the DAL. Its validation, event and indexing pipeline keeps data consistent; a raw `INSERT`/`UPDATE` bypasses events and indexers.
+- Use plain SQL via the Doctrine `Connection` inside entity indexers (subclasses of `EntityIndexer`). Indexers sit behind the repository layer, must re-index everything without hydration/event overhead, and are not an extension point.
+- Use plain SQL in internal core components (theme compiler, request transformer) where data is processing-only and must not depend on plugin entity schemas.
 
 Read more: https://developer.shopware.com/docs/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.html
 
-## entity modelling
+## migration structure
 
-- Custom fields (`CustomFields` field) for scalar, merchant-configurable values.
-- `EntityExtension` (`getEntityName()`, `extendFields()`) for associations/complex data, stored in your own table via `OneToOneAssociationField`; never add columns to core tables. `BulkEntityExtension` has a final constructor: inject nothing.
-- Versioning: `VersionField` plus `version_id` in the primary key, `ReferenceVersionField` on foreign keys to versioned entities; write drafts via `Context::createWithVersionId()`, then `EntityRepository::merge()`.
-- Inheritance: nullable columns, `ParentFkField`, `ParentAssociationField`, `ChildrenAssociationField`, `isInheritanceAware()` returning `true`, `Inherited` flag per field; call `updateInheritance()` (`InheritanceUpdaterTrait`) in the migration for inherited associations.
-
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-complex-data-to-existing-entities.md
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/versioning-entities.md
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md
-
-## database migrations
-
-- Create with `bin/console database:create-migration` in the current major namespace (`Core\Migration\V6_7`).
-- Minor/patch changes stay non-destructive: expand, migrate data, drop old structures only in `updateDestructive()`.
-- Never edit a released migration; write a new one.
-- Be idempotent (`IF [NOT] EXISTS`, `columnExists()`); never hardcode IDs, assume data or a default language (use `ImportTranslationsTrait::importTranslation()`); never overwrite customised rows.
-- Run `update()` twice in the migration test; DDL commits implicitly, so undo it manually.
+- Create migrations with `bin/console database:create-migration`; core migrations live in the major namespace (`Shopware\Core\Migration\V6_7`).
+- Extend `MigrationStep`. Put only backward-compatible changes in `update()`; put non-reversible changes (drop table, drop column) only in `updateDestructive()`.
+- Keep minor and patch releases non-destructive and blue-green safe with expand and contract: add the new column, copy the data, remove the old column later in `updateDestructive()`.
+- Destructive execution is mode-controlled: `mode=all` (up to current major), `mode=blue-green` (up to previous major), `mode=safe` (default, up to two majors back). Do not rely on your destructive step running soon.
+- When a migration changes data an indexer derives from, queue that indexer with `registerIndexer()` instead of recomputing in SQL.
+- Name tables descriptively in singular snake case; no vendor prefixes such as `swag_`.
 
 Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/database-migations.html
-Read more: platform/dev/6.7/concepts/framework/migrations.md
 
-## entity indexers
+## migration safety rules
 
-- Keep derived data in an `EntityIndexer`; for core entities subscribe to existing indexer events first.
-- Write in `handle()` via `Connection`; if you must use the DAL, add `EntityIndexerRegistry::DISABLE_INDEXING` to the context to avoid re-index loops.
-- Pass `forceQueue: true` to `EntityIndexingMessage` for heavy updates.
+- Never change a released or executed migration; write a new one. Exception: a broken migration that causes errors.
+- Make every migration re-runnable. Use `IF [NOT] EXISTS` for `CREATE TABLE`/`DROP TABLE`, and the `MigrationStep` helpers `dropTableIfExists()`, `dropColumnIfExists()`, `addColumn()` and `columnExists()`. `ALTER TABLE` has no `IF EXISTS` - check the column first.
+- Never hardcode identifiers; query ids on the target system.
+- Never assume data exists or has a given shape on customer systems; write defensive, exact queries.
+- Never overwrite merchant-customized data; restrict updates, e.g. `WHERE updated_at IS NULL`.
+- Keep runtime under 10 seconds locally and test with large data sets; customer timeouts are unknown.
+- Assume no default language - neither English nor German. Insert translations with `ImportTranslationsTrait::importTranslation()`.
 
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-data-indexer.md
+Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/database-migations.html
 
-## messenger and scheduled tasks
+## migration tests
 
-- Move slow work off the request: implement `AsyncMessageInterface` or `LowPriorityMessageInterface` and dispatch via `MessageBusInterface`; unrouted messages run synchronously.
-- Pass IDs, not entities. Reroute with `shopware.messenger.routing_overwrite`.
-- Recurring work: extend `ScheduledTask` (vendor-prefixed `getTaskName()`, `getDefaultInterval()`) and `ScheduledTaskHandler`; custom intervals via `DynamicallyScheduledTaskHandler::getNextExecutionTime()`. Production needs a `messenger:consume` worker.
+- Test every migration with meaningful `update()` or destructive behaviour; an empty `updateDestructive()` needs none. Place it under `tests/Migration/V6_*`.
+- Do not use `IntegrationTestBehaviour`/`KernelTestBehaviour` or a booted container; get the connection via `KernelLifecycleManager::getConnection()` and keep the test unit-like.
+- Run `update()` twice to prove idempotence where feasible. Prefer `MultiInsertQueryQueue` for bulk fixtures.
+- DDL triggers an implicit commit: run DDL outside transactions and undo it manually after the test.
+- Never assume a schema state - all migrations have already run. Build the needed state explicitly (rename the table, recreate it, test, restore).
 
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-to-queue.md
-Read more: platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.md
+Read more: https://developer.shopware.com/docs/resources/guidelines/code/core/database-migations.html
 
-## rule builder and flow builder first
+## inheritance modelling
 
-- Before hardcoding a merchant condition, add a `Rule` subclass (`match()`, `getConstraints()`); `match()` reads only the `RuleScope`, no queries.
-- Before hardcoding event automation, expose a `FlowEventAware` event or a `FlowAction`. Flows are skipped when the context has `Context::SKIP_TRIGGER_FLOW`.
+- Inheritance resolves parent to child (variants, sales channel config, child themes, custom fields): a scalar inherits when the child value is `null`/`undefined`; a collection inherits when empty. `false` is a real value, not inherited.
+- To restore inheritance, write `null` (or empty the association); for an explicitly empty override, `sw-inherit-wrapper` sets `forceInheritanceRemove`.
+- In the Admin, pass `hasParent` to `sw-inherit-wrapper` explicitly and take inherited values from `parentEntity.translated` for translatable fields.
 
-Read more: platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md
-Read more: platform/dev/6.7/concepts/framework/flow-concept.md
+Read more: platform/dev/6.7/guides/plugins/plugins/framework/data-handling/field-inheritance.md
 
-## admin data layer consumers
+## admin data persistence
 
-- Use `repositoryFactory.create('<entity_name>')` with `Criteria`; never call entity CRUD endpoints with a raw HTTP client.
-- Batch changes into one `save()` (bulk: `saveAll()`), check `hasChanges(entity)`, reload after saving, map field errors with `mapPropertyErrors`.
-- Load associations via `addAssociation()`, keep page sizes small.
+- Access entities only through `repositoryFactory.create('<entity_name>')`; never manipulate entities outside a repository.
+- Batch field changes and call `save()` once - the changeset generator sends only changed fields. Use `saveAll()` or `syncService` for bulk writes.
+- Reload the entity with `get()` after `save()` so origin state matches the server and `hasChanges()` stays correct.
+- Load associations in the same request via `Criteria.addAssociation()`; keep page sizes small and disable total count when unused.
+- Map field errors with `mapPropertyErrors`; repositories already reset and map API errors on save.
 
 Read more: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-data-handling.md
 
-## Code check (6.7.13.0+8da531fe)
+## Code check (6.7.15.1+7d4303db)
 
-- confirmed `MigrationStep::updateDestructive` — destructive step — core/Framework/Migration/MigrationStep.php:38
-- corrected `AddColumnTrait::columnExists` — code uses `ColumnExistsTrait::columnExists` instead, core/Framework/Migration/ColumnExistsTrait.php:17
-- confirmed `EntityIndexerRegistry::DISABLE_INDEXING` — context state — core/Framework/DataAbstractionLayer/Indexing/EntityIndexerRegistry.php:31
-- confirmed `Context::SKIP_TRIGGER_FLOW` — suppresses flows — core/Framework/Context.php:25
-- confirmed `hasChanges` — admin repository — administration/core/data/repository.data.ts:252
+- confirmed `updateDestructive` — default no-op on `MigrationStep` — core/Framework/Migration/MigrationStep.php:38
+- confirmed `registerIndexer` — queues indexers from a migration — core/Framework/Migration/MigrationStep.php:82
+- confirmed `addColumn` — returns false when column exists — core/Framework/Migration/AddColumnTrait.php:26
+- corrected `AddColumnTrait::columnExists` — code uses `ColumnExistsTrait::columnExists` instead, core/Framework/Migration/ColumnExistsTrait.php:16
+- confirmed `importTranslation` — translation helper — core/Migration/Traits/ImportTranslationsTrait.php:13
+- confirmed `database:create-migration` — command name — core/Framework/Migration/Command/CreateMigrationCommand.php:19
+- confirmed `EntityIndexer` — indexer base class — core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:9
+- confirmed `KernelLifecycleManager::getConnection` — test connection — core/Framework/Test/TestCaseBase/KernelLifecycleManager.php:201
+- confirmed `hasChanges` — changeset plus deletion queue — administration/core/data/repository.data.ts:294
+- confirmed `mapPropertyErrors` — field error helper — administration/app/service/map-errors.service.ts:11

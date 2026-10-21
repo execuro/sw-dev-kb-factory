@@ -6,38 +6,29 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/custom-field/
 sourceHash: a2d47151a1c3f98f87108392d5c9a959171b9267
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["custom fields", "custom field set", "additional attributes", "extra entity data", "custom_field", "custom_field_set", "custom_field_set_relation", "CustomFieldTypes", "CustomFields", "customFields", "field types", "zusatzfelder"]
-summary: "Overview of custom fields: extra data fields on entities such as products, customers or orders, created via Administration or API with a data type."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["custom fields", "custom field set", "CustomFieldTypes", "custom_field_set", "customFields", "zusatzfelder", "additional entity data", "extra attributes", "field types", "product custom field"]
+summary: "Overview of Shopware custom fields: extra typed data fields on entities like products, customers or orders, managed via Administration or API."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview of custom fields: additional data fields that can be added to entities such as products, customers or orders, to store information beyond Shopware's standard attributes (e.g. fabric composition for a clothing store, product dimensions for a hardware store).
+Section overview for custom fields: additional data fields that can be added to entities such as products, customers or orders to store information beyond Shopware's standard attributes (e.g. fabric composition for a clothing store, product dimensions for a hardware store).
 
 ## When to use
 
-A project or plugin needs to store extra, business-specific data on existing entities without changing the default data structure.
+- You need to store extra, shop-specific data on existing entities without changing their schema.
+- You want merchants to create and manage such fields themselves through the Administration or via the API.
 
 ## Key steps / config
 
-- Custom fields are created and managed through the Administration or via the API.
+- Custom fields are created and managed in the Administration or via the API.
 - Each field gets a data type (such as text, number, date) and is assigned to specific entities.
-- In the installed core, fields are grouped in sets (`custom_field_set`); a set is assigned to an entity through `custom_field_set_relation` with its `entityName`, and values are stored in the entity's `customFields` JSON field.
-- Type names available in `Shopware\Core\System\CustomField\CustomFieldTypes`: `bool`, `checkbox`, `colorpicker`, `date`, `datetime`, `entity`, `float`, `int`, `json`, `number`, `price`, `html`, `media`, `select`, `switch`, `text`.
+- In the installed code, the available types are the constants of `Shopware\Core\System\CustomField\CustomFieldTypes` (e.g. `text`, `int`, `float`, `number`, `date`, `datetime`, `bool`, `select`, `entity`, `media`, `html`, `price`).
 
-## Essential identifiers
-
-- `custom_field` (`Shopware\Core\System\CustomField\CustomFieldDefinition`)
-- `custom_field_set`, `custom_field_set_relation`
-- `Shopware\Core\System\CustomField\CustomFieldTypes`
-- `Shopware\Core\Framework\DataAbstractionLayer\Field\CustomFields` (DAL field type, property `customFields`)
-
-## Code check (6.7.13.0)
-- confirmed `CustomFieldDefinition::ENTITY_NAME` — entity custom_field — vendor/shopware/core/System/CustomField/CustomFieldDefinition.php:25
-- confirmed `CustomFieldSetDefinition::ENTITY_NAME` — entity custom_field_set — vendor/shopware/core/System/CustomField/Aggregate/CustomFieldSet/CustomFieldSetDefinition.php:31
-- confirmed `CustomFieldSetRelationDefinition::ENTITY_NAME` — entity custom_field_set_relation — vendor/shopware/core/System/CustomField/Aggregate/CustomFieldSetRelation/CustomFieldSetRelationDefinition.php:19
-- confirmed `entityName` — required field naming the assigned entity — vendor/shopware/core/System/CustomField/Aggregate/CustomFieldSetRelation/CustomFieldSetRelationDefinition.php:47
-- confirmed `CustomFieldTypes` — data type constants such as text, number, date — vendor/shopware/core/System/CustomField/CustomFieldTypes.php:8
-- confirmed `CustomFields` — DAL JSON field storing values — vendor/shopware/core/Framework/DataAbstractionLayer/Field/CustomFields.php:10
-- confirmed `customFields` — e.g. product entity field — vendor/shopware/core/Content/Product/ProductDefinition.php:221
+## Code check (6.7.15.1)
+- confirmed `CustomFieldTypes` — final class listing custom field types — vendor/shopware/core/System/CustomField/CustomFieldTypes.php:8
+- confirmed `CustomFieldTypes::TEXT` — `text` type — vendor/shopware/core/System/CustomField/CustomFieldTypes.php:25
+- confirmed `CustomFieldTypes::DATE` — `date` type — vendor/shopware/core/System/CustomField/CustomFieldTypes.php:13
+- confirmed `CustomFieldTypes::NUMBER` — `number` type — vendor/shopware/core/System/CustomField/CustomFieldTypes.php:19
+- confirmed `custom_field_set` — entity grouping custom fields — vendor/shopware/core/System/CustomField/Aggregate/CustomFieldSet/CustomFieldSetDefinition.php:34

@@ -1,80 +1,89 @@
 ---
-id: platform/dev/6.7/resources/guidelines/documentation-guidelines/03-language-and-grammar.md
-title: "Language & Grammar"
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/03-language-and-grammar.html
+id: platform/dev/6.7/resources/guidelines/documentation-guidelines/03-language-and-grammar.md
 sourceHash: 7396d0043a58cba69da9053fb1f8accee1d8ee3c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["language and grammar", "style guide", "writing style", "american english", "active voice", "second person", "gender-neutral", "abbreviations", "contractions", "punctuation", "capitalization", "tense", "documentation guidelines", "voice and tone"]
-summary: "Shopware docs writing rules: American English, active voice, second person, present tense, abbreviations, contractions, punctuation and word choice."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/documentation-guidelines/03-language-and-grammar.html
+title: Language & Grammar
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["language and grammar", "american english", "voice and tone", "active voice", "second person", "gender-neutral", "abbreviations", "contractions", "tense", "capitalization", "punctuation", "em dash", "style guide", "documentation guidelines"]
+summary: "Shopware docs writing rules: American English, friendly direct tone, active voice, second person, abbreviations, tense, capitalization, punctuation."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The language and grammar section of the Shopware documentation guidelines: the editorial voice, grammar and punctuation rules that contributions to the developer documentation follow. Use American English; the Cambridge dictionary (essential American English) is the reference for vocabulary and spelling.
+The language and grammar section of the Shopware documentation guidelines. It defines the editorial voice and the grammar, abbreviation, and punctuation rules that keep Shopware documentation consistent in content and style.
 
 ## When to use
 
-When writing or reviewing Shopware developer documentation (or content meant to match its style) and a question comes up about voice, pronouns, tense, abbreviations or punctuation.
+When writing, editing, or reviewing Shopware documentation text and you need a decision on spelling, voice, person, tense, abbreviations, capitalization, or punctuation.
 
 ## Key steps / config
 
-### Voice and tone
+### Language and voice
 
-- Friendly: less formal, down-to-earth, occasionally funny where appropriate.
-- Direct and clear: to the point, skimmable, simple.
-- Customer focused: assume a knowledgeable reader with varying proficiency.
+- Use American English for a global audience; spellings follow the Cambridge dictionary (Essential American English).
+- Tone is friendly and conversational, direct, clear, and human. Voice principles:
+  - **Friendly** — less formal, down-to-earth; occasionally funny where appropriate.
+  - **Direct and clear** — to the point; a skim should give a clear idea; simple above all.
+  - **Customer focussed** — assume a knowledgeable reader with varying proficiency.
 
-### Grammar
+### Active, passive, and person
 
-- **Active voice** by default ("The user passes the access-key."). Passive is fine to emphasize an object over an action, to de-emphasize a subject, or when the doer need not be known.
-- **Second person** over first person (*you*, not *we*/*I*); FAQs are the exception. For instructions use the imperative with implicit *you*: "Create a PDF file." rather than "You need to create a PDF file." Avoid *our*.
-- **Gender-neutral**: *they* instead of *he/she*; *humankind* instead of *mankind*.
-- **Tense**: simple present; avoid future and past tense.
-- **Articles**: use an article with acronyms (an ISP, a URL) and nouns (the product database).
+- Prefer active voice ("The user passes the access-key.") over passive ("The access-key is passed by the user.").
+- Passive is acceptable to emphasize an object over the action, to de-emphasize the subject, or when the doer need not be known.
+- Use second person (*you*) over first person (*we*, *I*); first person is allowed in FAQs.
+- For instructions use the imperative with implicit *you*: "Create a PDF file.", not "You need to create a PDF file."
+- Avoid *our* in sentences.
+- Use gender-neutral pronouns (*they*) and words (humankind, not mankind).
 
 ### Abbreviations
 
-- Spell out unfamiliar terms on first mention, abbreviation in parentheses: *JSON Web Token (JWT)*; afterwards use the abbreviation only.
-- Common ones (API, HTTPS, PDF, XML, PNG, HTML) rarely need spelling out.
-- Never abbreviate Shopware product or feature names; never define your own abbreviations.
-- Plurals add "s" (APIs, IDEs); acronyms ending in s, sh, ch or x add "es" (OSes, SSHes).
-- Shortened words (*app*, *sync*, *etc*): pick one form and stay consistent.
-- Limit contractions such as *it's*, *you're*; negation contractions (*isn't*, *don't*, *can't*) are recommended because a missed *not* is harder with them.
+- Spell out unfamiliar abbreviations on first use followed by the abbreviation in parentheses, e.g. *JSON Web Token (JWT)*; use only the abbreviation afterwards.
+- Some never need spelling out: *API, HTTPS*, file formats such as *PDF, XML, PNG, HTML*.
+- Never abbreviate Shopware product or feature names; do not invent abbreviations — use industry-standard ones only.
+- Plurals add "s" (*APIs, IDEs*); if the acronym ends in s, sh, ch, or x, add "es" (*OSes, SSHes*).
+- Shortened words (*etc*, *app*, *sync*): use either the short or the full form consistently throughout a document.
+- Limit contractions (*it's, you're, let's*); negation contractions (*isn't, don't, can't*) are recommended because a reader can easily miss *not*.
+
+### Tense and articles
+
+- Use simple present tense; avoid future and past tense.
+- Use articles with acronyms (an ISP, a URL) and nouns (the product database).
 
 ### Capitalization and spelling
 
 - Capitalize the first letter of the word after a colon.
-- Keep the official capitalization of companies, software, products, services and features.
-- A hyphenated word starting a sentence capitalizes only its first element (unless later elements are proper nouns).
-- In filenames, URLs and data parameters prefer words spelled the same in all English dictionaries (avoid color/colour).
+- Follow the official capitalization of company, software, product, service, and feature names.
+- A hyphenated word starting a sentence capitalizes only its first element, unless a later element is a proper noun or adjective.
+- Prefer filenames, URLs, and data parameters whose spelling does not differ between dictionaries (avoid color versus colour).
 
 ### Conjunctions and punctuation
 
-- Use *or* instead of a slash, *and* instead of an ampersand.
-- Serial (Oxford) comma before the final *and*/*or* in lists of three or more.
-- Comma after an introductory word or phrase; semicolon, period or dash before a conjunctive adverb (*however*, *otherwise*) with a comma after it.
-- Comma before the conjunction joining two independent clauses unless both are very short.
-- Em dash for a break in a sentence; hyphen for prefixes (*self-aware*), number ranges (*25-30 GB*), compound nouns, disambiguation (*logged-in*, *re-mark*) and same-vowel prefixes (*co-op*).
-- End every sentence with a period; no period after headings or directly after a URL; period inside closing quotation marks; list items that are full sentences get a period, phrases do not.
-- No slashes in dates, fractions or alternatives (*blue/red*).
-- Do not hide important information in parentheses.
+- Use *or* instead of a slash and *and* instead of an ampersand.
+- Use the serial comma before the final *and*/*or* in a list of three or more.
+- Put a comma after an introductory word or phrase, and after a conjunctive adverb (*however*, *otherwise*), which itself is preceded by a semicolon, period, or dash.
+- Insert a comma before a conjunction joining two independent clauses unless both are very short.
+- Use an em dash for a break in a sentence; use a hyphen for prefixes (*self-aware*), number ranges (*25-30 GB*), compound nouns, disambiguation (*logged-in, re-mark*), and doubled vowels (*co-op*).
+- End every sentence with a period, including complete sentences in lists (phrases in lists are the exception); never end headings or URLs with a period; put the period inside closing quotation marks.
+- Do not use slashes in dates, fractions, or for alternatives (*blue/red*).
+- Do not put important information in parentheses.
 
 ### Dos and don'ts
 
-- No internet slang, buzzwords, jargon, idioms.
-- Vary sentence openings (not always *In order to*, *You can*).
-- Polite modal verbs (*may*, *might*) are fine; avoid *please* and *request*.
-- Do not write as you speak; keep a slightly formal, uncluttered style.
+- No internet slang, buzzwords, jargon, idioms, or set phrases.
+- Do not start every sentence with the same phrase (*In order to*, *You can*).
+- Polite modal words (*may*, *might*) are fine; avoid request words (*please*, *request*).
+- Do not write as you speak; add some formality and include only enough information for the reader to complete the task.
 
 ## Gotchas
 
-- First-person usage is allowed only in FAQs.
-- Negation contractions are encouraged even though other contractions should be limited.
+- First person is not banned outright: FAQs are the stated exception.
+- Contractions are to be limited in general, but negation contractions are explicitly recommended.
 
-## Code check (6.7.13.0)
-- unverified `American English` — editorial writing rule with no counterpart in installed code
-- unverified `active voice` — editorial writing rule, not a code identifier
-- unverified `JSON Web Token (JWT)` — used only as an abbreviation example, no normative code claim
+## Code check (6.7.15.1)
+- unverified `American English` — editorial rule, no code identifier in the vendor/shopware roots
+- unverified `active voice` — editorial rule, no normative code claim to check
+- unverified `abbreviations` — editorial rule, no normative code claim to check

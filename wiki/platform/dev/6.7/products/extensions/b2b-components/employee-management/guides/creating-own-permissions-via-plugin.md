@@ -1,75 +1,86 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-components/employee-management/guides/creating-own-permissions-via-plugin.md
-title: Create permissions via plugin
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/employee-management/guides/creating-own-permissions-via-plugin.html
+id: platform/dev/6.7/products/extensions/b2b-components/employee-management/guides/creating-own-permissions-via-plugin.md
 sourceHash: 640b91462e2065c4ba41352e4b676bfb952d378b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["PermissionCollectorEvent", "PermissionCollector", "PermissionCollectorSubscriber", "addPermission", "isB2bAllowed", "PermissionDeniedException", "EventSubscriberInterface", "b2b permissions", "employee role", "custom permission", "employee management", "permission check"]
-summary: "B2B plugin permissions: subscribe to PermissionCollectorEvent, call addPermission(); check with isB2bAllowed() in Twig or the employee role's can() in PHP."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/extensions/b2b-components/employee-management/guides/creating-own-permissions-via-app.md"]
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/employee-management/guides/creating-own-permissions-via-plugin.html
+title: Create permissions via plugin
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["PermissionCollectorSubscriber", "PermissionCollectorEvent", "PermissionCollector", "addPermission", "isB2bAllowed", "PermissionDeniedException", "EventSubscriberInterface", "b2b permissions", "employee role", "custom permission", "employee management", "role can"]
+summary: Register custom B2B employee permissions via a PermissionCollectorEvent subscriber, then check them with isB2bAllowed in Twig or the role in controllers.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a plugin registers custom permissions for B2B Employee Management roles by listening to `PermissionCollectorEvent`, and how to check those permissions in Twig templates and controllers.
+Guide for adding custom permissions to the B2B Components Employee Management module from a plugin. Permissions are registered by a Symfony event subscriber listening to `PermissionCollectorEvent`; the `PermissionCollector` gathers the permissions of all subscribers and passes them to the storefront, where a user can attach them to an employee role.
 
 ## When to use
 
-Your plugin adds B2B functionality (e.g. a custom entity) whose read/edit/create/delete actions business partners should be able to grant to employee roles.
+A plugin adds its own B2B feature or entity and needs employee roles to be able to grant or deny read/edit/create/delete access to it, checked in Storefront templates and controllers.
 
 ## Key steps / config
 
-1. Create a Symfony event subscriber (`Symfony\Component\EventDispatcher\EventSubscriberInterface`) that defines a group name and permission names as constants and listens to `PermissionCollectorEvent::NAME` (the source uses priority `1000`).
-2. In the listener, get the collection from the event and call `addPermission(<name>, <group>, <dependencies[]>)` for each permission. The third argument lists permissions this one depends on.
+1. Create a subscriber class (the guide names it `PermissionCollectorSubscriber`) implementing `Symfony\Component\EventDispatcher\EventSubscriberInterface`. Define a group constant and one constant per permission:
 
 ```php
-public const OWN_ENTITY_GROUP = 'own_entity';
-public const OWN_ENTITY_READ = 'own_entity.read';
-public const OWN_ENTITY_EDIT = 'own_entity.edit';
+public const OWN_ENTITY_GROUP  = 'own_entity';
+public const OWN_ENTITY_READ   = 'own_entity.read';
+public const OWN_ENTITY_EDIT   = 'own_entity.edit';
+public const OWN_ENTITY_CREATE = 'own_entity.create';
+public const OWN_ENTITY_DELETE = 'own_entity.delete';
 
 public static function getSubscribedEvents(): array
 {
     return [PermissionCollectorEvent::NAME => ['onAddOwnPermissions', 1000]];
 }
+```
 
+2. In the listener, get the collection and add each permission with `addPermission(<permission>, <group>, <dependencies[]>)`:
+
+```php
 public function onAddOwnPermissions(PermissionCollectorEvent $event): void
 {
     $collection = $event->getCollection();
     $collection->addPermission(self::OWN_ENTITY_READ, self::OWN_ENTITY_GROUP, []);
     $collection->addPermission(self::OWN_ENTITY_EDIT, self::OWN_ENTITY_GROUP, [self::OWN_ENTITY_READ]);
+    // create/delete depend on read + edit
 }
 ```
 
-3. `PermissionCollector` gathers the permissions from all subscribers and passes them to the Storefront, where users attach them to roles.
-4. Template check: `{% if isB2bAllowed(constant('PermissionCollectorSubscriber::OWN_ENTITY_READ')) %}...{% endif %}` inside a `sw_extends` template.
-5. Controller check goes through the employee's role: `$context->getCustomer()->getEmployee()->getRole()->can(<permission>)`; throw `PermissionDeniedException` when it returns false.
+3. Check a permission in Twig with the `isB2bAllowed` function:
+
+```twig
+{% sw_extends '@Storefront/storefront/page/checkout/checkout-item.html.twig' %}
+{% if isB2bAllowed(constant('PermissionCollectorSubscriber::OWN_ENTITY_READ')) %}...{% endif %}
+```
+
+4. In controllers, check via the employee's role and throw `PermissionDeniedException` when not allowed:
+`$context->getCustomer()->getEmployee()->getRole()->can(PermissionCollectorSubscriber::OWN_ENTITY_READ)`.
 
 ## Essential identifiers
 
-- `PermissionCollectorEvent`, `PermissionCollectorEvent::NAME`
+- `PermissionCollectorEvent`, `PermissionCollectorEvent::NAME`, `$event->getCollection()`, `addPermission()`
 - `PermissionCollector`
-- `addPermission()` on the event's collection (`getCollection()`)
 - `isB2bAllowed` (Twig function)
 - `getEmployee()->getRole()->can()`
-- `Shopware\Core\Framework\Api\Controller\Exception\PermissionDeniedException`
+- `PermissionDeniedException`
+- `Symfony\Component\EventDispatcher\EventSubscriberInterface`
 
 ## Gotchas
 
-- The source snippet declares `OWN_ENTITY_*` constants but then calls `addPermission()` and `isB2bAllowed` with undeclared `EMPLOYEE_READ`/`EMPLOYEE_EDIT`/`EMPLOYEE_CREATE`/`EMPLOYEE_DELETE` constants; use the constants you actually define.
-- The source's Twig example extends `@Storefront/storefront/page/checkout/checkout-item.html.twig`, which does not exist in the installed Storefront; line items render from `@Storefront/storefront/component/line-item/line-item.html.twig`.
-- `PermissionDeniedException` in core takes no constructor arguments and responds with HTTP 403 (`FRAMEWORK__PERMISSION_DENIED`).
-- Permission names must be unique across Shopware, plugins and apps.
+- The source's listener body calls `addPermission()` with `self::EMPLOYEE_READ`/`EMPLOYEE_EDIT`/`EMPLOYEE_CREATE`/`EMPLOYEE_DELETE`, which the class never defines (it defines `OWN_ENTITY_*`); use your own constants as shown above. The Twig and controller samples likewise reference `PermissionCollectorSubscriber::EMPLOYEE_READ`.
+- The source snippet has no `use` statement for `PermissionCollectorEvent`; its namespace is not given in the doc and is not part of Shopware core.
+- All B2B identifiers on this page (`PermissionCollectorEvent`, `isB2bAllowed`, `getEmployee()`) come from the commercial B2B Components extension, not from Shopware core.
 
-## Code check (6.7.13.0)
-- unverified `PermissionCollectorEvent` — B2B Components class, package not installed in vendor/shopware roots
-- unverified `PermissionCollector` — B2B Components service, not installed
-- unverified `isB2bAllowed` — Twig function from B2B Components, no match in installed vendor roots
+## Code check (6.7.15.1)
+- unverified `PermissionCollectorEvent` — B2B Components (commercial extension), not in the installed core/storefront/administration code
+- unverified `PermissionCollector` — B2B Components class, out of scope of installed core code
+- unverified `isB2bAllowed` — Twig function provided by B2B Components, not registered in core/storefront
+- unverified `CustomerEntity::getEmployee()` — B2B extension accessor; no `getEmployee()` in core
 - unverified `EventSubscriberInterface` — vendor/symfony, out of scope
-- confirmed `PermissionDeniedException` — core exception, no-arg constructor — vendor/shopware/core/Framework/Api/Controller/Exception/PermissionDeniedException.php:13
-- confirmed `PermissionDeniedException::getStatusCode()` — returns HTTP 403 — vendor/shopware/core/Framework/Api/Controller/Exception/PermissionDeniedException.php:25
+- unverified `@Storefront/storefront/page/checkout/checkout-item.html.twig` — no such template under storefront Resources/views in 6.7.15.1
+- confirmed `sw_extends` — Shopware Twig tag registered by ExtendsTokenParser — vendor/shopware/core/Framework/Adapter/Twig/TokenParser/ExtendsTokenParser.php:68
 - confirmed `SalesChannelContext::getCustomer()` — returns nullable CustomerEntity — vendor/shopware/core/System/SalesChannel/SalesChannelContext.php:132
-- confirmed `sw_extends` — core Twig token parser — vendor/shopware/core/Framework/Adapter/Twig/TokenParser/ExtendsTokenParser.php:68
-- absent `checkout-item.html.twig` — docs extend this template; no such file or reference in installed Storefront
+- confirmed `PermissionDeniedException` — core API exception class — vendor/shopware/core/Framework/Api/Controller/Exception/PermissionDeniedException.php:13

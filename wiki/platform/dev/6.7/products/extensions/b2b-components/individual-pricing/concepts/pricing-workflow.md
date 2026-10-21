@@ -1,67 +1,50 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-components/individual-pricing/concepts/pricing-workflow.md
-title: Pricing workflow
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/individual-pricing/concepts/pricing-workflow.html
+id: platform/dev/6.7/products/extensions/b2b-components/individual-pricing/concepts/pricing-workflow.md
 sourceHash: accec4499c76c6a799066dbeb84959d162d91897
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["individual pricing", "AudienceContextResolver", "IndividualPricingProductSubscriber", "IndividualPricingCacheEntryUpdaterMessage", "IndividualPricingBuildCacheSingleRuleMessage", "IndividualPricingIndexingMessage", "volume_pricing", "showStrikeThrough", "computed cache", "b2b customer-specific prices", "price priority", "tier prices", "strike-through price", "price sorting filtering"]
-summary: "B2B Individual Pricing runtime flow: audience context, computed-cache lookup, priority/lowest-price rule selection, volume tiers, async indexing, HTTP cache."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/individual-pricing/concepts/pricing-workflow.html
+title: Pricing workflow
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["AudienceContextResolver", "IndividualPricingProductSubscriber", "IndividualPricingCacheEntryUpdaterMessage", "IndividualPricingBuildCacheSingleRuleMessage", "IndividualPricingIndexingMessage", "showStrikeThrough", "volume_pricing", "individual pricing workflow", "price override", "computed cache", "price sorting filtering", "http cache"]
+summary: How B2B Individual Pricing overrides prices at runtime - resolution phases, priority, tiers, computed cache, async indexing, HTTP cache and sorting limits.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Concept page for the B2B Commercial component Individual Pricing: how customer-specific pricing rules are resolved and applied to products at runtime (after products are loaded via the Store API), how the pre-computed cache is maintained through the message queue, and how it ranks against Shopware's standard, advanced, rule-based and custom pricing.
+Explains how B2B Individual Pricing plugs into Shopware's pricing: prices are overridden at runtime while sales channel products are loaded, resolved from a pre-computed cache, maintained by asynchronous indexing, with defined precedence over other price sources.
 
 ## When to use
 
-Read this when debugging why a B2B customer sees (or does not see) an individual price, when reasoning about priority between Individual Pricing and other price sources, or when price sorting/filtering disappears in the storefront for logged-in B2B customers.
+Debugging why a customer sees a specific price, understanding delays after editing rules, planning HTTP cache behaviour for B2B customers, or explaining why price sorting/filtering is missing in the storefront.
 
 ## Key steps / config
 
-Runtime flow (four phases):
+Price override phases:
+1. **Context creation** — `AudienceContextResolver` identifies the customer type (business partner, employee, tag-based customer) and prepares the audience context during request initialization.
+2. **Product loading** — when products are loaded via the Store API, `IndividualPricingProductSubscriber` listens to the product-loaded event and starts pricing application.
+3. **Price resolution** — the computed cache is queried for applicable rules per product; at the highest priority, the lowest resulting price wins.
+4. **Price application** — single pricing sets one price (optional strike-through); volume pricing assigns tier prices with quantity ranges.
 
-1. **Context creation** — `AudienceContextResolver` identifies the customer type (business partner, employee, tag-based customer) and builds the audience context during request initialization.
-2. **Product loading** — `IndividualPricingProductSubscriber` listens for the product-loaded event when products are loaded via the Store API.
-3. **Price resolution** — the computed cache is queried for applicable rules.
-4. **Price application** — single pricing (one price, optional strike-through) or volume pricing (tier prices with quantity ranges).
+Resolution steps: identify company, groups, tags, organization units → cache lookup → filter by active status, validity period, target type, product stream → sort by priority (desc) → evaluate all highest-priority rules and pick the lowest price → apply the action (percentage, fixed discount, fixed price, or tier).
 
-Resolution steps:
+Volume pricing (`volume_pricing`): tiers sorted by `qtyFrom`; a tier matches when quantity ≥ `qtyFrom` and (quantity ≤ `qtyTo` or `qtyTo` is null); no matching tier → base price.
 
-1. Context identification: company, groups, tags, organization units.
-2. Cache lookup in the computed cache.
-3. Filter rules by active status, validity period (if set), target type (company, group, tag), product stream match.
-4. Sort by priority, highest first.
-5. Only the highest priority level is considered; if several rules match there, the price for each is calculated and the lowest wins. No match falls back to the standard price.
-6. Apply the selected rule's action (volume tier, percentage discount, fixed discount, or fixed price).
+Strike-through (`showStrikeThrough`): the original standard price is preserved, the individual price becomes the current price, and the storefront can show both.
 
-Volume pricing (action type `volume_pricing`): tiers are sorted by `qtyFrom`; a tier matches when quantity >= `qtyFrom` and (quantity <= `qtyTo` or `qtyTo` is null). No matching tier uses the base price.
-
-Strike-through: with `showStrikeThrough` enabled, the original standard price is preserved and the calculated individual price becomes the current price, so the storefront can show both.
-
-Priority hierarchy (highest first):
-
+Precedence (highest first):
 1. Individual Pricing
-2. Shopware custom pricing (bypassed when an Individual Pricing rule applies)
+2. Shopware custom pricing (bypassed whenever an Individual Pricing rule applies)
 3. Product advanced/graduated prices
 4. Rule-based prices
 5. Standard list price
 
-Caching and indexing (hybrid):
-
-- Specific products: one pre-computed cache entry per product-rule pair, built via product stream matching.
-- "Apply to all products": a single entry per rule with `product_id=NULL`, price calculated at runtime.
-- Entries are regenerated on rule update and removed on rule delete.
-
-Five asynchronous indexing flows, batches of 1,000 products via the message queue:
-
-1. Product indexing — incremental rebuild for changed products.
-2. Rule changes — `IndividualPricingCacheEntryUpdaterMessage`.
-3. Product stream filter changes — affected rules re-indexed.
-4. Tier changes — only the affected rule via `IndividualPricingBuildCacheSingleRuleMessage`.
-5. Full re-index — manual command, coordinated by `IndividualPricingIndexingMessage`.
+Caching and indexing:
+- Specific products: one pre-computed cache row per product-rule pair. Apply-to-all rules: a single row with `product_id=NULL`, price calculated at runtime (once per request).
+- Indexing is queue-based, in batches of 1,000 products. Five flows: product indexing (incremental per changed product); rule create/update dispatches `IndividualPricingCacheEntryUpdaterMessage`; product stream filter changes re-index affected rules; tier changes update only that rule via `IndividualPricingBuildCacheSingleRuleMessage`; full re-index via a manual command coordinated by `IndividualPricingIndexingMessage`.
+- Cache rows are regenerated on rule update and removed on rule deletion.
 
 HTTP cache by customer type:
 
@@ -76,29 +59,27 @@ Tags are checked first, then organization units, else non-cacheable.
 
 ## Essential identifiers
 
-- `AudienceContextResolver`
-- `IndividualPricingProductSubscriber`
-- `IndividualPricingCacheEntryUpdaterMessage`
-- `IndividualPricingBuildCacheSingleRuleMessage`
-- `IndividualPricingIndexingMessage`
-- `volume_pricing`, `qtyFrom`, `qtyTo`, `showStrikeThrough`
+- `AudienceContextResolver`, `IndividualPricingProductSubscriber`
+- `IndividualPricingCacheEntryUpdaterMessage`, `IndividualPricingBuildCacheSingleRuleMessage`, `IndividualPricingIndexingMessage`
+- `showStrikeThrough`, `volume_pricing`, `qtyFrom`, `qtyTo`
 
 ## Gotchas
 
-- Prices are modified after query execution; MySQL/MariaDB and Elasticsearch indexes hold only the original price. Price sorting and price range filtering are therefore automatically disabled in the storefront when Individual Pricing applies to the logged-in customer.
-- Indexing is queue-based: rules for specific products become visible only after the queue worker processes them. "Apply to all products" rules take effect immediately (runtime calculation).
-- Business partner and org-unit-less employee responses are not HTTP-cacheable.
+- Prices are modified after the query runs; MySQL/Elasticsearch indexes hold only the original price, so price sorting and price range filtering would be wrong. They are automatically disabled in the storefront when Individual Pricing applies to the logged-in customer.
+- After creating/updating rules for specific products, new prices appear only after the queue has processed the indexing messages; time depends on affected product count, worker configuration and queue load. Apply-to-all rules take effect immediately.
+- The source's full re-index command name is not given.
 
 ## Version notes
 
-The source lists planned, not yet available, features: a migration path from Shopware custom pricing to Individual Pricing, and a mass upsert API for bulk import of pricing rules.
+- The source lists planned, not yet available, work: a migration path from custom pricing to Individual Pricing and a mass upsert API for bulk rule import.
 
-## Code check (6.7.13.0)
-- unverified `AudienceContextResolver` — Shopware Commercial (B2B) plugin class, not in vendor/shopware/{core,storefront,administration}; out of scope
-- unverified `IndividualPricingProductSubscriber` — Commercial plugin, not installed in the checked roots; out of scope
-- unverified `IndividualPricingCacheEntryUpdaterMessage` — Commercial plugin, out of scope
-- unverified `IndividualPricingBuildCacheSingleRuleMessage` — Commercial plugin, out of scope
-- unverified `IndividualPricingIndexingMessage` — Commercial plugin, out of scope
-- unverified `showStrikeThrough` — Commercial plugin field, not present in core product code; out of scope
-- confirmed `EntityIndexingMessage` — core indexing message is async (`AsyncMessageInterface`), consistent with queue-based indexing — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexingMessage.php:12
-- confirmed `ProductEntity::getPrices()` — core advanced (graduated) prices that Individual Pricing ranks above — vendor/shopware/core/Content/Product/ProductEntity.php:673
+## Code check (6.7.15.1)
+- unverified `AudienceContextResolver` — B2B Components (commercial extension), not in installed core code
+- unverified `IndividualPricingProductSubscriber` — B2B Components subscriber, not in installed core code
+- unverified `IndividualPricingCacheEntryUpdaterMessage` — B2B Components message, not in installed core code
+- unverified `IndividualPricingBuildCacheSingleRuleMessage` — B2B Components message, not in installed core code
+- unverified `IndividualPricingIndexingMessage` — B2B Components message, not in installed core code
+- confirmed `ProductEvents::PRODUCT_LOADED_EVENT` — core product-loaded event name `product.loaded` — vendor/shopware/core/Content/Product/ProductEvents.php:35
+- confirmed `SalesChannelEntityLoadedEvent` — sales-channel variant of loaded events, name prefixed `sales_channel.` — vendor/shopware/core/System/SalesChannel/Entity/SalesChannelEntityLoadedEvent.php:20
+- confirmed `ProductPriceDefinition` — core advanced (graduated) product prices entity — vendor/shopware/core/Content/Product/Aggregate/ProductPrice/ProductPriceDefinition.php:24
+- confirmed `product_stream` — core entity used for rule product matching — vendor/shopware/core/Content/ProductStream/ProductStreamDefinition.php:36

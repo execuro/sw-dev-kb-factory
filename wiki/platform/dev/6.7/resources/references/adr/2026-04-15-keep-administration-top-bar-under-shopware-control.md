@@ -6,42 +6,56 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-04-15-keep-administration-top-bar-under-shopware-control.html
 sourceHash: 3c12100ccc013c79ac3f4b1e930075145d1892eb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["displaySearchBar", "administration top bar", "search bar", "meteor admin sdk", "extension sdk module", "mainModuleAdd", "sw-extension-sdk-module", "ui shell", "page chrome", "full-screen mode", "extensionSdkModules"]
-summary: "ADR: extensions may no longer hide the Administration top/search bar via displaySearchBar; option to be deprecated and removed in the next major."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["displaySearchBar", "Meteor Admin SDK", "admin sdk module", "sw-extension-sdk-module", "showSearchBar", "sw-page", "top bar", "search bar", "administration shell", "full-screen mode", "extension module page", "hide search bar"]
+summary: "ADR: extensions may no longer hide the Administration top/search bar via the Admin SDK displaySearchBar option; deprecated for removal in the next major."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2026-04-15) declaring the Administration top bar (search bar) part of the minimal, stable Administration shell that stays under Shopware control. Extension module pages registered through the Meteor Admin SDK may no longer hide it via `displaySearchBar`.
+An architecture decision record (2026-04-15, area administration) stating that the Administration top/search bar is part of the minimal, stable UI shell and stays under Shopware control. Extensions may no longer hide it; the existing Meteor Admin SDK capability to do so (`displaySearchBar` on SDK-registered module pages) is deprecated for the next major release and removed in it.
 
 ## When to use
 
-- You build an app or plugin that registers a module page through the Meteor Admin SDK and currently sets `displaySearchBar` to `false`.
-- You plan an immersive or chrome-less extension UI and need to know what layout control is supported.
+- Building an app or plugin that registers a module page through the Meteor Admin SDK and currently hides the top/search bar.
+- Planning layout work for extension module pages and needing to know which shell elements are off-limits.
+- Evaluating immersive or chrome-less experiences inside the Administration.
 
 ## Key steps / config
 
-- The top bar holds global controls other extensions and the Administration depend on: the Administration search, extension entry points rendered in the top bar, notifications and help center entry points, and the button that opens the navigation sidebar on small viewports.
-- Decision: hiding the top/search bar through the extension API is deprecated for the next major release and removed in that release. Migrate extension modules away from `displaySearchBar: false` before removal.
-- In 6.7.13.0 the option is still honoured: the `mainModuleAdd` handler stores `displaySearchBar` (default `true`) in the `extensionSdkModules` store, and the `sw-extension-sdk-module` page reads it in its `showSearchBar` computed property.
-- Separate layout-parity work for extension modules may continue, but must exclude hiding the top/search bar.
-- Immersive experiences, if ever supported, require an explicit Shopware-controlled full-screen mode decided in a separate ADR.
+Context given by the ADR: alongside the navigation sidebar, the top bar is one of the few shell elements relevant across modules and viewport sizes. The page head area holds globally relevant controls:
+
+- the Administration search
+- extension entry points rendered in the top bar
+- notifications and help center entry points
+- the button that opens the navigation sidebar on smaller viewports
+
+If one extension removes these via `displaySearchBar`, it removes capabilities other extensions and the Administration rely on: Shopware loses control of parts that must stay available, other extensions' top-bar integrations stop being discoverable, and small-screen navigation is no longer guaranteed.
+
+Decision and required migration:
+
+1. Do not hide the top/search bar from an extension module page; plan to stop passing `displaySearchBar: false` before its removal.
+2. SDK layout-parity work must exclude top/search-bar hiding from the supported layout controls. Further layout parity with first-party modules may be explored separately.
+3. Public examples and documentation should stop encouraging hiding the bar.
+4. Any immersive/chrome-less need must go through an explicit Shopware-controlled full-screen mode, which requires separate discovery and its own ADR; this ADR defines no such API.
+
+How the option is wired in the installed 6.7.15.1 Administration: the extension SDK module store keeps `displaySearchBar` per module; `main-module.init.ts` defaults it to `true`; the `sw-extension-sdk-module` page maps it to its `showSearchBar` computed (default `true`), which is passed to `sw-page` as `show-search-bar`.
 
 ## Essential identifiers
 
-- `displaySearchBar` (Meteor Admin SDK module option)
-- `mainModuleAdd` (Extension API handler)
-- `sw-extension-sdk-module` page component, `showSearchBar` computed
-- `extensionSdkModules` store
+- `displaySearchBar` (Admin SDK module option)
+- `sw-extension-sdk-module` page, `showSearchBar` computed
+- `sw-page` prop `showSearchBar`
+- `displaySmartBar` (separate SDK option, not covered by this ADR)
 
 ## Gotchas
 
-- Public extension examples and documentation should stop encouraging top/search bar hiding.
-- No deprecation annotation for `displaySearchBar` exists yet in the installed Administration source; the removal is announced by this ADR only.
+- In 6.7.15.1 `displaySearchBar` still works and the Administration source carries no deprecation marker for it; the deprecation announced by the ADR is not yet visible in the code.
+- The ADR only covers the top/search bar. It does not restrict `displaySmartBar` or other layout controls.
 
-## Code check (6.7.13.0)
-- confirmed `displaySearchBar` — `mainModuleAdd` handler defaults it to `true`; no `@deprecated` marker in administration src — vendor/shopware/administration/Resources/app/administration/src/app/init/main-module.init.ts:22
-- confirmed `showSearchBar` — SDK module page reads `module.displaySearchBar ?? true` — vendor/shopware/administration/Resources/app/administration/src/module/sw-extension-sdk/page/sw-extension-sdk-module/index.js:43
-- confirmed `mainModuleAdd` — Extension API handler registering SDK modules — vendor/shopware/administration/Resources/app/administration/src/app/init/main-module.init.ts:7
-- confirmed `extensionSdkModules` — store the handler adds the module to — vendor/shopware/administration/Resources/app/administration/src/app/init/main-module.init.ts:18
+## Code check (6.7.15.1)
+- confirmed `displaySearchBar` — stored per SDK module, no deprecation marker — vendor/shopware/administration/Resources/app/administration/src/app/store/extension-sdk-module.store.ts:13
+- confirmed `displaySearchBar` — defaults to true on main module registration — vendor/shopware/administration/Resources/app/administration/src/app/init/main-module.init.ts:22
+- confirmed `showSearchBar` — SDK module page reads module.displaySearchBar — vendor/shopware/administration/Resources/app/administration/src/module/sw-extension-sdk/page/sw-extension-sdk-module/index.js:42
+- confirmed `displaySmartBar` — separate option on the same page — vendor/shopware/administration/Resources/app/administration/src/module/sw-extension-sdk/page/sw-extension-sdk-module/index.js:47
+- confirmed `showSearchBar` — sw-page prop controlling the search bar — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-page/index.js:65

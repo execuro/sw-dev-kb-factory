@@ -6,74 +6,86 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/advanced-configuration/add-rule-assignment-configuration.html
 sourceHash: 283afad1cfd9ce0f4bcf2f93d40dc606d792a17e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["rule assignment", "rule builder", "sw-settings-rule-detail-assignments", "associationEntitiesConfig", "Component.override", "$super", "deleteContext", "addContext", "one-to-many", "many-to-many", "ManyToManyAssociationField", "gridColumns", "searchColumn", "assignment card"]
-summary: "Add a custom assignment card to the rule detail page by overriding sw-settings-rule-detail-assignments and pushing to associationEntitiesConfig."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md", "platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-the-data-grid-component.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-settings-rule-detail-assignments", "associationEntitiesConfig", "deleteContext", "addContext", "gridColumns", "searchColumn", "ManyToManyAssociationField", "Component.override", "rule assignment", "rule builder assignments card", "one-to-many", "many-to-many"]
+summary: Add a custom card to the rule detail Assignments tab by overriding associationEntitiesConfig in sw-settings-rule-detail-assignments.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-the-data-grid-component.md", "platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md"]
 ---
 ## What it is
 
-How a plugin adds its own card to the rule detail "assignments" tab in the Administration (Settings > Rules), with optional add/delete of assignments. Available since Shopware 6.4.8.0. The example is based on the `Dynamic Access` plugin.
+How a plugin adds its own assignment card (list, add, delete) to the Assignments tab of a rule, by overriding the Administration component `sw-settings-rule-detail-assignments` and appending a configuration object to its `associationEntitiesConfig` computed property (example: the `Dynamic Access` plugin).
 
 ## When to use
 
-Your plugin links an entity to rules (e.g. via an extension with a rule association) and merchants should see, add and remove those assignments from the rule detail page.
+Your plugin associates its own entity (or an extension of a core entity) with `rule`, and merchants should manage those assignments from the rule detail page.
 
 ## Key steps / config
 
 1. Create `<plugin root>/src/Resources/app/administration/src/module/sw-settings-rule/extension/sw-settings-rule-detail-assignments/index.js` and import it in `main.js`:
    `import './module/sw-settings-rule/extension/sw-settings-rule-detail-assignments';`
-2. Override the component and extend the computed property:
+2. Override the component and extend the computed array:
 
-```js
+```javascript
 Component.override('sw-settings-rule-detail-assignments', {
     computed: {
         associationEntitiesConfig() {
             const associationEntitiesConfig = this.$super('associationEntitiesConfig');
-            associationEntitiesConfig.push({ /* config item */ });
+            associationEntitiesConfig.push(/* your configuration item */);
             return associationEntitiesConfig;
         },
     },
 });
 ```
 
-3. Config item shape (keys as used by the core configuration service):
+3. Configuration item skeleton:
 
-```js
+```javascript
 {
-    id, notAssignedDataTotal: 0, entityName, label,
-    criteria: () => criteria, api: () => api,
-    detailRoute, gridColumns: [{ property, label, rawData, sortable, allowEdit }],
-    deleteContext: { type, entity, column },
-    addContext: { type, entity, column, searchColumn, association, criteria, gridColumns },
+    id: 'swagDynamicAccessProducts', notAssignedDataTotal: 0,
+    entityName: 'product', label: '<snippet key>',
+    criteria: () => { /* Criteria using this.associationLimit, this.rule.id */ },
+    api: () => { /* copy of Context.api, e.g. inheritance = true */ },
+    detailRoute: 'sw.product.detail.base',
+    gridColumns: [{ property: 'name', label: 'Name', rawData: true, sortable: true, routerLink: '...', allowEdit: false }],
+    deleteContext: { type: 'many-to-many', entity: 'product', column: 'extensions.swagDynamicAccessRules' },
+    addContext: { type: 'many-to-many', entity: 'swag_dynamic_access_product_rule', column: 'productId',
+        searchColumn: 'name', association: 'swagDynamicAccessRules', criteria: () => {}, gridColumns: [] },
 }
 ```
 
-- `id` — required, arbitrary but unique.
-- `entityName`, `criteria`, `api` — required for data loading.
-- `gridColumns` — columns of the card (see [data grid component](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-the-data-grid-component.md)).
-- `deleteContext` — enables deletion. `type: 'one-to-many'` points `column` at the assignment entity's rule FK (e.g. `entity: 'cms_block'`, `column: 'extensions.swagCmsExtensionsBlockRule.visibilityRuleId'`); `type: 'many-to-many'` points `column` at the extension's `ManyToManyAssociationField` (e.g. `extensions.swagDynamicAccessRules`).
-- `addContext` — enables the add modal. Needs `gridColumns`, `entity`, `criteria`, the assignment `column` and the assigned entity's `searchColumn`. For `many-to-many` also set `association` to the `ManyToManyAssociationField` name.
+- `id` — required, arbitrary but unique. `entityName`, `criteria`, `api` — data loading. `gridColumns` — card columns (see [data grid component](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-the-data-grid-component.md)).
+- `deleteContext` (enables deletion):
+  - `one-to-many`: `column` is the rule-id field on the assigned entity, e.g. `entity: 'cms_block'`, `column: 'extensions.swagCmsExtensionsBlockRule.visibilityRuleId'`; delete sets it to `null`.
+  - `many-to-many`: `column` is the `ManyToManyAssociationField` of the extension, e.g. `extensions.swagDynamicAccessRules`; delete removes the rule id from that collection.
+- `addContext` (enables the add modal): `type`, `entity`, `column`, `searchColumn`, `criteria`, `gridColumns`.
+  - `one-to-many`: `entity` is the assigned entity (e.g. `shipping_method`), `column` its rule-id field (`availabilityRuleId`); selected rows get `column = rule.id`.
+  - `many-to-many`: `entity` is the mapping entity (e.g. `swag_dynamic_access_category_rule`), `column` the foreign key to the assigned entity (`categoryId`), plus `association` = name of the `ManyToManyAssociationField`.
+
+## Essential identifiers
+
+- `sw-settings-rule-detail-assignments`, `associationEntitiesConfig`
+- `deleteContext`, `addContext`, `gridColumns`, `searchColumn`, `association`, `notAssignedDataTotal`, `detailRoute`
+- `this.associationLimit`, `this.rule.id`, `Criteria`, `Context.api`
 
 ## Gotchas
 
-- In 6.7 the core `associationEntitiesConfig` returns `Object.values(...)` of `RuleAssignmentConfigurationService(ruleId, associationLimit).getConfiguration()`, so `$super` yields a fresh array you can push to.
-- The core component lives in `view/sw-settings-rule-detail-assignments` and is marked `@private`; overrides of private components may break without deprecation.
-- Core config items also carry `associationName`, used to check whether the rule is restricted for that association before enabling "add".
+- A `many-to-many` add creates mapping entities with `ruleId = rule.id` and `<column> = <selected id>`, so the mapping entity's rule foreign key must be named `ruleId`.
+- `searchColumn` falls back to `name`; without `api`, `Context.api` is used.
+- The core component is marked `@private` (no public API guarantee).
 
 ## Version notes
 
-- Rule assignment configuration exists from Shopware 6.4.8.0.
+Available since Shopware 6.4.8.0. In 6.7 the core computed returns `Object.values()` of the built-in rule assignment configuration, still an array, so `push()` works.
 
-## Code check (6.7.13.0)
-- confirmed `sw-settings-rule-detail-assignments` — registered component — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/index.js:30
-- confirmed `associationEntitiesConfig` — computed returning config service values — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:80
-- confirmed `$super` — override super-call support — vendor/shopware/administration/Resources/app/administration/src/core/factory/async-component.factory.ts:919
-- confirmed `override` — component factory override function — vendor/shopware/administration/Resources/app/administration/src/core/factory/async-component.factory.ts:608
-- confirmed `deleteContext` — documented config key — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:77
-- confirmed `searchColumn` — one-to-many addContext key — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/service/rule-assignment-configuration.service.js:99
-- confirmed `association` — many-to-many addContext key — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/service/rule-assignment-configuration.service.js:344
-- confirmed `many-to-many` — context type in core config — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/service/rule-assignment-configuration.service.js:335
-- confirmed `associationName` — extra key used for restriction check — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:100
-- confirmed `RuleAssignmentConfigurationService` — source of core config — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:69
+## Code check (6.7.15.1)
+- confirmed `sw-settings-rule-detail-assignments` — registered in the rule module — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/index.js:31
+- confirmed `associationEntitiesConfig` — computed returning an array of config items — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:75
+- confirmed `notAssignedDataTotal` — part of the documented config item shape with deleteContext/addContext — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:72
+- confirmed `associationLimit` — component data, default 5 — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:45
+- confirmed `deleteContext.type` — one-to-many nulls the column, otherwise removes rule id from the collection — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/view/sw-settings-rule-detail-assignments/index.js:179
+- confirmed `addContext.type` — one-to-many updates entities, otherwise inserts mapping entities — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/component/sw-settings-rule-add-assignment-modal/index.js:76
+- confirmed `entity.ruleId` — many-to-many insert sets ruleId on the mapping entity — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/component/sw-settings-rule-add-assignment-modal/index.js:102
+- confirmed `addContext.searchColumn` — search term filter, defaults to name — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/component/sw-settings-rule-add-assignment-listing/index.js:113
+- confirmed `addContext.association` — added to the listing criteria when set — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-rule/component/sw-settings-rule-add-assignment-listing/index.js:45
+- confirmed `Component.override` — exposed on the global Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137

@@ -6,49 +6,39 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-08-11-make-platform-stand-alone.html
 sourceHash: a56109b091ead58281e083af84b3ca7bc54742a8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware/shopware", "shopware/development", "shopware/production", ".env.dist", ".env", "docker-compose.yml", "docker-compose.override.yml", "composer scripts", "platform repository", "development setup", "ci pipeline", "adr"]
-summary: "ADR: shopware/shopware runs stand-alone for dev/tests (entrypoints, composer scripts, .env.dist, docker-compose.yml); projects start from shopware/production."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware/shopware", "shopware/development", "shopware/production", ".env.dist", ".env", "docker-compose.yml", "docker-compose.override.yml", "composer scripts", "stand-alone platform", "core development setup", "ci pipeline", "entrypoints", "adr"]
+summary: "ADR 2021-08-11: shopware/shopware runs stand-alone for core dev and CI (.env.dist, docker-compose.yml); projects still start from shopware/production."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2021-08-11) that makes the `shopware/shopware` platform repository usable on its own for development, testing and CI, instead of requiring the `shopware/development` or `shopware/production` template as the root project.
+An architecture decision record (area: product-operations, 2021-08-11) that makes the `shopware/shopware` repository usable on its own for development and testing, instead of requiring the `shopware/development` or `shopware/production` template to provide config, console/web entrypoints and development tooling.
 
 ## When to use
 
-When setting up a local checkout of `shopware/shopware` to contribute to the platform, or when deciding which repository a new project should start from.
+When setting up a checkout of `shopware/shopware` to work on the core itself or to run its tests/CI, and when deciding which repository a new project should start from.
 
 ## Key steps / config
 
-Problems with the template-as-root approach (context):
-- `shopware/development` and `shopware/shopware` had to be updated in lockstep.
-- Some IDEs struggle with multi-repository projects.
-- Updating development tooling broke everything.
-- Git revision/diff auto-detection broke because the template was the root.
-- Each release branch needed an additional template branch.
-
-Decisions:
-- The pipeline uses `shopware/shopware` directly; the development tooling moves into the platform repository.
-- Add CLI and web entrypoints to the platform so it can run and be tested.
-- Add small composer scripts for common tasks; essential logic lives in npm scripts or Symfony commands, and scripts should accept arguments where possible.
-- Follow standard conventions:
-  - `.env.dist` provides default environment variables.
-  - `.env` defines a custom environment (e.g. a native setup).
-  - `docker-compose.yml` provides a working environment.
-  - `docker-compose.override.yml` holds local overrides, e.g. exposed ports.
-- Defaults must work out of the box; `docker-compose.yml` must not expose hard-coded ports, since that cannot be undone and may block the app service from starting.
-- This is advertised only as the `shopware/shopware` development setup; projects should still start from `shopware/production`, and `shopware/development` keeps working.
+- `shopware/shopware` is used directly in the pipeline; development tooling lives in the platform repository, and CLI and web entrypoints exist so it can be tested without a template.
+- Composer scripts ease common tasks. They stay small and simple; essential functionality belongs in npm scripts or Symfony commands (improve those if too complicated), and scripts should accept arguments where possible.
+- Standard environment convention:
+  - `.env.dist` — default environment variables
+  - `.env` — custom environment, e.g. for a native setup
+  - `docker-compose.yml` — a working environment
+  - `docker-compose.override.yml` — local overrides, for example exposing ports
+- Defaults should work out of the box; `docker-compose.yml` exposes no hard-coded ports, since that cannot be undone and may prevent the app service from starting.
 
 ## Gotchas
 
-- Consequences named by the ADR: simpler CI and local setup, no setup-specific custom scripts, but projects may try to use `shopware/shopware` directly and there is one more setup to choose from.
+- This is advertised only as the `shopware/shopware` development setup. Projects should still start from `shopware/production` as a template; `shopware/development` should keep working.
+- The problems it removes: the template and `shopware/shopware` had to be updated in lockstep, IDEs struggled with multi-repository projects, tooling updates broke everything, git revision/diff auto-detection failed because the template was the root, and every release branch needed an extra template branch.
+- Stated downsides: projects may try to use `shopware/shopware` directly, and it is one more setup to choose from. Upsides: simpler CI (errors easier to reproduce locally), simpler local setup, no custom scripts missing from some setups.
 
-## Code check (6.7.13.0)
-- confirmed `.env.dist` — core's PHPStan bootstrap still loads `.env`/`.env.dist` from the project dir — vendor/shopware/core/DevOps/StaticAnalyze/phpstan-bootstrap.php:64
-- confirmed `.env.dist` — checked alongside `.env` when detecting the project root — vendor/shopware/core/DevOps/StaticAnalyze/phpstan-bootstrap.php:22
-- confirmed `shopware/production` — referenced as the project template whose htaccess hashes the updater knows — vendor/shopware/core/Framework/Update/Services/UpdateHtaccess.php:21
-- unverified `docker-compose.yml` — repository-root file of shopware/shopware, not part of the installed vendor packages
-- unverified `docker-compose.override.yml` — repository-root file, out of scope of the vendor packages
-- unverified `shopware/development` — template repository, not referenced in the installed core code
-- unverified `composer scripts` — defined in the shopware/shopware root composer.json, not in the installed packages
+## Code check (6.7.15.1)
+- confirmed `.env.dist` — platform tooling falls back to `.env.dist` when locating the project root — vendor/shopware/core/DevOps/StaticAnalyze/phpstan-bootstrap.php:22
+- confirmed `.env` — booted via Dotenv when `.env`/`.env.dist` exist — vendor/shopware/core/DevOps/StaticAnalyze/phpstan-bootstrap.php:64
+- unverified `docker-compose.yml` — repository-root file, outside the checked package roots
+- unverified `docker-compose.override.yml` — repository-root file, outside the checked package roots
+- unverified `shopware/production` — separate template repository, out of scope

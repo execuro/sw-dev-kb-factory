@@ -6,48 +6,58 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2025-09-01-adding-a-country-agnostic-language-layer.html
 sourceHash: 9eb276be49917e4be4c7fa3356e18c5064c2b782
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["country-agnostic language", "snippet fallback", "translations", "language pack", "crowdin", "en.json", "messages.en.base.json", "en-GB", "en-US", "dialect", "translation:lint-filenames", "CountryAgnosticFileLinter", "SnippetService"]
-summary: "ADR: snippet files move to country-agnostic locales (en, de); dialects like en-US become patch files falling back to en; en-GB kept for compatibility."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["country-agnostic language", "snippet fallback", "en.json", "messages.en.base.json", "en-GB", "en-US", "de-DE", "translation:lint-filenames", "CountryAgnosticFileLinter", "dialect", "snippets", "translations", "crowdin"]
+summary: "ADR: country-agnostic snippet fallback layer (en, de, es); en-GB.json becomes en.json, dialect files hold only differences."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2025-09-01) adding a country-agnostic language layer (e.g. `en` for both `en-GB` and `en-US`) to Shopware's snippet/translation fallback. Before, each specific locale (e.g. `de-DE`) fell back directly to `en-GB`, so near-identical dialects duplicated ~12,000 snippets (about 99.5% of US English matched British English).
+Architecture decision record (area: discovery, 2025-09-01) that adds a country-agnostic language layer to Shopware's snippet system. Previously each specific locale (e.g. `de-DE`, `en-US`) fell back directly to another specific locale, `en-GB`. Now a language-only layer (e.g. `en` for both `en-GB` and `en-US`) sits in between, and dialects become patch files containing only their differences.
 
 ## When to use
 
-- Naming or migrating snippet files in a plugin, app or language pack.
-- Understanding why a dialect file (e.g. `en-US`) in core is small and where missing keys resolve from.
+- Naming snippet files for the core, a plugin or an app in 6.7 and later.
+- Understanding why `en-US` or `de-AT` snippet files are small and where missing keys come from.
+- Migrating extension snippet files from country-specific to country-agnostic names.
 
 ## Key steps / config
 
-Decision and consequences as stated by the ADR:
+Motivation in figures: Shopware has about 12,000 snippets; the US translation was an automated copy of the GB one, with only about 70 differences (roughly 99.5% identical). Duplicating them is maintenance-heavy and pre-translating "English to English" costs money.
 
-- Dialects are treated as patch files on top of a country-agnostic base. British English is the base dialect and is referred to as `en`.
-- Core snippet files are renamed: `en-GB.json` -> `en.json`, `messages.en-GB.base.json` -> `messages.en.base.json`; likewise `de-DE` -> `de`. Language packs follow (e.g. `es-ES` -> `es`).
-- New fallback chain: `de-DE`/`de-AT` -> `de` -> `en-GB` -> `en`; `es-ES`/`es-AR` -> `es` -> `en-GB` -> `en`; `en-US` -> `en`. `en` is the final fallback; `en-GB` stays available for compatibility with existing translations.
-- System default language and active language handling are unchanged. Plugins and apps need no immediate changes.
+Fallback chain after the change:
 
-Installed code: for a regional locale such as `de-AT`, snippet files load in ascending priority — country-agnostic (`de`), canonical locale (`de-DE`), exact locale (`de-AT`). The console command `translation:lint-filenames` (option `--fix` renames files to agnostic equivalents; `--all`, `--extensions`, `--ignore`) checks that translations have a country-agnostic base file.
+```text
+de-DE, de-AT -> de -> en-GB -> en
+es-ES, es-AR -> es -> en-GB -> en
+en-US        -> en
+en-GB        -> en
+```
+
+- British English is the base dialect and is now called `en`, keeping its ~12,000 snippets; `en-US` shrinks to around 70 entries. Every other dialect file is expected to drop from ~12,000 entries to fewer than 100.
+- `en-GB` stays available as a fallback for other languages such as `de-DE` and `de`; `en` is the final fallback for everything.
+- Core snippet files are renamed to the country-agnostic language: `en-GB.json` -> `en.json`, `messages.en-GB.base.json` -> `messages.en.base.json`, and `de-DE` -> `de` likewise.
+- Community translations / the language pack move to country-agnostic locales too (e.g. `es-ES` -> `es`).
+- The installed code provides `bin/console translation:lint-filenames` to check that translations have a country-agnostic base file (e.g. `de.json` for `de-DE.json`); `--fix` renames files to their agnostic equivalents, `--all` includes the custom directory, `--extensions` restricts to named extensions.
 
 ## Essential identifiers
 
-- `en.json`, `messages.en.base.json`, `storefront.en.json`
-- `translation:lint-filenames`
-- `Shopware\Core\System\Snippet\Command\Util\CountryAgnosticFileLinter`
-- `Shopware\Core\System\Snippet\SnippetService`
+- Snippet files `en.json`, `de.json`, `messages.en.base.json`
+- Locales `en`, `en-GB`, `en-US`, `de`, `de-DE`, `es`
+- `translation:lint-filenames` (`Shopware\Core\System\Snippet\Command\LintTranslationFilesCommand`, uses `CountryAgnosticFileLinter`)
 
 ## Gotchas
 
-- Crowdin coverage for dialects like `en-US` shows a lower percentage, since only real differences from `en` are translated.
+- The system default language and active-language handling are unchanged — only snippet fallback changes.
+- Plugins and apps need no immediate changes; the previous file structure keeps working.
+- Crowdin will show lower coverage percentages for dialects, which more accurately reflects the real differences between e.g. `en-US` and `en`. The base language is set declaratively; British English is the base and is referred to as `en`.
 
-## Code check (6.7.13.0)
-- confirmed `SnippetService::getSnippetFilesByIso()` — loads agnostic, canonical, then exact-locale files — vendor/shopware/core/System/Snippet/SnippetService.php:322
-- confirmed `SnippetFileCollection::getSnippetFilesWithLocaleFallback()` — locale fallback lookup — vendor/shopware/core/System/Snippet/Files/SnippetFileCollection.php:130
-- confirmed `translation:lint-filenames` — command enforcing country-agnostic base files — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:21
-- confirmed `fix` — option renaming files to agnostic names — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:37
-- confirmed `CountryAgnosticFileLinter` — linter/fixer service — vendor/shopware/core/System/Snippet/Command/Util/CountryAgnosticFileLinter.php:27
-- confirmed `storefront.en.json` — agnostic storefront snippet naming — vendor/shopware/core/System/Snippet/Files/AbstractSnippetFile.php:22
-- unverified `messages.en.base.json` — file present in core Framework snippet directory (glob only, no line to cite)
-- unverified `en.json` — administration app snippet file present (glob only, no line to cite)
+## Code check (6.7.15.1)
+- confirmed `translation:lint-filenames` — ensures a country-agnostic base file per translation — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:22
+- confirmed `LintTranslationFilesCommand` — command class — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:26
+- confirmed `fix` — option renames files to agnostic equivalents — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:37
+- confirmed `extensions` — option restricts linting to named extensions — vendor/shopware/core/System/Snippet/Command/LintTranslationFilesCommand.php:51
+- confirmed `CountryAgnosticFileLinter` — linter service — vendor/shopware/core/System/Snippet/Command/Util/CountryAgnosticFileLinter.php:27
+- confirmed `en-GB` — still added as fallback locale in snippet lookup — vendor/shopware/core/System/Snippet/SnippetService.php:247
+- confirmed `storefront.en.json` — country-agnostic snippet file naming — vendor/shopware/core/System/Snippet/Files/AbstractSnippetFile.php:22
+- unverified `messages.en.base.json` — file present under core Framework snippet resources; existence check only, no line citation

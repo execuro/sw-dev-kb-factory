@@ -232,7 +232,7 @@ function runIngest(config: PlatformConfig, state: ReturnType<typeof loadState>, 
   const skipped = listAllFiles(outPhaseDir).length;
 
   if (ok > 0 || validLines.length > 0) {
-    writeSynonymsOutput(wikiRoot, validLines, config);
+    writeSynonymsOutput(wikiRoot, validLines, config, knownPaths);
   }
   state.synonyms.synonymsPromptHash = currentPromptHash;
   saveState(state);
@@ -292,8 +292,19 @@ function mergeSynonymLines(existing: string, incoming: string): string {
   return `${a.canonical} — ${aliases.join(", ")} — ${paths.join(", ")}`;
 }
 
-/** Phase 5 "Large-file splitting": over `synonymsMaxBytes` becomes `synonyms/index.md` + `synonyms/<part>.md`. */
-export function writeSynonymsOutput(wikiRoot: string, newLines: string[], config: PlatformConfig): void {
+/** Keeps only the paths in `knownPaths` (a page removed by sync or a new `exclude` glob
+ *  must not survive in the merged file — lint.ts's `lintSynonyms` rejects it); a line left
+ *  with no paths at all is dropped (`undefined`). An untouched line is returned verbatim. */
+function filterSynonymLinePaths(line: string, knownPaths: Set<string>): string | undefined {
+  const { canonical, aliases, paths } = splitSynonymLine(line);
+  const kept = paths.filter((p) => knownPaths.has(p));
+  if (kept.length === 0) return undefined;
+  return kept.length === paths.length ? line : `${canonical} — ${aliases.join(", ")} — ${kept.join(", ")}`;
+}
+
+/** Phase 5 "Large-file splitting": over `synonymsMaxBytes` becomes `synonyms/index.md` + `synonyms/<part>.md`.
+ *  Every merged line is filtered to `knownPaths` (see `filterSynonymLinePaths`). */
+export function writeSynonymsOutput(wikiRoot: string, newLines: string[], config: PlatformConfig, knownPaths: Set<string>): void {
   const byCanonical = new Map<string, string>();
   for (const line of [...readExistingSynonymsLines(wikiRoot), ...newLines]) {
     const canonical = line.split(" — ")[0]?.trim();
@@ -301,6 +312,11 @@ export function writeSynonymsOutput(wikiRoot: string, newLines: string[], config
     const key = canonical.toLowerCase();
     const prev = byCanonical.get(key);
     byCanonical.set(key, prev ? mergeSynonymLines(prev, line) : line);
+  }
+  for (const [key, line] of byCanonical) {
+    const filtered = filterSynonymLinePaths(line, knownPaths);
+    if (filtered === undefined) byCanonical.delete(key);
+    else byCanonical.set(key, filtered);
   }
   // Plain code-unit order, not localeCompare: ICU collation order is locale/runtime-dependent
   // (not byte-identical across machines), and a writer agent could never reproduce it anyway —
@@ -346,6 +362,19 @@ export function writeSynonymsOutput(wikiRoot: string, newLines: string[], config
     writeText(resolve(partsDir, `part-${i + 1}.md`), [...SYNONYMS_HEADER, ...part, ""].join("\n"));
   });
   writeText(resolve(partsDir, "index.md"), [...indexLines, ""].join("\n"));
+}
+
+/** `wiki:build`'s cleanup pass: re-writes the existing synonyms output (either form) through
+ *  `writeSynonymsOutput` only when some line names a path outside `knownPaths`, so a page
+ *  removed since the last `wiki:synonyms --ingest` stops failing lint without a synonyms
+ *  re-run. Returns the number of dropped path references; never creates the output. */
+export function pruneSynonymsOutput(wikiRoot: string, knownPaths: Set<string>, config: PlatformConfig): number {
+  let dropped = 0;
+  for (const line of readExistingSynonymsLines(wikiRoot)) {
+    dropped += splitSynonymLine(line).paths.filter((p) => !knownPaths.has(p)).length;
+  }
+  if (dropped > 0) writeSynonymsOutput(wikiRoot, [], config, knownPaths);
+  return dropped;
 }
 
 export function validateSynonymsBatch(

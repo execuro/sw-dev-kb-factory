@@ -6,47 +6,58 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/script-reference/product-script-services-reference.html
 sourceHash: 94c03d2ec7673eac69b13d35a55e99a2ffd120b0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["CheapestPriceFacade", "PriceCollectionFacade", "ProductProxy", "PriceFacade", "calculatedCheapestPrice", "calculatedPrice", "calculatedPrices", "product-pricing", "product pricing hook", "graduated prices", "quantity prices", "app scripts price manipulation"]
-summary: "App script product pricing facades: CheapestPriceFacade, PriceCollectionFacade, ProductProxy methods to change product, cheapest and graduated prices."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["CheapestPriceFacade", "PriceCollectionFacade", "ProductProxy", "calculatedCheapestPrice", "calculatedPrice", "calculatedPrices", "PriceFacade", "PriceCollection", "SalesChannelProductEntity", "product pricing", "quantity prices", "graduated prices", "cheapest price", "app scripts"]
+summary: Script facades for product pricing in app scripts - ProductProxy, CheapestPriceFacade and PriceCollectionFacade with change/reset/discount/plus/minus methods.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Reference for the script facades used to manipulate product prices in app scripts: `CheapestPriceFacade` (cheapest price), `PriceCollectionFacade` (graduated/quantity prices) and `ProductProxy` (wrapper around `SalesChannelProductEntity` that exposes prices as facades).
+Reference for the product-related facades used in app scripts that manipulate product prices: `Shopware\Core\Content\Product\Hook\Pricing\ProductProxy` (wrapper around `SalesChannelProductEntity`), `Shopware\Core\Content\Product\Hook\Pricing\CheapestPriceFacade` (wrapper around the cheapest price) and `Shopware\Core\Content\Product\Hook\Pricing\PriceCollectionFacade` (wrapper around the quantity/graduated price collection).
 
 ## When to use
 
-Use in a product pricing script (the `product-pricing` hook, `ProductPricingHook`) to overwrite, discount, surcharge or reset a product's calculated price, cheapest price or quantity price graduation.
+When an app script (product pricing hook) needs to overwrite, discount or surcharge a product's calculated price, its cheapest price, or its graduated quantity prices before the storefront displays them.
 
 ## Key steps / config
 
-### `Shopware\Core\Content\Product\Hook\Pricing\ProductProxy`
+### `ProductProxy`
 
-- `__get(name)` — access any property of `SalesChannelProductEntity`.
-- `calculatedPrice` — returns `Shopware\Core\Checkout\Cart\Facade\PriceFacade` or `null`.
-- `calculatedCheapestPrice` — returns a `PriceFacade` (a `CheapestPriceFacade` instance) or `null`.
-- `calculatedPrices` — returns `PriceCollectionFacade` or `null` when no graduated prices exist.
+- `__get(name)` gives access to every property of `SalesChannelProductEntity`.
+- `calculatedPrice` returns a `Shopware\Core\Checkout\Cart\Facade\PriceFacade` (or `null`).
+- `calculatedCheapestPrice` returns the cheapest price wrapped in a facade (or `null`).
+- `calculatedPrices` returns a `PriceCollectionFacade` if the product has graduated prices, otherwise `null`.
 
-### `Shopware\Core\Content\Product\Hook\Pricing\CheapestPriceFacade` (extends `PriceFacade`)
+### `CheapestPriceFacade`
 
-- `change(PriceFacade|PriceCollection|CalculatedPrice|null price, bool range = false)` — overwrite the cheapest price; recalculated via the quantity price calculator (quantity, tax rule, cash rounding). `null` uses the product's original price; `range` toggles `hasRange`.
-- `reset()` — reset to the product's original price (calls `change(null)`).
-- Inherited from `PriceFacade`: `create(array price)` → `Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection` (prices keyed by currency id or ISO code, or `default`); `plus(PriceCollection)` / `minus(PriceCollection)` — unit price added/subtracted, total recalculated; `discount(float)` / `surcharge(float)` — percentage applied to unit and total price; getters `getTotal()`, `getUnit()`, `getQuantity()`, `getTaxes()` (`CalculatedTaxCollection`), `getRules()` (`TaxRuleCollection`).
+Extends `PriceFacade`, so it carries the price methods below, plus:
+
+- `change(price, range = false)` — overwrites the cheapest price of the current price scope; `price` may be a `PriceFacade`, `PriceCollection`, `CalculatedPrice` or `null` (null = original single price of the product). `range` toggles the `hasRange` attribute. The price is recalculated via the quantity price calculator (quantity, tax rule, cash rounding).
+- `reset()` — resets the cheapest price to the product's original price.
+
+Price methods (on `calculatedPrice` / `calculatedCheapestPrice`):
+
+| Method | Effect / return |
+|---|---|
+| `create(array price)` | new `Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection`, keyed by currency id or ISO code (`default` for default currency) |
+| `plus(PriceCollection)` / `minus(PriceCollection)` | adds/subtracts a unit price, then recalculates total |
+| `discount(float)` / `surcharge(float)` | percentage applied to unit and total price |
+| `getTotal()`, `getUnit()` | `float` |
+| `getQuantity()` | `int` |
+| `getTaxes()` / `getRules()` | `CalculatedTaxCollection` / `TaxRuleCollection` |
 
 ```twig
-{% set price = services.price.create({
-    'default': { 'gross': 15, 'net': 15}
-}) %}
+{% set price = services.price.create({ 'default': { 'gross': 15, 'net': 15 } }) %}
 {% do variant.calculatedCheapestPrice.change(price) %}
 {% do product.calculatedPrice.discount(10) %}
 {% do product.calculatedPrice.plus(price) %}
 ```
 
-### `Shopware\Core\Content\Product\Hook\Pricing\PriceCollectionFacade`
+### `PriceCollectionFacade`
 
-- `change(array changes)` — full overwrite of quantity prices; each entry `{ to, price }`, last entry `to: null`.
-- `count()` — number of prices; `reset()` — clears the collection. Iterating yields `PriceFacade` objects.
+- `change(array changes)` — complete overwrite of the quantity prices; each entry has `to` (upper quantity, `null` for the last tier) and `price`.
+- `count()` — number of prices in the collection.
+- `reset()` — resets the whole collection.
 
 ```twig
 {% do product.calculatedPrices.change([
@@ -57,28 +68,27 @@ Use in a product pricing script (the `product-pricing` hook, `ProductPricingHook
 
 ## Essential identifiers
 
+- `Shopware\Core\Content\Product\Hook\Pricing\ProductProxy`
 - `Shopware\Core\Content\Product\Hook\Pricing\CheapestPriceFacade`
 - `Shopware\Core\Content\Product\Hook\Pricing\PriceCollectionFacade`
-- `Shopware\Core\Content\Product\Hook\Pricing\ProductProxy`
 - `Shopware\Core\Checkout\Cart\Facade\PriceFacade`
 - `Shopware\Core\Framework\DataAbstractionLayer\Pricing\PriceCollection`
-- `SalesChannelProductEntity`
+- `services.price.create()`
 
 ## Gotchas
 
-- `discount()` always subtracts and `surcharge()` always adds: both take `abs(value)` as the percentage, so the argument's sign is ignored. The source text wrongly says surcharge is "ensured to be negative".
-- The source's `reset()` example shows a `change(price)` call; the actual method is `reset()` with no arguments.
-- `CheapestPriceFacade::change()` throws when the item is not an entity or has no calculated cheapest price.
-- `PriceFacade::change()` (base) accepts only `PriceCollection`; the cheapest-price override accepts more types.
+- `discount()` forces the value negative via `abs(value) * -1`; `surcharge()` forces it positive via `abs(value)` (the source text says "negative" for surcharge, but the formula is `abs(value)`).
+- `plus()`/`minus()` interpret the given price as a unit price; the total is recalculated from it.
+- The source's `reset()` example for the cheapest price actually shows a `change(price)` call, and its `__get()` example is a fragment of the `change()` example; rely on the method descriptions instead.
 
-## Code check (6.7.13.0)
-- confirmed `CheapestPriceFacade::change()` — `PriceFacade|PriceCollection|CalculatedPrice|null $price, bool $range = false` — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:63
-- confirmed `CheapestPriceFacade::reset()` — delegates to `change(null)` — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:47
-- confirmed `PriceFacade` — base class of `CheapestPriceFacade` — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:23
-- confirmed `PriceFactoryTrait::create()` — `create()` inherited via trait used by `PriceFacade` — vendor/shopware/core/Checkout/Cart/Facade/Traits/PriceFactoryTrait.php:23
-- confirmed `PriceFacade::discount()` — subtracts the `abs($value)` percentage — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:174
-- corrected `PriceFacade::surcharge()` — docs: value ensured negative; code uses `abs($value)` and adds — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:200
-- confirmed `PriceFacade::plus()` — `plus(PriceCollection $price)` — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:131
-- confirmed `PriceCollectionFacade::change()` — `change(array $changes)` with `{to, price}` entries — vendor/shopware/core/Content/Product/Hook/Pricing/PriceCollectionFacade.php:52
+## Code check (6.7.15.1)
+- confirmed `CheapestPriceFacade::change()` — `change(PriceFacade|PriceCollection|CalculatedPrice|null $price, bool $range = false)` — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:63
+- confirmed `CheapestPriceFacade::reset()` — resets to original price — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:47
+- confirmed `CheapestPriceFacade` — `extends PriceFacade` — vendor/shopware/core/Content/Product/Hook/Pricing/CheapestPriceFacade.php:23
+- confirmed `PriceFacade::discount()` — `discount(float $value)` with `abs()` — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:174
+- confirmed `PriceFacade::surcharge()` — `surcharge(float $value)` — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:200
+- confirmed `PriceFacade::plus()` — takes `PriceCollection` — vendor/shopware/core/Checkout/Cart/Facade/PriceFacade.php:131
+- confirmed `PriceFactoryTrait::create()` — `create(array $price): PriceCollection`, used by `PriceFacade` — vendor/shopware/core/Checkout/Cart/Facade/Traits/PriceFactoryTrait.php:23
+- confirmed `PriceCollectionFacade::change()` — `change(array $changes)` — vendor/shopware/core/Content/Product/Hook/Pricing/PriceCollectionFacade.php:52
 - confirmed `ProductProxy::calculatedPrices()` — returns `?PriceCollectionFacade` — vendor/shopware/core/Content/Product/Hook/Pricing/ProductProxy.php:113
-- confirmed `ProductPricingHook::HOOK_NAME` — `product-pricing` — vendor/shopware/core/Content/Product/Hook/Pricing/ProductPricingHook.php:26
+- confirmed `ProductProxy::__get()` — `__get(string $name): mixed` — vendor/shopware/core/Content/Product/Hook/Pricing/ProductProxy.php:40

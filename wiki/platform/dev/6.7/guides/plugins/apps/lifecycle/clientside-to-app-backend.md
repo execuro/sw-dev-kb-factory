@@ -6,72 +6,80 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/lifecycle/clientside-to-app-backend.html
 sourceHash: 4d745ba9a20df8331df5bc0423b09efd02a10d23
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["jwt", "json web token", "generate-token", "store-api.app-system.generate-token", "frontend.app-system.generate-token", "AppClientService", "app-client.service.ts", "shopware-app-token", "shopware-app-shop-id", "AppJWTGenerateRoute", "storefront to app backend", "cors", "claims"]
-summary: "Browser-to-app-backend calls: POST generate-token route returns an app-secret-signed JWT; send it as shopware-app-token plus shopware-app-shop-id headers."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["/store-api/app-system/{name}/generate-token", "/app-system/{name}/generate-token", "frontend.app-system.generate-token", "AppJWTGenerateRoute", "AppClientService", "app-client.service", "shopware-app-token", "shopware-app-shop-id", "jwt", "json web token", "claims", "cors", "storefront to app backend"]
+summary: "Browser-to-app-backend calls via a shop-signed JWT from POST /store-api/app-system/{name}/generate-token; claims, headers, Storefront AppClient."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A mechanism that lets Storefront JavaScript call an app backend directly. The shop issues a JSON Web Token signed with the app secret, containing session data as claims; the app backend validates it.
+A mechanism (since 6.5.5.0) for calling an app backend directly from the browser. The shop issues a JSON Web Token signed with HMAC-SHA256 using the app's `appSecret`, with the shop ID as issuer; the browser sends it to the app server, which verifies it and reads session data from its claims.
 
 ## When to use
 
-An app needs browser-initiated requests to its own server (e.g. submitting a product review) with a trustworthy customer/sales-channel context, without proxying through Shopware.
+When Storefront JavaScript needs to talk to your app server (e.g. submit a product review) and the app must trust which customer/sales channel/currency the request belongs to. A JWT is only issued for a logged-in customer.
 
 ## Key steps / config
 
-1. **Request a token** (logged-in customer required) with `POST`:
-   - Store API: `/store-api/app-system/{name}/generate-token` (route `store-api.app-system.generate-token`)
-   - Storefront: `/app-system/{name}/generate-token` (route `frontend.app-system.generate-token`)
-   Response shape:
-   ```json
-   { "token": "...", "expires": "<ATOM date>", "shopId": "..." }
-   ```
-2. **Call the app backend** with headers `shopware-app-token: <token>` and `shopware-app-shop-id: <shopId>`.
-   In the Storefront, the helper does steps 1-2 and caches the token in `sessionStorage` until `expires`:
-   ```javascript
-   import AppClient from 'src/service/app-client.service.ts';
-   const client = new AppClient('MyAppName');
-   client.get('https://my-app-backend.com/foo', { headers: {} });
-   client.post(url); client.patch(url); client.delete(url);
-   ```
-   `reset()` drops the cached token.
-3. **Allow CORS** on the app backend: `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST, OPTIONS`, `Access-Control-Allow-Headers: shopware-app-shop-id, shopware-app-token` (Symfony: e.g. NelmioCorsBundle).
-4. **Validate the token:** look up the shop by `shopware-app-shop-id`, verify the JWT with the app secret as HMAC-SHA256 key. App PHP SDK: `$shopResolver->resolveShop($serverRequest)`, then `$contextResolver->assembleStorefrontRequest($serverRequest, $shop)` and read `$storefront->claims->getCustomerId()`. Symfony bundle: type-hint a controller argument `Shopware\App\SDK\Context\Storefront\StorefrontAction`.
+1. **Request a token** with `POST /store-api/app-system/{name}/generate-token` (Store API) or `POST /app-system/{name}/generate-token` (Storefront route `frontend.app-system.generate-token`). Response shape:
 
-### JWT content (installed code)
+```json
+{ "token": "...", "expires": "<ATOM date>", "shopId": "..." }
+```
 
-- Signed HMAC SHA-256 with the app's `app_secret`; `iss` = shopId; valid 10 minutes.
-- Always: `inAppPurchases`.
-- Only with the matching app permission: `salesChannelId` (`sales_channel:read`), `customerId` (`customer:read`), `currencyId` (`currency:read`), `languageId` (`language:read`), `paymentMethodId` (`payment_method:read`), `shippingMethodId` (`shipping_method:read`).
+2. **Send it to the app server** as header `shopware-app-token`, with the shop ID as header `shopware-app-shop-id`.
+3. **Storefront helper:** the `AppClientService` in `src/service/app-client.service.ts` fetches and caches the token in `sessionStorage` (key `app-system.<name>`), refetches it after `expires`, and adds both headers automatically:
+
+```javascript
+import AppClient from 'src/service/app-client.service.ts';
+const client = new AppClient('MyAppName');
+client.get(url, { headers: {} }); // also post(), patch(), delete(), reset()
+```
+
+4. **Allow CORS** on the app backend, e.g. `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, POST, OPTIONS`, `Access-Control-Allow-Headers: shopware-app-shop-id, shopware-app-token` (NelmioCorsBundle recommended for the Symfony bundle).
+5. **Validate on the app server:**
+   - App PHP SDK: `$shopResolver->resolveShop($serverRequest)`, then `$contextResolver->assembleStorefrontRequest($serverRequest, $shop)`, then e.g. `$storefront->claims->getCustomerId()`.
+   - Symfony bundle: type-hint `Shopware\App\SDK\Context\Storefront\StorefrontAction` in a controller action.
+   - Custom: look up the shop by `shopware-app-shop-id`, verify `shopware-app-token` with an HMAC-SHA256 JWT verifier keyed with the app secret.
+
+### Claims (each only if the app holds the listed permission)
+
+| claim | permission |
+|---|---|
+| `salesChannelId` | `sales_channel:read` |
+| `customerId` | `customer:read` |
+| `currencyId` | `currency:read` |
+| `languageId` | `language:read` |
+| `paymentMethodId` | `payment_method:read` |
+| `shippingMethodId` | `shipping_method:read` |
+
+`inAppPurchases` is always set; standard `iss` (shop ID), `iat`, `nbf`, `exp` are present.
 
 ## Essential identifiers
 
-- `/store-api/app-system/{name}/generate-token`, `/app-system/{name}/generate-token`
-- `Shopware\Core\Framework\App\Api\AppJWTGenerateRoute`
-- `AppClientService` (`src/service/app-client.service.ts`)
-- `shopware-app-token`, `shopware-app-shop-id`
-- `Shopware\App\SDK\Context\Storefront\StorefrontAction`
+- Routes: `/store-api/app-system/{name}/generate-token` (`store-api.app-system.generate-token`), `/app-system/{name}/generate-token` (`frontend.app-system.generate-token`)
+- Headers: `shopware-app-token`, `shopware-app-shop-id`
+- Core: `Shopware\Core\Framework\App\Api\AppJWTGenerateRoute`; Storefront: `Shopware\Storefront\Controller\AppController`, `AppClientService`
+- SDK: `StorefrontAction`, `assembleStorefrontRequest()`
 
 ## Gotchas
 
-- Without a logged-in customer the route fails with HTTP 400 "JWT generation requires customer to be logged in".
-- The app must be active; `{name}` is the app's technical name.
-- The docs list a `countryId` claim and a `client.put()` helper method; neither exists in the installed code — the claims are those listed above, and `AppClientService` offers only `get`, `post`, `patch`, `delete`.
+- Without a logged-in customer the route throws (`jwtGenerationRequiresCustomerLoggedIn`); the Storefront route returns it as a JSON error.
+- The app must be active, otherwise the app is not found.
+- Tokens expire 10 minutes after issue.
+- The docs list a `countryId` claim and a `client.put()` helper; neither exists in 6.7.15.1.
 
 ## Version notes
 
-Token generation exists since Shopware 6.5.5.0.
+Introduced in Shopware 6.5.5.0.
 
-## Code check (6.7.13.0)
-- confirmed `AppJWTGenerateRoute::generate()` — store-api POST route `/store-api/app-system/{name}/generate-token` — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:35
-- confirmed `frontend.app-system.generate-token` — storefront POST route `/app-system/{name}/generate-token` — vendor/shopware/storefront/Controller/AppController.php:29
-- confirmed `AppException::jwtGenerationRequiresCustomerLoggedIn()` — thrown when no customer in context — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:39
-- confirmed `issuedBy` — issuer is shopId, token expires after 10 minutes — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:57
-- confirmed `salesChannelId` — claim only with `sales_channel:read` — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:65
-- corrected `customerId` — docs: set whenever customer logged in; code requires `customer:read` — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:69
-- corrected `paymentMethodId` — docs: claims languageId/currencyId/customerId/countryId/salesChannelId; code has no countryId, adds paymentMethodId, shippingMethodId, inAppPurchases — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:81
-- confirmed `shopware-app-token` — header set by storefront AppClientService along with `shopware-app-shop-id` — vendor/shopware/storefront/Resources/app/storefront/src/service/app-client.service.ts:93
-- corrected `AppClientService` — docs: offers put(); code has only get/post/patch/delete — vendor/shopware/storefront/Resources/app/storefront/src/service/app-client.service.ts:6
-- unverified `StorefrontAction` — App PHP SDK class, not in vendor/shopware scope
+## Code check (6.7.15.1)
+- confirmed `/store-api/app-system/{name}/generate-token` — POST only, store-api scope — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:35
+- confirmed `AppJWTGenerateRoute::generate()` — throws unless a customer is logged in — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:38
+- confirmed `issuedBy` — signed with Sha256 HMAC keyed by app_secret, issuer shopId, expires +10 minutes — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:57
+- corrected `customerId` — docs: claims are languageId, currencyId, customerId, countryId, salesChannelId; code sets no countryId and adds paymentMethodId, shippingMethodId, inAppPurchases — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:69
+- confirmed `paymentMethodId` — claim gated by payment_method:read — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:81
+- confirmed `frontend.app-system.generate-token` — Storefront POST route /app-system/{name}/generate-token — vendor/shopware/storefront/Controller/AppController.php:29
+- corrected `AppClientService` — docs: client.put(); the class only has get, post, patch, delete, reset — vendor/shopware/storefront/Resources/app/storefront/src/service/app-client.service.ts:6
+- confirmed `shopware-app-token` — header filled from token response, with shopware-app-shop-id — vendor/shopware/storefront/Resources/app/storefront/src/service/app-client.service.ts:93
+- unverified `StorefrontAction` — App PHP SDK / Symfony bundle class, not in the installed Shopware packages

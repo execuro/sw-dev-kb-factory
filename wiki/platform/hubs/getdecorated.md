@@ -1,35 +1,55 @@
 ---
 id: platform/hubs/getdecorated.md
-title: "getDecorated() and the service decoration pattern"
-summary: "Shopware's abstract-class decoration pattern (getDecorated) across plugin guides, guidelines and ADRs, for 6.6 and 6.7."
-keywords: ["getdecorated", "service decoration", "decorator pattern", "decorates", "decorationpatternexception", "abstract class", "store api route", "page loader", "public api", "internal", "backward compatibility", "extendability", "services.xml"]
-members: ["platform/dev/6.6/guides/plugins/plugins/checkout/cart/customize-price-calculation.md", "platform/dev/6.6/guides/plugins/plugins/checkout/payment/customize-payment-provider.md", "platform/dev/6.6/guides/plugins/plugins/content/mail/add-data-to-mails.md", "platform/dev/6.6/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md", "platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/adjusting-service.md", "platform/dev/6.6/resources/guidelines/code/backward-compatibility.md", "platform/dev/6.6/resources/guidelines/code/core/decorator-pattern.md", "platform/dev/6.6/resources/guidelines/code/core/internal.md", "platform/dev/6.6/resources/references/adr/2020-11-25-decoration-pattern.md", "platform/dev/6.6/resources/references/adr/2021-11-09-increment-pattern.md", "platform/dev/6.7/guides/development/extensions/architecture/internal.md", "platform/dev/6.7/guides/plugins/plugins/architecture/pageloader.md", "platform/dev/6.7/guides/plugins/plugins/checkout/cart/customize-price-calculation.md", "platform/dev/6.7/guides/plugins/plugins/content/mail/add-data-to-mails.md", "platform/dev/6.7/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md", "platform/dev/6.7/guides/plugins/plugins/framework/store-api/override-existing-route.md", "platform/dev/6.7/guides/plugins/plugins/services/_index.md", "platform/dev/6.7/resources/guidelines/code/core/decorator-pattern.md", "platform/dev/6.7/resources/guidelines/code/core/extendability.md", "platform/dev/6.7/resources/guidelines/code/core/internal.md", "platform/dev/6.7/resources/guidelines/code/store-api.md", "platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md"]
-lastBuilt: "2026-09-15"
+title: getdecorated
+summary: Service decoration in Shopware: abstract classes with getDecorated(), decorator guides, public API rules and ADRs for 6.6 and 6.7.
+keywords: ["getDecorated", "service decoration", "decorator pattern", "DecorationPatternException", "decorates", ".inner", "abstract class", "public api", "@internal", "store-api route", "backward compatibility", "extension events"]
+members: ["platform/dev/6.6/guides/plugins/plugins/checkout/cart/customize-price-calculation.md", "platform/dev/6.6/guides/plugins/plugins/checkout/payment/customize-payment-provider.md", "platform/dev/6.6/guides/plugins/plugins/content/mail/add-data-to-mails.md", "platform/dev/6.6/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md", "platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/adjusting-service.md", "platform/dev/6.6/resources/guidelines/code/backward-compatibility.md", "platform/dev/6.6/resources/guidelines/code/core/decorator-pattern.md", "platform/dev/6.6/resources/guidelines/code/core/internal.md", "platform/dev/6.6/resources/references/adr/2020-11-25-decoration-pattern.md", "platform/dev/6.6/resources/references/adr/2021-11-09-increment-pattern.md", "platform/dev/6.7/guides/development/extensions/architecture/_index.md", "platform/dev/6.7/guides/development/extensions/architecture/internal.md", "platform/dev/6.7/guides/plugins/plugins/checkout/cart/customize-price-calculation.md", "platform/dev/6.7/guides/plugins/plugins/checkout/payment/customize-payment-provider.md", "platform/dev/6.7/guides/plugins/plugins/content/mail/add-data-to-mails.md", "platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md", "platform/dev/6.7/guides/plugins/plugins/framework/store-api/override-existing-route.md", "platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md", "platform/dev/6.7/resources/guidelines/code/core/decorator-pattern.md", "platform/dev/6.7/resources/guidelines/code/core/internal.md", "platform/dev/6.7/resources/guidelines/code/store-api.md", "platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md", "platform/dev/6.7/resources/references/adr/2026-09-24-replace-abstract-route-classes-with-extension-events.md"]
+lastBuilt: 2026-10-21
 ---
 
-Shopware exposes its decoratable services (price calculators, mail service, route classes, sitemap URL providers, page loaders, and more) as abstract classes with a `getDecorated()` method rather than as interfaces. A plugin extends the abstract class, implements `getDecorated()` to return the previous decoration chain, calls it (often via `.inner` in the service definition), and registers itself with `decorates:`/`decorate()`. Come here instead of grepping for `getDecorated` directly when you need either a worked example of decorating a specific core service, or the guideline/ADR that explains why the pattern exists and where its limits are (public API, backward compatibility, internal classes).
+# getdecorated
 
-**6.6 guides (worked examples)**
-- [Customize price calculation](platform/dev/6.6/guides/plugins/plugins/checkout/cart/customize-price-calculation.md) — decorate `AbstractProductPriceCalculator`'s `calculate()` to globally adjust product prices.
-- [Customize payment provider](platform/dev/6.6/guides/plugins/plugins/checkout/payment/customize-payment-provider.md) — decorate an existing payment handler (e.g. `DebitPayment`) to customize `pay()`.
-- [Add data to mails](platform/dev/6.6/guides/plugins/plugins/content/mail/add-data-to-mails.md) — decorate `AbstractMailService::send()` to inject custom `templateData`.
-- [Add custom sitemap entries](platform/dev/6.6/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md) — add sitemap URLs via `shopware.sitemap.custom_urls` config or a custom `AbstractUrlProvider`.
-- [Adjusting a service](platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/adjusting-service.md) — the generic recipe: declare `decorates` on a new service and implement `getDecorated()` against an abstract class.
+Shopware services that are meant to be extended by plugins are written as abstract classes with a `getDecorated()` method, not as interfaces. A plugin registers a decorator with `decorates` (or `->decorate()` with `service('.inner')`), delegates to the inner service, and overrides only what it needs. The core implementation of `getDecorated()` throws `DecorationPatternException`. Come to this hub when you need to change the behavior of an existing service, payment handler, mail service or Store API route, or when you need the rules on what counts as public API versus `@internal`. The hub also covers the ADRs behind the pattern.
 
-**6.7 guides (worked examples)** — same topics as 6.6, updated for 6.7; where the underlying service is unchanged the two versions are near-duplicates of the same walkthrough.
-- [Customize Price Calculation](platform/dev/6.7/guides/plugins/plugins/checkout/cart/customize-price-calculation.md) — 6.7 version of the price-calculator decoration guide above.
-- [Add Data to Mails](platform/dev/6.7/guides/plugins/plugins/content/mail/add-data-to-mails.md) — 6.7 version; also covers subscribing to `MailBeforeValidateEvent` as an alternative to decoration.
-- [Add Custom Sitemap Entries](platform/dev/6.7/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md) — 6.7 version of the sitemap URL provider guide above.
-- [Override Existing Route](platform/dev/6.7/guides/plugins/plugins/framework/store-api/override-existing-route.md) — decorate a Store API route's abstract class (`.inner`, `services.php`) to extend its response.
-- [Page Loader Extension Architecture](platform/dev/6.7/guides/plugins/plugins/architecture/pageloader.md) — storefront `PageLoader` rules: fetch via Store API, abstract base for decoration, dispatch a `PageLoadedEvent`.
-- [Services](platform/dev/6.7/guides/plugins/plugins/services/_index.md) — index of plugin service guides, including registering services and decoration.
+## Lifecycle note (6.7)
 
-**Guidelines and ADRs (why the pattern exists, and its rules)**
-- [Decorator pattern (6.6)](platform/dev/6.6/resources/guidelines/code/core/decorator-pattern.md) / [Decorator pattern (6.7)](platform/dev/6.7/resources/guidelines/code/core/decorator-pattern.md) — abstract classes with `getDecorated()`, `DecorationPatternException`, when to use plain DI injection instead; 6.7 adds that a PHPStan rule enforces it.
-- [Decoration pattern ADR (6.6)](platform/dev/6.6/resources/references/adr/2020-11-25-decoration-pattern.md) / [Decoration pattern ADR (6.7)](platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md) — the original decision record: Shopware stopped defining service interfaces for decoratable services in favor of abstract classes with `getDecorated()` (e.g. `AbstractCustomerRoute`); same ADR carried into both versions.
-- [Internal (6.6)](platform/dev/6.6/resources/guidelines/code/core/internal.md) / [Internal (6.7)](platform/dev/6.7/resources/guidelines/code/core/internal.md) — how public vs. `@internal` API is marked, with the decoration pattern as the sanctioned extension point.
-- [Public API and Internal Annotation](platform/dev/6.7/guides/development/extensions/architecture/internal.md) — extension-focused restatement of the same public/`@internal` rules, including final DTOs and `getDecorated()`.
-- [Backward Compatibility](platform/dev/6.6/resources/guidelines/code/backward-compatibility.md) — `@deprecated`/`@feature-deprecated`/`@major-deprecated` rules for evolving decoratable services without breaking plugins.
-- [Extendability](platform/dev/6.7/resources/guidelines/code/core/extendability.md) — places decoration among other extension patterns (factory, visitor, mediator, adapter) used across the core.
-- [Store API](platform/dev/6.7/resources/guidelines/code/store-api.md) — Store API route conventions (`StoreApiRouteScope`, `StoreApiResponse`) that routes decorated via `getDecorated()` must follow.
-- [Introduce increment pattern ADR](platform/dev/6.6/resources/references/adr/2021-11-09-increment-pattern.md) — unrelated ADR (increment gateway for `message_queue_stats`) that only mentions `getDecorated` in passing; included here because it was tagged into this member set.
+The 6.7 ADR on extension events says Store API routes now expose `ExtensionDispatcher` pre/post/error events as the preferred extension point, instead of decorating abstract route classes. For routes, check that ADR before following the older decoration guides.
+
+## Shopware 6.6
+
+Plugin guides:
+- [Adjusting a service](platform/dev/6.6/guides/plugins/plugins/plugin-fundamentals/adjusting-service.md) — decorate a service with `decorates` and an abstract `getDecorated()`.
+- [Customize price calculation](platform/dev/6.6/guides/plugins/plugins/checkout/cart/customize-price-calculation.md) — decorate `ProductPriceCalculator` to change product prices globally.
+- [Customize payment provider](platform/dev/6.6/guides/plugins/plugins/checkout/payment/customize-payment-provider.md) — decorate an existing payment provider such as `DebitPayment` to change `pay()`.
+- [Add data to mails](platform/dev/6.6/guides/plugins/plugins/content/mail/add-data-to-mails.md) — decorate `MailService` `send` to add template data.
+- [Add custom sitemap entries](platform/dev/6.6/guides/plugins/plugins/content/sitemap/add-custom-sitemap-entries.md) — sitemap URLs through config or a custom `AbstractUrlProvider`.
+
+Guidelines:
+- [Decorator pattern](platform/dev/6.6/resources/guidelines/code/core/decorator-pattern.md) — abstract classes, `DecorationPatternException`, and when to use plain injection.
+- [Internal](platform/dev/6.6/resources/guidelines/code/core/internal.md) — public versus `@internal` API, `final` classes, decoration.
+- [Backward Compatibility](platform/dev/6.6/resources/guidelines/code/backward-compatibility.md) — `@deprecated`, `@feature-deprecated`, `@major-deprecated` and `@internal` rules.
+
+ADRs:
+- [Decoration pattern](platform/dev/6.6/resources/references/adr/2020-11-25-decoration-pattern.md) — abstract classes with `getDecorated()` replace service interfaces.
+- [Introduce increment pattern](platform/dev/6.6/resources/references/adr/2021-11-09-increment-pattern.md) — increment gateway replacing `message_queue_stats`; mentions `getDecorated` only in passing.
+
+## Shopware 6.7
+
+Plugin guides:
+- [Adjusting a Service](platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md) — `->decorate()`, `service('.inner')`, decorator chain pitfalls.
+- [Customize Price Calculation](platform/dev/6.7/guides/plugins/plugins/checkout/cart/customize-price-calculation.md) — decorate `ProductPriceCalculator` with an `AbstractProductPriceCalculator` subclass.
+- [Customize Payment Provider](platform/dev/6.7/guides/plugins/plugins/checkout/payment/customize-payment-provider.md) — wrap an `AbstractPaymentHandler` and override `pay()`.
+- [Add Data to Mails](platform/dev/6.7/guides/plugins/plugins/content/mail/add-data-to-mails.md) — decorate `AbstractMailService::send()` or subscribe to `MailBeforeValidateEvent`.
+- [Add Store API Route](platform/dev/6.7/guides/plugins/plugins/framework/store-api/add-store-api-route.md) — abstract route, route class, `StoreApiResponse`, `routes.php`.
+- [Override Existing Route](platform/dev/6.7/guides/plugins/plugins/framework/store-api/override-existing-route.md) — decorate a Store API abstract route via `getDecorated()`.
+
+Architecture and guidelines:
+- [Extension Architecture](platform/dev/6.7/guides/development/extensions/architecture/_index.md) — domain separation and allowed patterns for plugins, apps, bundles, themes.
+- [Public API and Internal Annotation](platform/dev/6.7/guides/development/extensions/architecture/internal.md) — what is stable in minors; `final`, decoration classes, `@internal`.
+- [Decorator pattern](platform/dev/6.7/resources/guidelines/code/core/decorator-pattern.md) — core rules: abstract base, `getDecorated()`, no extra public methods.
+- [Internal](platform/dev/6.7/resources/guidelines/code/core/internal.md) — core guideline on `@internal`, `@final`, native `final` and compiler passes.
+- [Store API](platform/dev/6.7/resources/guidelines/code/store-api.md) — route services, `StoreApiResponse`, page loaders and controllers only call routes.
+
+ADRs:
+- [Decoration pattern](platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md) — same ADR as the 6.6 copy, near-duplicate across versions.
+- [Replace abstract route classes with the extension event system](platform/dev/6.7/resources/references/adr/2026-09-24-replace-abstract-route-classes-with-extension-events.md) — `ExtensionDispatcher` events preferred over decorating routes.

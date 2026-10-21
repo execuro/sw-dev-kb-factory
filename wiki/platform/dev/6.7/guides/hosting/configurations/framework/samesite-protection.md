@@ -1,28 +1,27 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/hosting/configurations/framework/samesite-protection.md
-sourceHash: 5937478f19556a0926642c2135d3b90e4e68fde4
-sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/framework/samesite-protection.html
 title: SameSite protection
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["cookie_samesite", "cookie_secure", "framework.session", "framework.yaml", "sw_csrf", "samesite", "session cookie", "csrf protection", "lax", "cookie security", "symfony frameworkbundle"]
-summary: SameSite cookie protection via Symfony framework.session.cookie_samesite (default lax) and cookie_secure 'auto'; replaces the removed sw_csrf Twig function.
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/hosting/configurations/framework/samesite-protection.html
+sourceHash: 5937478f19556a0926642c2135d3b90e4e68fde4
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cookie_samesite", "cookie_secure", "framework.session", "framework.yaml", "samesite", "csrf protection", "session cookie", "lax", "sw_csrf", "cookie security", "FrameworkBundle"]
+summary: Shopware session cookie SameSite protection via framework.session.cookie_samesite (default lax) and cookie_secure 'auto' in framework.yaml.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware relies on the Symfony FrameworkBundle `SameSite` session cookie setting for CSRF-style protection. It supersedes the removed `sw_csrf` Twig function and is set to `lax` by default.
+Shopware relies on the SameSite cookie attribute from the Symfony FrameworkBundle session configuration as its CSRF protection; it replaced the removed `sw_csrf` Twig function. The default value is `lax`, supported by modern browsers.
 
 ## When to use
 
-When hosting a shop and you need to change how the session cookie is sent cross-site (stricter or looser SameSite policy), or control whether the cookie is flagged secure.
+When you need to change or (against the security advice) disable the SameSite attribute of the session cookie, or control whether the session cookie is marked secure.
 
 ## Key steps / config
 
-Override the session cookie settings in your project's `framework.yaml` (e.g. `config/packages/framework.yaml`). Shopware core ships these values as its defaults:
+Set the values in `framework.yaml` under `framework.session`:
 
 ```yaml
 framework:
@@ -31,9 +30,9 @@ framework:
     cookie_samesite: lax
 ```
 
-- `cookie_samesite`: `lax` by default. Setting it to `null` deactivates SameSite protection (the docs note this is a security risk).
-- `cookie_secure: 'auto'`: the cookie is marked secure depending on whether the request came in via HTTP or HTTPS.
-- Further values are defined by the Symfony FrameworkBundle `framework.session` configuration reference.
+- `cookie_samesite` — `lax` by default. To deactivate SameSite protection, change it from `lax` to `null`.
+- `cookie_secure: 'auto'` — the cookie's secure flag follows the request's origin (sent via HTTP or HTTPS depending on how the request came in).
+- Further allowed values are described in the Symfony FrameworkBundle reference for `cookie_samesite`.
 
 ## Essential identifiers
 
@@ -43,15 +42,14 @@ framework:
 
 ## Gotchas
 
-- Changing `lax` to `null` disables the protection entirely; only do this knowingly.
-- The installer uses its own `installer.yaml` package config with the same two values, so a project override in `framework.yaml` does not necessarily affect the installer context.
+- Setting `cookie_samesite` to `null` removes the protection and is a security risk.
 
 ## Version notes
 
-- Introduced with Shopware 6.4.3.1, replacing the `sw_csrf` Twig function, which is no longer present in the installed code.
+- Introduced with Shopware 6.4.3.1; superseded the `sw_csrf` Twig function, which is removed.
 
-## Code check (6.7.13.0)
-- confirmed `framework.session.cookie_samesite` — core default is `lax` — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:22
-- confirmed `framework.session.cookie_secure` — core default is `'auto'` — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:21
-- confirmed `cookie_samesite` — installer package config also sets `lax` — vendor/shopware/core/Framework/Resources/config/packages/installer.yaml:6
-- absent `sw_csrf` — removed Twig function, no occurrence in the installed code index
+## Code check (6.7.15.1)
+- confirmed `framework.session.cookie_samesite` — core default `lax` — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:22
+- confirmed `framework.session.cookie_secure` — core default `'auto'` — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:21
+- confirmed `cookie_samesite` — installer kernel uses the same `lax` default — vendor/shopware/core/Framework/Resources/config/packages/installer.yaml:6
+- absent `sw_csrf` — no occurrence in the installed code; the Twig function is removed as the docs state

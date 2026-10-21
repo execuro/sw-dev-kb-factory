@@ -6,43 +6,46 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/example-plugins/
 sourceHash: 9df256fee568d8e2d342d02cbf7b986cabf16e08
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "example plugins", "B2bAcl", "B2bAjaxPanel", "B2bAuditLog", "B2bAuth", "B2bLogin", "B2bRestApi", "B2bServiceExtension", "B2bTemplateExtension", "SwagB2bPlatform", "sample code"]
-summary: Downloadable B2B Suite example plugins (B2bAcl, B2bAjaxPanel, B2bAuditLog, B2bAuth, B2bLogin, B2bRestApi, B2bServiceExtension, B2bTemplateExtension).
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "example plugins", "B2bAcl", "B2bAjaxPanel", "B2bAuditLog", "B2bAuth", "B2bLogin", "B2bRestApi", "B2bServiceExtension", "B2bTemplateExtension", "SwagB2bPlatform", "sample code", "extend b2b suite"]
+summary: List of downloadable B2B Suite example plugins (B2bAcl, B2bAjaxPanel, B2bAuditLog, B2bRestApi, ...) showing how to extend SwagB2bPlatform.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A list of example plugins (distributed as zip downloads on the documentation site) that demonstrate how to extend the B2B Suite.
+An overview table of example plugins, shipped as zip downloads alongside the B2B Suite docs, each demonstrating one extension point of the B2B Suite (`SwagB2bPlatform`).
 
 ## When to use
 
-When you need a working reference for a specific B2B Suite extension point before writing your own plugin.
+When you need a working reference implementation before extending a specific B2B Suite component — ACL, ajax panels, audit log, authentication, login, REST API routing, service decoration or template extension.
 
-## Essential identifiers
+## Key steps / config
 
-| Plugin | Demonstrates |
+| Plugin | What it demonstrates |
 |---|---|
-| `B2bAcl` | ACL implementation incl. frontend usage; also CRUD and listing usage |
-| `B2bAjaxPanel` | Ajax Panels and how to use them |
+| `B2bAcl` | The ACL implementation including frontend usage; also shows CRUD and listing usage |
+| `B2bAjaxPanel` | Ajax panels and how to use them |
 | `B2bAuditLog` | An implementation of the audit log component |
 | `B2bAuth` | Logging in as a certain user |
 | `B2bLogin` | Replacing the e-mail login with a staff-number login |
 | `B2bRestApi` | The `RestApi` routing |
-| `B2bServiceExtension` | Extending a service |
+| `B2bServiceExtension` | Extending a B2B Suite service |
 | `B2bTemplateExtension` | Extending the `SwagB2bPlatform` templates |
+
+Each entry is a downloadable archive named after the plugin (e.g. `B2bAcl.zip`).
+
+## Essential identifiers
+
+- `SwagB2bPlatform` — the B2B Suite plugin these examples extend
+- `B2bAcl`, `B2bAjaxPanel`, `B2bAuditLog`, `B2bAuth`, `B2bLogin`, `B2bRestApi`, `B2bServiceExtension`, `B2bTemplateExtension`
 
 ## Gotchas
 
-- The examples target the B2B Suite plugin (`SwagB2bPlatform`), which is not part of Shopware core; none of their classes exist in a core-only installation.
+- The B2B Suite and its example plugins are not part of `shopware/core`, `shopware/storefront` or `shopware/administration`; none of the example plugin names occur in the installed platform code, so they can only be checked against the downloaded archives.
 
-## Code check (6.7.13.0)
-- confirmed `SwagB2bPlatform` — listed only as a plugin name in core's translation plugin list, no code in core — vendor/shopware/core/System/Resources/translation.yaml:6
-- unverified `B2bAcl` — example plugin zip, not in vendor/shopware
-- unverified `B2bAjaxPanel` — example plugin zip, out of scope
-- unverified `B2bAuditLog` — example plugin zip, out of scope
-- unverified `B2bAuth` — example plugin zip, out of scope
-- unverified `B2bLogin` — example plugin zip, out of scope
-- unverified `B2bRestApi` — example plugin zip, out of scope
-- unverified `B2bServiceExtension` — example plugin zip, out of scope
-- unverified `B2bTemplateExtension` — example plugin zip, out of scope
+## Code check (6.7.15.1)
+- confirmed `SwagB2bPlatform` — listed only as an external plugin name in core's translation plugin list, not shipped in core — vendor/shopware/core/System/Resources/translation.yaml:9
+- unverified `B2bAcl` — example plugin archive from the B2B Suite docs, outside the platform packages
+- unverified `B2bAjaxPanel` — example plugin archive from the B2B Suite docs, outside the platform packages
+- unverified `B2bRestApi` — example plugin archive from the B2B Suite docs, outside the platform packages
+- unverified `B2bAuditLog` — example plugin archive from the B2B Suite docs, outside the platform packages

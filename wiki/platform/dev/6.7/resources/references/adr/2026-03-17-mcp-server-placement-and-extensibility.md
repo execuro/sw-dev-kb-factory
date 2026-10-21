@@ -1,93 +1,86 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2026-03-17-mcp-server-placement-and-extensibility.md
-title: MCP server placement and extensibility
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/resources/references/adr/2026-03-17-mcp-server-placement-and-extensibility.md
+sourceHash: 2bcf6a71763b356a0d828981ea0d5c1e7b6ac9dc
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-03-17-mcp-server-placement-and-extensibility.html
-sourceHash: a48f972ea372a631841fc836278be4d0967c94b6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["mcp", "model context protocol", "/api/_mcp", "MCP_SERVER", "shopware.mcp.tool", "mcp.tool", "McpToolDiscoveryCompilerPass", "McpToolResponse", "allowed_tools", "Resources/mcp.xml", "AppMcpCapabilityExecutor", "ai tools", "adr", "plugin extensibility"]
-summary: "ADR: hybrid MCP model - core keeps /api/_mcp platform and entity primitives, workflow tools go to plugins/bundles, apps extend via Resources/mcp.xml webhooks."
-lastBuilt: 2026-09-15
+title: MCP server placement and extensibility
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["mcp", "/api/_mcp", "shopware.mcp.tool", "mcp.tool", "McpToolDiscoveryCompilerPass", "shopware.mcp.allowed_tools", "McpTool", "McpToolResponse", "Resources/mcp.xml", "symfony/mcp-bundle", "model context protocol", "ai tools", "plugin mcp tool"]
+summary: "ADR: MCP foundation and entity primitives stay in core; workflow assistant tools move to plugins/bundles; apps extend via mcp.xml."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2026-03-17) on where Shopware's experimental MCP (Model Context Protocol) server pieces live: core owns the MCP platform foundation and generic primitives, plugins/bundles own opinionated merchant-assistant workflows, external services handle cross-system orchestration. It also fixes the extension model for plugins, bundles and apps.
+Architecture decision record (2026-03-17, area framework) that decides where Shopware's experimental MCP (Model Context Protocol) server pieces live. Hybrid model: core = MCP platform primitives; plugin or bundle = merchant-facing assistant capabilities; external service = cross-system orchestration and isolated integrations. It also fixes the extension paths for plugins, bundles and apps. The ADR's own registration/discovery details are marked superseded by a later ADR ("MCP capability registration via the container"); the placement model is unchanged.
 
 ## When to use
 
-- Deciding whether a new MCP tool, prompt or resource belongs in core, a plugin/bundle, or an app.
-- Registering MCP capabilities from a plugin, an in-tree bundle, or an app.
+- Deciding whether a new MCP tool belongs in core, a plugin/bundle, or an external service.
+- Adding an MCP tool, prompt or resource from a plugin, a non-core bundle or an app.
+- Restricting which MCP tools an installation exposes.
 
 ## Key steps / config
 
-Core owns: the `/api/_mcp` endpoint (Streamable HTTP via `symfony/mcp-bundle`), the auth bridge into Admin API permissions (`McpContextProvider`), ACL, rate limiting, audit logging (Monolog `mcp` channel), the `MCP_SERVER` feature flag (default false), `#[McpTool]` / `#[McpPrompt]` / `#[McpResource]` registration, the compiler passes `McpToolDiscoveryCompilerPass`, `McpToolAnalysisCompilerPass`, `McpServerBuilderCompilerPass`, the `shopware.mcp.allowed_tools` allowlist (empty = all tools), generic resources and the `shopware-context` prompt.
+1. Core owns: the Admin API MCP endpoint `/api/_mcp` (Streamable HTTP, `symfony/mcp-bundle`), the auth bridge into Admin API ACL (`McpContextProvider`), rate limiting and audit logging (Monolog `mcp` channel), capability registration via `#[McpTool]`, `#[McpPrompt]`, `#[McpResource]`, the compiler passes `McpToolDiscoveryCompilerPass`, `McpToolAnalysisCompilerPass`, `McpServerBuilderCompilerPass`, the allowlist `shopware.mcp.allowed_tools`, generic reference resources, the `shopware-context` prompt (`ShopwareContextPrompt`) and a small set of stable primitives.
+2. Primitives kept in core: `shopware-entity-schema`, `shopware-entity-search`, `shopware-entity-read`, `shopware-entity-aggregate`; write-capable, evaluate carefully: `shopware-entity-upsert`, `shopware-entity-delete`, `shopware-order-state`, `shopware-system-config-read`, `shopware-system-config-write`. Classes live in `Shopware\Core\Framework\Mcp\Tool` (e.g. `EntitySearchTool`).
+3. Plugin tool: a class with `#[McpTool(name: ..., description: ...)]` that extends the abstract `McpToolResponse` base, tagged `shopware.mcp.tool`; `McpToolDiscoveryCompilerPass` remaps it to the SDK tag `mcp.tool` (and prompts/resources from `shopware.mcp.prompt`/`shopware.mcp.resource`). The DI tag alone registers the capability:
 
-Core tools in 6.7.13.0: `EntitySchemaTool`, `EntitySearchTool`, `EntityReadTool`, `EntityAggregateTool`, `EntityUpsertTool`, `EntityDeleteTool`, `OrderStateTool`, `SystemConfigReadTool`, `SystemConfigWriteTool`, and still `MediaUploadTool`. `ThemeConfigTool` (`shopware-theme-config`) lives in Storefront.
+   ```xml
+   <service id="Swag\Erp\Mcp\Tool\SyncOrdersTool">
+       <tag name="shopware.mcp.tool"/>
+   </service>
+   ```
 
-Registration paths as implemented:
+4. Non-core in-tree bundles tag `mcp.tool` directly (e.g. `Shopware\Storefront\Mcp\Tool\ThemeConfigTool`, `shopware-theme-config`).
+5. Apps declare capabilities in `Resources/mcp.xml` (validated against `mcp-1.0.xsd`), loaded by `AppMcpToolLoader`/`AppMcpPromptLoader`/`AppMcpResourceLoader` and executed as HMAC-signed HTTP calls:
 
-1. Plugins: tag the service `shopware.mcp.tool` (or `shopware.mcp.prompt` / `shopware.mcp.resource`); `McpToolDiscoveryCompilerPass` adds `mcp.tool` / `mcp.prompt` / `mcp.resource`, applies `allowed_tools`, and throws on duplicate tool names.
-2. In-tree bundles (e.g. Storefront): tag `mcp.tool` directly; the bundle's `Mcp` directory is in the SDK `scan_dirs`, which core derives from bundle metadata (Framework and Storefront only).
-3. Apps: declare capabilities in `Resources/mcp.xml`, loaded by `AppMcpToolLoader` / `AppMcpPromptLoader` / `AppMcpResourceLoader`, executed by `AppMcpCapabilityExecutor` via a HMAC-signed request.
+   ```xml
+   <mcp>
+     <tools>
+       <tool name="my-erp-sync-orders">
+         <description>...</description>
+         <input-schema>{...}</input-schema>
+         <url>https://my-erp.example.com/mcp/sync-orders</url>
+       </tool>
+     </tools>
+   </mcp>
+   ```
 
-Plugin tool shape (tools extend the abstract `McpToolResponse`):
-
-```php
-#[McpTool(name: 'swag-erp-sync-orders', description: '...')]
-class SyncOrdersTool extends McpToolResponse {
-    public function __invoke(string $since): string {
-        return $this->success([/* ... */]);
-    }
-}
-```
-
-App `Resources/mcp.xml` skeleton (per `mcp-1.0.xsd`):
-
-```xml
-<mcp>
-  <mcp-tools>
-    <mcp-tool name="my-erp-sync-orders" url="...">
-      <label>...</label>
-      <description>...</description>
-      <input-schema><property name="..." type="string"/></input-schema>
-    </mcp-tool>
-  </mcp-tools>
-</mcp>
-```
-
-Naming: `shopware-*` core, `{plugin}-*` plugins, `{app}-*` apps.
+6. Naming: `shopware-*` for core, `{plugin}-*` for plugins, `{app}-*` for apps; duplicate names are rejected at compile time.
 
 ## Essential identifiers
 
-- `/api/_mcp`, `symfony/mcp-bundle`, `MCP_SERVER`
-- `shopware.mcp.tool`, `mcp.tool`, `shopware.mcp.allowed_tools`
-- `Shopware\Core\Framework\DependencyInjection\CompilerPass\McpToolDiscoveryCompilerPass`
-- `Shopware\Core\Framework\Mcp\Tool\McpToolResponse`, `McpContextProvider`
-- `AppMcpToolLoader`, `AppMcpCapabilityExecutor`
-- `shopware-entity-search`, `shopware-entity-upsert`, `shopware-context`
+- `/api/_mcp`, `symfony/mcp-bundle`
+- `shopware.mcp.tool`, `mcp.tool`, `#[McpTool]`, `#[McpPrompt]`, `#[McpResource]`
+- `McpToolDiscoveryCompilerPass`, `McpToolAnalysisCompilerPass`, `McpServerBuilderCompilerPass`
+- `shopware.mcp.allowed_tools`, `McpContextProvider`, `McpToolResponse`
+- `Resources/mcp.xml`, `AppMcpToolLoader`
 
 ## Gotchas
 
-- The ADR pseudocode writes `use McpToolResponse;` like a trait; installed code has an abstract class that tools extend.
-- The ADR names the app runtime `AppMcpToolExecutor` and shows `mcp.xml` with `<tools>/<tool>` and a `<url>` child; installed code uses `AppMcpCapabilityExecutor` and the XSD requires `<mcp-tools>/<mcp-tool>` with `name`/`url` attributes plus `label`.
-- The ADR lists `custom/plugins` and `custom/static-plugins` in `scan_dirs`; installed config scans only Framework and Storefront `Mcp` dirs — plugins rely on the `shopware.mcp.tool` tag.
-- Storefront DI is `mcp.php` (not `mcp.xml`) and tags only `mcp.tool`.
-- Write-capable core tools carry higher security/support impact.
+- The ADR's pseudocode configures discovery via `mcp.yaml` `scan_dirs` (incl. `custom/plugins`, `custom/static-plugins`); that no longer exists — the DI tag alone registers a capability, and each capability is assigned to one of two MCP servers (`admin` and `store_api`).
+- The ADR gates services with a `shopware.feature` tag and flag `MCP_SERVER`; in the installed code the MCP server is always enabled and there is no such flag (classes stay `@experimental stableVersion:v6.8.0`).
+- The ADR shows `use McpToolResponse;` as a trait; in the installed code it is an abstract class tools extend.
+- The ADR names `AppMcpToolExecutor` for app calls; the installed executor is `AppMcpCapabilityExecutor`.
+- The ADR places the `ThemeConfigTool` DI registration in `src/Storefront/DependencyInjection/mcp.xml`; the installed file is `mcp.php`.
+- Built-in assistant tools are product features, not stable platform API; only the endpoint, registration contracts, capability attributes, security model and extension mechanisms are public API.
+- Write-capable primitives carry higher security/support impact; some may start in a plugin.
 
 ## Version notes
 
-Experimental: classes are annotated `@experimental stableVersion:v6.8.0 feature:MCP_SERVER`. The ADR's workflow tools slated for removal (`OrderSummaryTool`, `CustomerLookupTool`, `ProductCreateTool`, `RevenueReportTool`, `BestsellerReportTool`, `StorefrontSearchTool`, `CartManageTool`, `CartCheckoutTool`, `CheckoutMethodsTool`) are no longer in core's `Mcp/Tool` directory in 6.7.13.0.
+- Workflow tools the ADR lists for removal from core (`OrderSummaryTool`, `CustomerLookupTool`, `ProductCreateTool`, `RevenueReportTool`, `BestsellerReportTool`, `StorefrontSearchTool`, `CartManageTool`, `CartCheckoutTool`, `CheckoutMethodsTool`) are no longer in `Shopware\Core\Framework\Mcp\Tool` in 6.7.15.1; `MediaUploadTool` still is. The MCP classes remain experimental.
 
-## Code check (6.7.13.0)
-- confirmed `McpToolDiscoveryCompilerPass` — maps `shopware.mcp.tool` to `mcp.tool`, enforces allowlist, detects duplicates — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:20
-- confirmed `shopware.mcp.tool` — tag mapping entry — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:32
-- confirmed `allowed_tools` — array node, default `[]` means all tools allowed — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1621
-- confirmed `MCP_SERVER` — feature flag, default false, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:89
-- corrected `McpToolResponse` — docs: used as a trait; installed code is an abstract class — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:32
-- corrected `AppMcpCapabilityExecutor` — docs: `AppMcpToolExecutor`; installed executor signs with `RequestSigner` — vendor/shopware/core/Framework/Mcp/Loader/AppMcpCapabilityExecutor.php:27
-- corrected `mcp-tool` — docs: `<tools>/<tool>` elements; XSD uses `mcp-tools`/`mcp-tool` with `name`/`url` attributes — vendor/shopware/core/Framework/App/Mcp/Schema/mcp-1.0.xsd:9
-- corrected `scan_dirs` — docs: includes custom/plugins and custom/static-plugins; installed: Framework and Storefront Mcp dirs only — vendor/shopware/core/Framework/Resources/config/packages/mcp.php:36
-- corrected `ThemeConfigTool` — docs: DI in Storefront `mcp.xml`; installed in `mcp.php` with `mcp.tool` tag — vendor/shopware/storefront/DependencyInjection/mcp.php:14
-- confirmed `MediaUploadTool` — still registered in core MCP DI — vendor/shopware/core/Framework/DependencyInjection/mcp.php:64
+## Code check (6.7.15.1)
+- confirmed `/api/_mcp` — Admin API MCP route — vendor/shopware/core/Framework/Mcp/Controller/McpServerController.php:79
+- confirmed `McpToolDiscoveryCompilerPass` — remaps shopware.mcp.tool to mcp.tool — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:24
+- confirmed `shopware.mcp.allowed_tools` — compile-time allowlist parameter — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:314
+- corrected `McpToolResponse` — docs: trait used via `use`; code: abstract class — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:32
+- confirmed `ThemeConfigTool` — Storefront bundle tool registered with mcp.tool tag — vendor/shopware/storefront/DependencyInjection/mcp.php:14
+- corrected `scan_dirs` — docs: mcp.yaml discovery dirs; removed, DI tag registration only — vendor/shopware/core/Framework/Mcp/AGENTS.md:115
+- corrected `MCP_SERVER` — docs: feature flag gates MCP; no flag, server always enabled — vendor/shopware/core/Framework/Mcp/AGENTS.md:87
+- confirmed `AppMcpCapabilityExecutor` — executes app MCP capabilities — vendor/shopware/core/Framework/Mcp/Loader/AppMcpCapabilityExecutor.php:27
+- unverified `AppMcpToolExecutor` — no such class in PHP code; only named in a backlog doc
+- absent `OrderSummaryTool` — workflow tool no longer in core

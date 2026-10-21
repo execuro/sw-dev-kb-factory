@@ -1,71 +1,71 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2024-10-02-vue-2-options-api-to-vue-3-composition-api-conversion-codemod.md
-title: Vue 2 Options API to Vue 3 Composition API Conversion Codemod
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-10-02-vue-2-options-api-to-vue-3-composition-api-conversion-codemod.html
+id: platform/dev/6.7/resources/references/adr/2024-10-02-vue-2-options-api-to-vue-3-composition-api-conversion-codemod.md
 sourceHash: 7e11c7edc68f665422c48e915ef37e85b61d2cff
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["codemod", "eslint rule", "options api", "composition api", "setup()", "vue 3 migration", "ref", "reactive", "computed()", "watch()", "onMounted", "defineEmits", "mapState", "useStore", "administration"]
-summary: "ADR: an ESLint-rule codemod converts Administration Vue 2 Options API components to Vue 3 Composition API setup(); lists what it converts and manual steps."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-10-02-vue-2-options-api-to-vue-3-composition-api-conversion-codemod.html
+title: Vue 2 Options API to Vue 3 Composition API Conversion Codemod
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["codemod", "eslint rule", "options api", "composition api", "setup()", "ref", "reactive", "computed", "watch", "onMounted", "defineEmits", "useStore", "vue 3 migration", "administration"]
+summary: "ADR: an ESLint-rule codemod converts Administration Vue 2 Options API components to Vue 3 Composition API; lists what it converts and what stays manual."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2024-10-02) to build a codemod, implemented as an ESLint rule, that automatically converts Vue 2 Options API components to the Vue 3 Composition API, so the Administration codebase can be migrated without converting every component by hand.
+An architecture decision record (2024-10-02, area frontend development) to build a codemod, implemented as an ESLint rule, that automatically converts Vue components written with the Vue 2 Options API into the Vue 3 Composition API. The motivation is better code organisation, TypeScript support and reuse of component logic, while avoiding slow, error-prone manual conversion of many components.
 
 ## When to use
 
-Read this when migrating Administration (or plugin) components from Options API to Composition API and you need to know what the automated conversion handles and what must still be done manually.
+You are migrating Administration (or plugin) components from the Options API to the Composition API and want to know what the automated conversion does, where it falls short, and which parts still need manual work. It can be run per file or per component, so adoption can be gradual.
 
 ## Key steps / config
 
-What the codemod converts:
+What the codemod does, per the ADR:
 
-1. Identifies Vue component definitions.
+1. Identifies Vue component definitions in the codebase.
 2. Converts Options API features:
-   - `data` properties to `ref` or `reactive`
-   - `computed` properties to `computed()` functions, including writable computed properties
-   - `methods` to plain functions inside `setup()`
-   - lifecycle hooks to Composition API equivalents (e.g. `mounted` to `onMounted`), including Vue 2 specific hooks
-   - `watch` properties to `watch()` functions
-   - `props` and `inject`
-   - `this` references to direct references to reactive variables; `ref` access rewritten to `.value`
-   - reactive object reassignments via `Object.assign`
+   - `data` properties to `ref` or `reactive`;
+   - `computed` properties to `computed()` functions, including writable computed properties;
+   - `methods` to plain functions inside `setup()`;
+   - lifecycle hooks to Composition API equivalents (e.g. `mounted` to `onMounted`), including Vue 2-specific hooks to their Vue 3 equivalents;
+   - `watch` properties to `watch()` functions;
+   - `props` and `inject`;
+   - `this` references to direct references to reactive variables;
+   - reactive object reassignments via `Object.assign`;
+   - `ref` access rewritten to `.value`.
 3. Generates a `setup()` function containing the converted code.
-4. Adds the needed imports (`ref`, `reactive`, `computed`, `watch`, ...).
+4. Adds the needed imports (e.g. `ref`, `reactive`, `computed`, `watch`).
 
-The rule can be run per file or per component, allowing gradual adoption.
+Being an ESLint rule, it plugs into the existing ESLint workflow.
 
 ## Essential identifiers
 
-- `setup()`, `ref`, `reactive`, `computed()`, `watch()`, `onMounted`
-- `Object.assign` (reactive reassignment handling)
-- `defineEmits` / `emit` (manual replacement for `$emit`)
-- `useStore` (manual replacement for Vuex `mapState`, `mapGetters`, `mapActions`)
+- `setup()`, `ref()`, `reactive()`, `computed()`, `watch()`, `onMounted`
+- Manual targets: `defineEmits`, `useStore`, `shallowRef`, `shallowReactive`
 
 ## Gotchas
 
-Not handled automatically — manual work required:
+Not handled, or only partly handled, by the codemod:
 
-- Templates are not modified: template bindings, event handlers, `ref` / `$refs` usage.
+- Templates are not updated: template bindings, event handlers, `ref` usage and `$refs` must be adjusted manually.
 - Complex nested `data` structures may need manual optimisation.
-- Vuex helpers `mapState`, `mapGetters`, `mapActions` are not converted.
+- Vuex `mapState`, `mapGetters`, `mapActions` are not converted; switch to `useStore` by hand.
 - Mixins are not converted; refactor them into composables.
-- Plugins/third-party libraries relying on the Options API; `this`-context helpers such as `$tc`, `$t`.
-- TypeScript annotations for props, computed and methods in `setup()`.
-- Spread operators in computed properties are detected but only get a TODO comment.
-- Render functions and JSX components.
-- `shallowRef` / `shallowReactive` optimisations are never applied.
-- Multi-line reassignment of reactive objects is not always handled correctly.
-- `$emit` usage may need conversion to `defineEmits` plus the `emit` function.
-- Lifecycle-hook error handling and edge cases need review; converted code may benefit from extracting composables.
+- Plugins/third-party libraries relying on the Options API, and plugin usage via `this` (e.g. `$tc`, `$t`), need manual updates.
+- TypeScript annotations for props, computed properties and methods in `setup()` must be added manually.
+- Spread operators in computed properties are detected but not converted; a TODO comment is inserted.
+- Render functions and JSX components need manual conversion.
+- `shallowRef`/`shallowReactive` optimisations are not applied.
+- Reactive object reassignment spread over multiple lines is not always handled correctly.
+- `$emit` may need converting to `defineEmits` plus the `emit` function.
+- Review lifecycle-hook error handling and consider extracting reusable composables afterwards.
 
-## Code check (6.7.13.0)
-- unverified `ESLint codemod rule` — ESLint rules/scripts live outside the checked Administration `src` root, out of scope
-- confirmed `setup()` — installed Administration components already use Composition API setup via wrapComponentConfig — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:84
-- confirmed `Shopware.Component.wrapComponentConfig` — component config wrapper used with setup() — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:71
-- confirmed `VuexRootState` — Vuex-based state factory still present in core, so manual Vuex helper migration remains relevant — vendor/shopware/administration/Resources/app/administration/src/core/factory/state.factory.ts:45
-- unverified `onMounted` — Vue framework API, not Shopware code
-- unverified `defineEmits` — Vue framework API, not Shopware code
+## Code check (6.7.15.1)
+- unverified `codemod ESLint rule` — the rule lives outside the checked Administration `src` root (no match there)
+- confirmed `wrapComponentConfig` — Administration components are defined through Shopware.Component.wrapComponentConfig — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:72
+- confirmed `setup` — Composition API setup() used by Administration components — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:85
+- confirmed `computed` — imported from vue in a Composition API component — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:6
+- confirmed `ref` — imported from vue in a Composition API component — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:10
+- confirmed `watch` — imported from vue in a Composition API component — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-block-override/sw-block/index.ts:11

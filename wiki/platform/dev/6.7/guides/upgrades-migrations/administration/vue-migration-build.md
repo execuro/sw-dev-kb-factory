@@ -6,61 +6,54 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/upgrades-migrations/administration/vue-migration-build.html
 sourceHash: 94a887bd3fdd1ca91544aa8f8b7820045b7a68b6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["vue migration build", "vue compat", "vue 3", "vue 2", "$listeners", "$attrs", "$scopedSlots", "$slots", "$children", "$refs", "$on", "$set", "$delete", "administration upgrade", "plugin migration"]
-summary: "Shopware 6.7 removed the Vue migration build; admin plugins must use pure Vue 3 APIs instead of $listeners, $scopedSlots, $children, $on, $set."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["vue migration build", "@vue/compat", "vue 3", "vue 2", "$listeners", "$attrs", "$scopedSlots", "$slots", "$children", "$refs", "$on", "$set", "inject provide", "compat mode removed"]
+summary: Shopware 6.7 removed the Vue migration (compat) build; admin plugins must use pure Vue 3 APIs instead of $listeners, $scopedSlots, $children, $on, $set.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Upgrade note for Shopware 6.7: the Vue migration build, which made most Vue 2 public APIs behave as before on top of Vue 3, was removed from the Administration. All plugins must be fully migrated to Vue 3. The page lists the most common changes seen in the Shopware codebase; the official Vue 3 migration guide is the complete reference.
+Before 6.7, the Administration ran on the Vue migration build, which let most Vue 2 public APIs keep working on Vue 3. Shopware 6.7 removed it entirely, so every plugin must be fully migrated to Vue 3. The source lists the most common breaking changes, but the list is not exhaustive; consult the official Vue 3 migration guide.
 
 ## When to use
 
-- An Administration plugin written against Vue 2 APIs (or relying on the compat layer before 6.7) is being upgraded to 6.7.
-- Errors in a plugin component around `$listeners`, `$scopedSlots`, `$children`, `$on`/`$off`/`$once`, `$set`/`$delete`.
+Upgrading an Administration plugin to 6.7 that still relies on Vue 2 behaviour the compat build used to provide.
 
 ## Key steps / config
 
-| Vue 2 (removed) | Vue 3 replacement |
-|---|---|
-| `$listeners` | listeners are included in `$attrs` |
-| `this.$scopedSlots.header` | `this.$slots.header()` — `$slots` unifies all slots as functions |
-| `this.$children.childrenMethod()` | template ref: `<sw-child ref="childrenRef" />`, then `this.$refs.childrenRef.childrenMethod()` |
-| `$on`, `$off`, `$once` | no replacement; `$emit` still triggers handlers declared by the parent; or provide/inject a registration pattern |
-| `this.$set(this.myObject, 'key', 'value')` / `this.$delete(this.myObject, 'key')` | `this.myObject.key = 'value'` / `delete this.myObject.key` (Proxy-based reactivity) |
+Replace these Vue 2 patterns:
 
-Events API replacement example (parent provides the handlers):
+- **Listeners**: event listeners passed to a component are now part of `$attrs`. Forward `$attrs` instead of the removed Vue 2 listeners object.
+- **Scoped slots**: `$slots` unifies all slots and exposes them as functions. `this.$scopedSlots.header` becomes `this.$slots.header()`.
+- **Child access**: use template refs. `this.$children.childrenMethod()` becomes `<sw-child ref="childrenRef" />` plus `this.$refs.childrenRef.childrenMethod()`.
+- **Events API**: `$on`, `$off` and `$once` are removed with no replacement. `$emit` still triggers handlers that a parent attached declaratively. For handler registration, use provide/inject. There is no general recipe. Example of the pattern, where the parent provides the functions:
 
 ```js
 inject: ['registerDoSomething', 'unregisterDoSomething'],
-
-created() {
-  this.registerDoSomething(this.eventHandler);
-},
-
-beforeDestroy() {
-  this.unregisterDoSomething(this.eventHandler);
-}
+created() { this.registerDoSomething(this.eventHandler); },
+beforeDestroy() { this.unregisterDoSomething(this.eventHandler); }
 ```
 
-Before, the child used `this.$parent.$on('doSomething', this.eventHandler)` and `this.$parent.$off('doSomething', this.eventHandler)`.
+- **Reactive set/delete**: Vue 3's Proxy-based reactivity makes `$set`/`$delete` unnecessary. Use `this.myObject.key = 'value';` and `delete this.myObject.key;`.
+
+## Essential identifiers
+
+- `$attrs`, `$slots`, `$refs`, `$emit`, `inject`/`provide`
+- Removed: `$listeners`, `$scopedSlots`, `$children`, `$on`, `$off`, `$once`, `$set`, `$delete`
 
 ## Gotchas
 
-- The list is not exhaustive; always consult the official Vue 3 migration guide for breaking changes and deprecations.
-- There is no general recipe for the Events API removal — adjust per use case.
-- The installed core still contains a few Vue 2-era leftovers (template comments about `$listeners`, `compatConfig` keys on some state-machine components); they do not mean the migration build is available.
+- The list covers only the changes most often seen in Shopware's codebase. Check the official Vue 3 migration guide for the rest.
+- Replacing `this.$parent.$on(...)` subscriptions needs case-by-case redesign.
 
 ## Version notes
 
-- Before 6.7: the Vue migration build eased the Vue 2 → Vue 3 transition for plugins.
-- 6.7: migration build removed entirely; the Administration app is created with Vue 3 `createApp`.
+- Before 6.7: the Vue 3 Administration ran with the Vue migration build (Vue 2-compatible behaviour).
+- 6.7: the migration build is removed, and plugins must use plain Vue 3 APIs.
 
-## Code check (6.7.13.0)
-- confirmed `createApp` — Administration app created with `createApp` imported from `vue` — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:14
-- confirmed `compatConfig` — leftover option still present on a state-machine list page — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/page/sw-settings-state-machine-list/index.js:13
-- unverified `$listeners` — Vue framework API, outside vendor/shopware roots
-- unverified `$scopedSlots` — Vue framework API, outside vendor/shopware roots
-- unverified `$children` — Vue framework API, outside vendor/shopware roots
-- unverified `$set` — Vue framework API, outside vendor/shopware roots
+## Code check (6.7.15.1)
+- confirmed `createApp` — the view adapter imports `createApp` from plain `vue`, not the compat build — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:14
+- confirmed `Vue` — `Shopware.Vue` exposes the plain Vue module — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:231
+- unverified `@vue/compat` — not imported anywhere under administration `src`; package.json is out of scope
+- unverified `$scopedSlots` — Vue framework API, node_modules out of scope
+- unverified `$listeners` — Vue framework API, node_modules out of scope

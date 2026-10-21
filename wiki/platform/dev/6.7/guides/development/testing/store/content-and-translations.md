@@ -6,67 +6,69 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/store/content-and-translations.html
 sourceHash: 3401f26b7e001e008b2df9c01eb0217677358eeb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["store listing", "short description", "long description", "translations", "plugin.png", "plugin-icon", "favicon", "screenshots", "manufacturer profile", "composer.json license", "allowed html tags", "extension manager", "fallback language"]
-summary: "Store listing rules: description lengths, allowed HTML, screenshots, plugin.png icon, EN/DE translations, admin fallback language, license match, profile."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md", "platform/dev/6.7/guides/development/testing/store/store-review-errors.md", "platform/dev/6.7/guides/development/testing/store/faq.md", "platform/dev/6.7/guides/plugins/themes/_index.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["store listing", "extension description", "translations", "plugin.png", "plugin-icon", "favicon", "screenshots", "composer.json license", "manufacturer profile", "allowed html tags", "admin translations", "fallback language", "dsgvo"]
+summary: Shopware Store listing rules - description lengths, allowed HTML, screenshots, plugin.png icon, EN/DE translations, license and manufacturer profile
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/development/testing/store/store-review-errors.md", "platform/dev/6.7/guides/plugins/themes/_index.md", "platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md", "platform/dev/6.7/guides/development/testing/store/faq.md"]
 ---
 ## What it is
 
-Store review requirements for listing text, translations, preview images, the extension icon, license master data and the manufacturer profile. HTML and packaging problems are covered in [Common Store review errors](platform/dev/6.7/guides/development/testing/store/store-review-errors.md).
+Store review requirements for listing text, translations, preview images, the extension icon, license data and the manufacturer profile. HTML/packaging issues are covered in [Common Store review errors](platform/dev/6.7/guides/development/testing/store/store-review-errors.md).
 
 ## When to use
 
-When preparing the Store listing, media and Administration translations for an extension before submission.
+When preparing or fixing the Shopware Store listing and account data of an extension before submission.
 
 ## Key steps / config
 
-**Store listing**
+Store listing:
 
-- Publish in the international Store; the German Store is optional but requires a 1:1 English/German translation.
-- Short description: 150–185 characters (teaser, "Customers also bought/viewed", meta description).
-- Long description: at least 200 characters, 1:1 between English and German where both are used.
-- Accurate descriptions of function and use cases; complete setup/configuration instructions.
-- Avoid "plugin" and "shopware" in the display name; no blank spaces as filler.
-- Clean HTML; inline styles are stripped. Allowed tags:
+- Publish in the international store; the German store is optional but then requires a 1:1 English/German translation.
+- **Short description**: 150–185 characters (teaser, "Customers also bought/viewed", meta description).
+- **Long description**: at least 200 characters, detailed functionality; 1:1 EN/DE when both are used.
+- Describe the extension and use cases accurately; include complete setup/configuration instructions.
+- Avoid the words "plugin" and "shopware" in the display name; no blank spaces as filler.
+- Clean HTML only; inline styles are stripped. Allowed tags:
 
-```markdown
+```
 <a> <p> <br> <b> <strong> <i> <ul> <ol> <li> <h2> <h3> <h4> <h5>
 ```
 
-- No advertising of own services or contact info (support emails, backlinks) in Administration, description or images.
+- No advertising for own services and no contact information (support emails, backlinks) in the Administration, description or images.
 
-**Images and screenshots**
+Images and screenshots:
 
-- English-only screenshots for the English listing; no mixed languages in one image; only images showing the extension's function; no advertising of other extensions.
-- Show Storefront and Administration usage including configuration; at least one Storefront and one Admin screenshot of main features; mobile and desktop preferred.
-- Icon: `plugin.png`, 84–256px in both dimensions, under `src/Resources/config/`, shown in Administration > Extension Manager. The installed code reads this default path unless `composer.json` `extra.plugin-icon` points elsewhere.
-- [Themes](platform/dev/6.7/guides/plugins/themes/_index.md) need a Theme Manager preview image; [Shopping Experiences CMS elements](platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md) need an element icon. Preview requirements: [FAQ](platform/dev/6.7/guides/development/testing/store/faq.md).
+- English-only screenshots for the English listing; no mixed languages in one image; only images showing the extension's function; no advertising for other extensions or services.
+- Show Storefront and Administration usage incl. configuration; at least one storefront and one admin screenshot of main features; mobile and desktop preferred.
+- Store a favicon `plugin.png` (84–256px in both dimensions) under `src/Resources/config/` so the extension is identifiable in **Administration > Extension Manager**.
+- [Themes](platform/dev/6.7/guides/plugins/themes/_index.md) need a preview image in the Theme Manager; [Shopping Experiences CMS elements](platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md) need an element icon.
+- Preview requirements: see the [FAQ](platform/dev/6.7/guides/development/testing/store/faq.md).
 
-**Admin translations**
+Admin translations:
 
-- The extension must work regardless of system language; missing translations fall back (usually to English). English must always exist for settings and error messages.
-- Declare available languages in the Shopware Account ("Description & images").
+- Extensions must work independently of the system language, with a proper fallback (usually English) for missing translations. English must always be available for settings and error messages.
+- Declare available languages in the Shopware Account ("Description & images" → "Translations into the following languages are available").
 
-**License** — the license in the Shopware Account must match `license` in `composer.json`; it cannot be changed later (new extension with new technical name required).
+License: the license in the Shopware Account must match the `license` in `composer.json`. It cannot be changed after creation — a change needs a new extension with a new technical name and upload.
 
-**Manufacturer profile** (Shopware Account > Extension Partner) — logo required; no iframes, tracking or external scripts; HTTPS for external sources; accurate English and German descriptions; custom styles must not overwrite core styles.
+Manufacturer profile (Shopware Account > Extension Partner > Extension Partner profile): logo required; no iframes, tracking or external scripts; external sources over HTTPS; accurate EN and DE descriptions. Custom styles must not overwrite core Shopware styles.
+
+Privacy and media: declare subprocessors and further subprocessors when processing personal data under Art. 28 DSGVO. Up to two YouTube videos may be embedded in the description. Do not advertise Shopware certificates — Shopware appends them automatically.
 
 ## Essential identifiers
 
-- `src/Resources/config/plugin.png`
-- `composer.json` `license` and `extra.plugin-icon`
-- Allowed description HTML tags (above)
+- `plugin.png` at `src/Resources/config/plugin.png`
+- `composer.json` `license`
 
 ## Gotchas
 
-- Shopware certificates must not be advertised in descriptions, images or the profile; Shopware appends them automatically.
-- Not allowed in listings/profiles: inline styles, embedded certificates, iframes, tracking pixels, external scripts. Allowed: up to two embedded YouTube videos.
-- If personal data is processed under Art. 28 DSGVO, declare subprocessors and further subprocessors in the account.
+- The icon path is read from `composer.json` `extra.plugin-icon` when set; `src/Resources/config/plugin.png` is only the default.
+- Inline styles in descriptions are stripped — use only the allowed tags for formatting.
 
-## Code check (6.7.13.0)
-- confirmed `src/Resources/config/plugin.png` — default plugin icon path, overridable via composer `extra.plugin-icon` — vendor/shopware/core/Framework/Plugin/PluginService.php:80
-- confirmed `license` — plugin license is read from composer.json — vendor/shopware/core/Framework/Plugin/PluginService.php:79
-- unverified `plugin.png` dimensions — 84–256px limit is a Store review rule, not checked in installed code
-- unverified `Short description` — Store listing length rules live in the Shopware Account, outside vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `plugin-icon` — `extra.plugin-icon` overrides the icon path, default `src/Resources/config/plugin.png` — vendor/shopware/core/Framework/Plugin/PluginService.php:80
+- confirmed `license` — plugin license read from composer package info — vendor/shopware/core/Framework/Plugin/PluginService.php:79
+- confirmed `previewMediaId` — theme preview image stored on the theme — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:393
+- unverified `84–256px` — icon size limit is a Store review rule, not enforced in core
+- unverified `short description 150–185 characters` — Shopware Account/Store rule, outside the installed code

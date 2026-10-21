@@ -1,25 +1,28 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-suite-migration/execution/_index.md
-title: Execution
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/execution/
+id: platform/dev/6.7/products/extensions/b2b-suite-migration/execution/_index.md
 sourceHash: 9bc21dea40cb9e65799471ad051d103f8f29c022
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite migration", "b2b commercial", "migration execution", "run migration", "backup", "queue worker", "console commands", "migration progress", "troubleshooting"]
-summary: Overview of executing the B2B Suite to B2B Commercial migration - backup, active queue worker, console commands to start and monitor, error handling.
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/execution/
+title: Execution
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["b2b suite migration", "b2b commercial", "migration execution", "run migration", "backup", "queue worker", "message queue", "console commands", "monitor progress", "troubleshooting"]
+summary: Overview of executing the B2B Suite to B2B Commercial migration - environment preparation, backup, queue worker, console commands, progress and errors.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview section for executing the B2B Suite to B2B Commercial migration: preparing the environment, running the migration console commands, and troubleshooting.
+Overview section for executing the B2B Suite to B2B Commercial migration. Execution covers preparing the environment, running the migration console commands, and troubleshooting problems along the way.
 
 ## Key steps / config
 
-- Back up data before starting.
-- Make sure the message queue worker is active.
-- Use the console commands to start and monitor the migration, then track progress and handle errors.
+- Back up your data before starting.
+- Make sure the message queue worker is active, since the migration runs through it.
+- Use the console commands to start the migration and to monitor it, so you can track progress and handle errors as they occur.
 
-## Code check (6.7.13.0)
-- unverified `b2b suite migration` — execution tooling ships with the Shopware Commercial extension, not under the installed vendor/shopware packages
+The detailed instructions live in the child pages of this section (prerequisites and running the migration).
+
+## Code check (6.7.15.1)
+- unverified `b2b:migrate:commercial` — migration commands belong to the Shopware Commercial plugin, out of scope of the checked core/storefront/administration code

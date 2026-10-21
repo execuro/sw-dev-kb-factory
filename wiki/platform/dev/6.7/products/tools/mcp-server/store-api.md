@@ -1,71 +1,87 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/tools/mcp-server/store-api.md
-sourceHash: 72c5de92561a913b4ec4b445ba52cb0ff3ec967e
-sourceUrl: https://developer.shopware.com/docs/products/tools/mcp-server/store-api.html
 title: Store API MCP
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["/store-api/_mcp", "shopware-store-api-context", "shopware.store_api_mcp.tool", "shopware.store_api_mcp.prompt", "shopware.store_api_mcp.resource", "StoreApiMcpContextProvider", "mcp_store_api", "sw-access-key", "sw-context-token", "ai-catalog.json", "store api mcp", "shopper agent", "sales channel mcp"]
-summary: "Sales-channel MCP server at /store-api/_mcp: no ACL/allowlist, shopware-store-api-context tool, mcp_store_api rate limit, store_api_mcp service tags."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/tools/mcp-server/tools-reference.md", "platform/dev/6.7/products/tools/mcp-server/configuration.md", "platform/dev/6.7/guides/plugins/plugins/storefront/templates/agentic-files.md", "platform/dev/6.7/guides/plugins/plugins/mcp-server.md"]
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/products/tools/mcp-server/store-api.html
+sourceHash: 1e14cce1426dbde1370a94fc47aed99c2f21e230
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["/store-api/_mcp", "store api mcp", "shopper agent", "shopware-store-api-context", "shopware.store_api_mcp.tool", "StoreApiMcpContextProvider", "McpToolGroup", "mcp_store_api", "mcp_toolset_session", "sw-access-key", "sw-context-token", "Mcp-Session-Id", "debug:mcp", "progressive discovery"]
+summary: "Sales-channel MCP server at /store-api/_mcp (6.7.11+): sw-access-key auth, no ACL or allowlist, store-api toolset, own rate limit and service tags."
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/products/tools/mcp-server/getting-started.md
+  - platform/dev/6.7/products/tools/mcp-server/configuration.md
+  - platform/dev/6.7/products/tools/mcp-server/tools-reference.md
+  - platform/dev/6.7/guides/plugins/plugins/storefront/templates/agentic-files.md
 ---
 ## What it is
 
-A sales-channel-facing MCP server at `/store-api/_mcp`, next to the Admin API server at `/api/_mcp`, running in a Store API sales-channel context for shopper-side agents. Experimental until 6.8.
+A second, sales-channel-facing MCP server at `/store-api/_mcp`, next to the Admin API server at `/api/_mcp`. It runs in a Store API sales-channel context instead of an Admin API session, so shopper-side agents see the same data a storefront would.
 
 ## When to use
 
-Connecting a shopper-side AI client, or registering Store API MCP tools/prompts/resources from a plugin.
+When an AI client should browse a shop as a shopper (anonymous or logged in), or when a plugin registers its own Store API MCP tools, prompts, or resources.
 
 ## Key steps / config
 
-**Endpoint**: `/store-api/_mcp` (route `store-api.mcp.endpoint`), `GET`/`POST`/`DELETE`/`OPTIONS`, Streamable HTTP, route scope `store-api`. Returns 404 if the `MCP_SERVER` feature flag is inactive or `symfony/mcp-bundle` is missing.
+**Endpoint**: path `/store-api/_mcp`, methods `GET`, `POST`, `DELETE`, `OPTIONS`, Streamable HTTP transport, route scope `store-api`. `POST` carries JSON-RPC messages, `GET` opens a stream for server-initiated messages such as `notifications/tools/list_changed`, `DELETE` ends the session. Without `symfony/mcp-bundle` the endpoint answers HTTP 404.
 
-**Headers**: `sw-access-key` (required), `sw-context-token` (optional; otherwise an anonymous context), `Mcp-Session-Id` (optional, from `initialize`). No customer login needed.
+**Headers**:
 
-**Authorization**: no Admin API ACL, no MCP allowlist — any client authenticated against the sales channel reaches every Store API tool. Tools must validate input and scope data access themselves.
+| Header | Required | Purpose |
+|---|---|---|
+| `sw-access-key` | yes | Sales channel access key |
+| `sw-context-token` | no | Continue a context; otherwise an anonymous one is created |
+| `Mcp-Session-Id` | no | From `initialize`; needed for toolsets |
 
-**Core tool** `shopware-store-api-context` — no parameters:
+No customer login is required. There is **no Admin API ACL** and **no MCP allowlist**: every tool registered for the Store API scope is reachable by any client that authenticates against the sales channel, so each tool must validate its own input and scope its own data access.
+
+**Discovery**: a fresh session advertises only `shopware-tool-search`, `shopware-toolsets-list`, `shopware-toolset-enable`. Everything else, including `shopware-store-api-context`, sits behind the `store-api` toolset. Select toolsets at connect time with `/store-api/_mcp?toolsets=store-api`.
+
+**Core tool `shopware-store-api-context`** (no parameters) returns:
 
 ```json
 {"success": true, "data": {"salesChannelId": "...", "token": "...", "languageId": "...",
   "currencyId": "...", "customerAuthenticated": false, "customerId": null}}
 ```
 
-**Rate limit**: `mcp_store_api` — 120 requests / 60 seconds and 600 / 10 minutes, keyed on sales channel + context token.
+Without a resolvable context it returns `No Store API sales-channel context is available for this MCP request.` Core registers no prompts or resources for this scope.
 
-**Advertising**: `/.well-known/ai-catalog.json` gets an entry (`"identifier": "urn:air:<host>:server:store-api-mcp"`, `"type": "application/mcp-server-card+json"`, `"url"`, `"capabilities": ["shopware-store-api-context"]`) only when the agentic file family is enabled, a domain base URL resolves, and the channel is of type API. The endpoint itself has no toggle. See [Agentic files](platform/dev/6.7/guides/plugins/plugins/storefront/templates/agentic-files.md).
+**Sessions and rate limiting**: own session store (an `Mcp-Session-Id` from `/api/_mcp` is not valid here); enabled toolsets live in the shared `mcp_toolset_session` table with its daily cleanup task. Rate-limit bucket `mcp_store_api`: 120 requests/60 s and 600/10 min, keyed on sales channel plus context token, plus a per-client-IP limit.
 
-**Extending**: tag services `shopware.store_api_mcp.tool`, `shopware.store_api_mcp.prompt`, `shopware.store_api_mcp.resource`; get the context from `StoreApiMcpContextProvider::getSalesChannelContext()` (no `requirePrivilege()` equivalent). Same tool name in both scopes needs two classes carrying `#[McpTool]`. See [MCP server guide](platform/dev/6.7/guides/plugins/plugins/mcp-server.md).
+**Advertising**: API (headless) sales channels with the `agentic` file family enabled and a resolvable domain base URL get an entry in `/.well-known/ai-catalog.json` (`identifier`, `displayName`, `type: application/mcp-server-card+json`, `url`, `tags`, `capabilities`). The endpoint itself has no toggle.
+
+**Extending**: tag services with `shopware.store_api_mcp.tool`, `shopware.store_api_mcp.prompt`, or `shopware.store_api_mcp.resource`. Get the context from `StoreApiMcpContextProvider` (no `requirePrivilege()` equivalent). Assign a group with `#[McpToolGroup]`. Inspect with `bin/console debug:mcp --scope=store-api`; `bin/console debug:mcp --native` shows prompts and resources. See [Agentic files](platform/dev/6.7/guides/plugins/plugins/storefront/templates/agentic-files.md) and [Extending via plugin](platform/dev/6.7/guides/plugins/plugins/mcp-server.md).
 
 ## Essential identifiers
 
-- `/store-api/_mcp`, `store-api.mcp.endpoint`
-- `shopware-store-api-context`
-- `shopware.store_api_mcp.tool` / `.prompt` / `.resource`
-- `StoreApiMcpContextProvider`, `mcp_store_api`
+- `/store-api/_mcp`, `?toolsets=store-api`
+- `shopware-store-api-context`, toolset `store-api`
+- `shopware.store_api_mcp.tool`, `shopware.store_api_mcp.prompt`, `shopware.store_api_mcp.resource`
+- `StoreApiMcpContextProvider`, `#[McpToolGroup]`, `#[McpTool]`
+- `mcp_store_api`, `mcp_toolset_session`
+- `bin/console debug:mcp --scope=store-api`, `bin/console debug:mcp --native`
 
 ## Gotchas
 
-- `bin/console debug:mcp` covers the Admin API server only (per docs).
-- Docs describe progressive discovery (`shopware-tool-search`, `shopware-toolsets-list`, `shopware-toolset-enable`, a `store-api` toolset, `#[McpToolGroup]`, `mcp_toolset_session` table). None exists in installed 6.7.13.0.
+- Since 6.7.14.0 a bare `tools/list` no longer returns the full catalogue; clients must follow discovery or enable `store-api`.
+- Toolset names are not namespaced per endpoint.
+- The same tool name on both scopes needs two classes, because the MCP SDK binds a tool to the class carrying `#[McpTool]`.
 
 ## Version notes
 
-- Introduced in 6.7.11.0. Docs say that since 6.7.14.0 a bare `tools/list` hides tools behind toolsets — newer than the installed 6.7.13.0.
+Introduced in 6.7.11.0, experimental until 6.8. Discovery-only default since 6.7.14.0; `?toolsets=` connection parameter and separate session store since 6.7.15.0.
 
-## Code check (6.7.13.0)
-- confirmed `/store-api/_mcp` — route `store-api.mcp.endpoint`, GET/POST/DELETE/OPTIONS — vendor/shopware/core/Framework/Mcp/Controller/StoreApiMcpServerController.php:63
-- confirmed `MCP_SERVER` — endpoint returns 404 unless the flag is active — vendor/shopware/core/Framework/Mcp/Controller/StoreApiMcpServerController.php:70
-- confirmed `shopware-store-api-context` — core Store API tool returning context fields — vendor/shopware/core/System/SalesChannel/Mcp/Tool/StoreApiContextTool.php:15
-- confirmed `shopware.store_api_mcp.tool` — tag collected by builder compiler pass (also .prompt/.resource) — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/StoreApiMcpServerBuilderCompilerPass.php:44
-- confirmed `StoreApiMcpContextProvider::getSalesChannelContext()` — returns nullable SalesChannelContext — vendor/shopware/core/Framework/Mcp/Context/StoreApiMcpContextProvider.php:24
-- confirmed `mcp_store_api` — 120/60 seconds and 600/10 minutes, time_backoff — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:366
-- confirmed `store-api-mcp` — ai-catalog entry identifier; added only for API-type channels — vendor/shopware/core/Framework/Resources/views/files/agentic/.well-known/ai-catalog.json.twig:15
-- absent `shopware-tool-search` — discovery tools (also shopware-toolsets-list, shopware-toolset-enable) not in installed code
-- absent `McpToolGroup` — no tool group attribute in installed code
-- absent `mcp_toolset_session` — no toolset session table in installed code
+## Code check (6.7.15.1)
+- confirmed `/store-api/_mcp` — route with GET/POST/DELETE/OPTIONS — vendor/shopware/core/Framework/Mcp/Controller/StoreApiMcpServerController.php:57
+- confirmed `StoreApiMcpServerController::handle()` — returns 404 when server/transport absent — vendor/shopware/core/Framework/Mcp/Controller/StoreApiMcpServerController.php:65
+- confirmed `shopware-store-api-context` — tool name, group `store-api` — vendor/shopware/core/System/SalesChannel/Mcp/Tool/StoreApiContextTool.php:18
+- confirmed `StoreApiMcpContextProvider` — context source for Store API tools — vendor/shopware/core/Framework/Mcp/Context/StoreApiMcpContextProvider.php:17
+- confirmed `shopware.store_api_mcp.tool` — tag mapped to `mcp.tool` — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:59
+- confirmed `shopware.store_api_mcp.resource` — tag mapped to `mcp.resource` — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:61
+- confirmed `mcp_store_api` — 120/60 s and 600/10 min limits — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:396
+- confirmed `mcp_toolset_session.cleanup` — daily scheduled task — vendor/shopware/core/Framework/Mcp/ScheduledTask/McpToolsetSessionCleanupTask.php:16
+- confirmed `McpRequestedToolsetResolver::QUERY_PARAMETER` — value `toolsets` — vendor/shopware/core/Framework/Mcp/McpRequestedToolsetResolver.php:19
+- confirmed `debug:mcp` — command with `scope` and `native` options — vendor/shopware/core/Framework/Mcp/Command/DebugMcpCommand.php:66

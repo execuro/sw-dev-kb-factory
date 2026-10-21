@@ -6,57 +6,60 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/commercial/
 sourceHash: 71a03bcd932cee9f3af71ac35ec14ee392fc48e6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["commercial plugin", "SwagCommercial", "commercial:license:update", "commercial:license:info", "SHOPWARE_COMMERCIAL_ENABLED_BUNDLES", "kernel.bundles", "license key", "shopware account", "sub-bundles", "disable features", "CustomPricing", "Subscription"]
-summary: "Commercial plugin: sub-bundles, license via commercial:license:update/info, SHOPWARE_COMMERCIAL_ENABLED_BUNDLES to enable selected bundles."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["SwagCommercial", "commercial plugin", "commercial:license:update", "commercial:license:info", "SHOPWARE_COMMERCIAL_ENABLED_BUNDLES", "license key", "shopware account", "sub-bundles", "disable commercial features", "kernel.bundles", "debug:container", "CustomPricing", "Subscription"]
+summary: Shopware commercial plugin overview - nested sub-bundles, license fetch via Shopware Account, license CLI commands, SHOPWARE_COMMERCIAL_ENABLED_BUNDLES.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Commercial plugin bundles Shopware 6's commercial feature set. It is a group of nested sub-bundles installed like any other plugin; which features are active depends on the merchant's Shopware Account license.
+The Shopware 6 commercial feature set is shipped as one commercial plugin that bundles extended business functionality. The plugin is structured as a group of nested sub-bundles; each feature lives in its own bundle. This page covers its structure, installation, licensing and how to enable only a subset of its bundles.
 
 ## When to use
 
-When installing or debugging the Commercial plugin, checking why its features are inactive (licensing), or limiting which commercial bundles are enabled.
+- You install the commercial plugin and need to know why features show as inactive.
+- The license key was not fetched at install time and you need to refresh or inspect it.
+- You only need some commercial features (for example custom pricing and subscriptions) and want the other bundles disabled.
 
 ## Key steps / config
 
-1. Install the plugin with the standard plugin installation steps (no special guidance needed).
-2. Licensing: on installation the plugin tries to fetch the license key through the logged-in Shopware Account. If that fails, the plugin still installs but all features are deactivated. After logging into the Shopware Account, re-fetch the key:
-   ```bash
-   bin/console commercial:license:update
-   bin/console commercial:license:info   # shows key, whether set, expiry
-   ```
-3. Disable features (since 6.6.10.0): list only the bundles to enable in an environment variable:
-   ```text
-   SHOPWARE_COMMERCIAL_ENABLED_BUNDLES=CustomPricing,Subscription
-   ```
-4. Find all bundle names:
-   ```bash
-   ./bin/console debug:container --parameter kernel.bundles --format=json
-   ```
+1. Install the plugin like any other plugin (standard plugin install flow; no special steps).
+2. On installation the plugin tries to fetch the license key via the logged-in Shopware Account. If that fails, the plugin still installs but all features are deactivated.
+3. After logging into the Shopware Account, re-fetch the license:
+   `bin/console commercial:license:update`
+4. Inspect the current license key, whether it is set, and its expiry date:
+   `bin/console commercial:license:info`
+5. Restrict which commercial bundles are enabled (since 6.6.10.0) with a comma-separated environment variable:
+
+```text
+SHOPWARE_COMMERCIAL_ENABLED_BUNDLES=CustomPricing,Subscription
+```
+
+6. List all bundle names to pick valid values:
+   `./bin/console debug:container --parameter kernel.bundles --format=json`
 
 ## Essential identifiers
 
-- `SwagCommercial` (plugin name)
-- `bin/console commercial:license:update`
-- `bin/console commercial:license:info`
-- `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES`
-- `kernel.bundles` (container parameter)
+- `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` — env var listing enabled commercial bundles
+- `bin/console commercial:license:update` — re-fetch license key
+- `bin/console commercial:license:info` — show license key, status and expiry
+- `kernel.bundles` — container parameter holding all registered bundle names
 
 ## Gotchas
 
-- Features can be installed yet inactive, depending on the merchant's account/license configuration; check each feature's install notes and special conditions.
-- A failed license fetch at install time leaves all features deactivated until `commercial:license:update` succeeds.
+- Depending on the merchant's active account configuration, individual features are *active* or *inactive* while the code is still installed in the codebase. Check each feature's own install information or special conditions.
+- A failed license fetch does not block installation; it silently leaves every feature deactivated until the license is updated.
+- Bundle names in `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` must match the names reported by `kernel.bundles`.
 
 ## Version notes
 
-- `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` is available since 6.6.10.0.
+- Disabling features via `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` is available since 6.6.10.0.
 
-## Code check (6.7.13.0)
-- confirmed `SwagCommercial` — Administration injects the SwagCommercial plugin first because other plugins depend on its license handling — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:633
-- confirmed `SwagCommercial` — test bootstrapper activates the plugin when commercial is enabled — vendor/shopware/core/TestBootstrapper.php:493
-- confirmed `kernel.bundles` — core registers a `kernel.bundles` service from the kernel's bundles — vendor/shopware/core/System/DependencyInjection/configuration.xml:19
-- unverified `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` — read by the SwagCommercial plugin, which is not installed; out of scope
-- unverified `commercial:license:update` — command lives in the SwagCommercial plugin, not installed; out of scope
-- unverified `commercial:license:info` — command lives in the SwagCommercial plugin, not installed; out of scope
+## Code check (6.7.15.1)
+- confirmed `SwagCommercial` — core test bootstrapper activates the plugin by this name when present — vendor/shopware/core/TestBootstrapper.php:497
+- confirmed `SwagCommercial` — listed as a plugin in core translation config — vendor/shopware/core/System/Resources/translation.yaml:11
+- confirmed `CommercialLicenseProvidedEvent` — core event dispatched with a commercial license key and host — vendor/shopware/core/Service/Event/CommercialLicenseProvidedEvent.php:15
+- unverified `commercial:license:update` — command lives in the separate SwagCommercial plugin, not in core/storefront/administration
+- unverified `commercial:license:info` — command lives in the separate SwagCommercial plugin, out of scope
+- unverified `SHOPWARE_COMMERCIAL_ENABLED_BUNDLES` — not read by core; handled inside the SwagCommercial plugin
+- unverified `kernel.bundles` — Symfony kernel container parameter, out of scope (core also registers a `kernel.bundles` service id)

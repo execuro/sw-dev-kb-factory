@@ -1,79 +1,73 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2026-01-28-apply-opensearch-in-admin-api.md
-title: Apply OpenSearch globally for admin-api
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-01-28-apply-opensearch-in-admin-api.html
+id: platform/dev/6.7/resources/references/adr/2026-01-28-apply-opensearch-in-admin-api.md
 sourceHash: eaffbf32bed7449b76694ce6647858778b299f22
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ENABLE_OPENSEARCH_FOR_ADMIN_API", "AdminElasticsearchEntitySearcher", "EntitySearcherInterface", "AdminSearchRegistry", "ProductAdminSearchIndexer", "AbstractAdminIndexer", "shopware.elastic.admin-searcher-index", "es:admin:index", "loaded-by-opensearch", "opensearch", "elasticsearch", "admin search", "admin api listing"]
-summary: "ADR (2026-01-28): behind ENABLE_OPENSEARCH_FOR_ADMIN_API, Admin API DAL searches on admin-indexed entities go to OpenSearch, falling back to MySQL."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-01-28-apply-opensearch-in-admin-api.html
+title: Apply OpenSearch globally for admin-api
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["ENABLE_OPENSEARCH_FOR_ADMIN_API", "AdminElasticsearchEntitySearcher", "AdminSearchRegistry", "ProductAdminSearchIndexer", "AbstractAdminIndexer", "shopware.elastic.admin-searcher-index", "es:admin:index", "loaded-by-opensearch", "EntitySearcherInterface", "admin search", "opensearch", "elasticsearch", "admin api listing"]
+summary: "ADR: behind ENABLE_OPENSEARCH_FOR_ADMIN_API, Admin API DAL searches on admin-indexed entities go to OpenSearch, falling back to MySQL otherwise."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Inventory ADR: Admin API entity searches (listings, filters, component lookups such as `sw-search-bar`, `sw-entity-single-select`, `sw-data-grid`) reuse the admin OpenSearch index instead of MySQL whenever the entity and all queried fields are supported. `Shopware\Elasticsearch\Admin\AdminElasticsearchEntitySearcher` decorates the DAL `EntitySearcherInterface`; unsupported searches fall back to the MySQL searcher.
+Architecture decision record (2026-01-28, area inventory) that lets Admin API / administration listings, filters and component lookups (e.g. `sw-search-bar`, `sw-entity-single-select`, `sw-data-grid`) reuse the admin OpenSearch index instead of MySQL. `Shopware\Elasticsearch\Admin\AdminElasticsearchEntitySearcher` decorates the DAL `EntitySearcherInterface` and forwards criteria to OpenSearch when the entity is supported; everything else keeps using the decorated MySQL searcher.
 
 ## When to use
 
-- Speeding up Administration listings/filters on large catalogs with admin OpenSearch configured.
-- Adding fields to an admin index, or making a custom entity searchable through it.
-- Diagnosing whether an Admin API search hit OpenSearch or SQL.
+- Admin listings on large catalogs are slow and you run admin OpenSearch.
+- You add fields, filters or a custom entity to the admin index and want them served from OpenSearch.
+- You debug whether an Admin API search hit OpenSearch or SQL.
 
 ## Key steps / config
 
-1. Enable the feature flag `ENABLE_OPENSEARCH_FOR_ADMIN_API` (default `false`, toggleable, experimental) and make sure admin OpenSearch itself is enabled.
-2. Reindex the admin indexes: `bin/console es:admin:index` (also after changing mappings or adding/removing fields).
-3. A search is forwarded to OpenSearch only if all of these hold:
-   - feature flag active and admin ES enabled;
-   - the context source is `AdminApiSource`;
-   - no explicit ID criteria;
-   - the `AdminSearchRegistry` has an indexer for the entity;
-   - either a term search without other fields, or the indexer mapping is non-empty and every field used in the criteria is in the indexer's supported search fields.
+1. Enable the feature flag `ENABLE_OPENSEARCH_FOR_ADMIN_API` (experimental, default off) and have admin OpenSearch configured and enabled. The administration list pages only use the admin ES path when the flag is active and `Context.app.adminEsEnable` is true.
+2. Reindex the admin indexes after enabling the flag and after every mapping/field change: `bin/console es:admin:index`.
+3. A search is forwarded to OpenSearch only if all hold: flag on, admin ES enabled, the context source is `AdminApiSource`, the criteria carry no explicit IDs, the `AdminSearchRegistry` has an indexer for the entity, and either it is a pure term search or every field the criteria use (filters, sorts) is in the indexer's `getSupportedSearchFields()`; an indexer whose `mapping([])` is empty is skipped.
 4. Supported entities out of the box: `category`, `customer`, `landing_page`, `product_manufacturer`, `media`, `newsletter_recipient`, `order`, `product`, `promotion`, `property_group`.
-5. More fields: decorate the concrete indexer (e.g. `Shopware\Elasticsearch\Admin\Indexer\ProductAdminSearchIndexer`), call the inner `mapping()` and add keyword fields to `$mapping['properties']`, and extend `fetch(array $ids)` to add the field values per row.
-6. Register the decorator; custom entities additionally need the indexer tag:
+5. Additional fields: decorate the concrete indexer (e.g. `Shopware\Elasticsearch\Admin\Indexer\ProductAdminSearchIndexer`), extending `AbstractAdminIndexer`, call the inner `mapping()`/`fetch()` and append your field (e.g. as `AbstractElasticsearchDefinition::KEYWORD_FIELD`) and its data:
 
-```xml
-<service id="Foo\Your\Custom\ProductAdminSearchIndexerDecorator"
-         decorates="Shopware\Elasticsearch\Admin\Indexer\ProductAdminSearchIndexer"
-         on-invalid="ignore">
-  <argument type="service" id=".inner"/>
-</service>
-<tag name="shopware.elastic.admin-searcher-index" key="<your_entity_name>"/>
-```
+   ```xml
+   <service id="Foo\Your\Custom\ProductAdminSearchIndexerDecorator"
+            decorates="Shopware\Elasticsearch\Admin\Indexer\ProductAdminSearchIndexer"
+            on-invalid="ignore">
+     <argument type="service" id=".inner"/>
+   </service>
+   ```
 
-7. Troubleshooting: results loaded by OpenSearch carry the state `loaded-by-opensearch`, exposed in the JSON response under `meta.states`:
+6. Custom entity: register its indexer service with `<tag name="shopware.elastic.admin-searcher-index" key="<your_entity_name>"/>`.
+7. Troubleshooting: results from the OpenSearch path carry the state `loaded-by-opensearch`, exposed in the JSON response as `meta.states`:
 
-```json
-{ "data": [], "meta": { "states": ["loaded-by-opensearch"], "total": 200 } }
-```
+   ```json
+   { "data": [], "meta": { "states": ["loaded-by-opensearch"], "total": 200 } }
+   ```
 
 ## Essential identifiers
 
 - `ENABLE_OPENSEARCH_FOR_ADMIN_API`
-- `Shopware\Elasticsearch\Admin\AdminElasticsearchEntitySearcher`
-- `EntitySearcherInterface`, `AdminApiSource`
+- `Shopware\Elasticsearch\Admin\AdminElasticsearchEntitySearcher`, `EntitySearcherInterface`
 - `AdminSearchRegistry`, `AbstractAdminIndexer`, `Shopware\Elasticsearch\Admin\Indexer\ProductAdminSearchIndexer`
 - `shopware.elastic.admin-searcher-index`
 - `bin/console es:admin:index`
-- `meta.states` / `loaded-by-opensearch`
+- `loaded-by-opensearch` (`meta.states`)
 
 ## Gotchas
 
-- The ADR's XML sample shows `on-invalid="null"`, but its text requires `on-invalid="ignore"` so the decorator is dropped when the Elasticsearch bundle is not registered.
-- Admin indexes store only commonly used fields as keyword fields; filters or sorts on other fields silently fall back to SQL.
-- New filters or admin modules must declare their requirements in `AdminSearchRegistry` and index the fields, otherwise no performance gain.
-- Index size and indexing time of admin indexes grow; hosting should monitor them.
+- The ADR's text requires `on-invalid="ignore"` on the decorator (so the project still boots without the Elasticsearch bundle), while its XML sample shows `on-invalid="null"`; follow the text.
+- Admin index fields are stored as keyword fields and only commonly used admin fields are indexed; projects needing more must extend mapping and indexing themselves, otherwise those queries fall back to SQL.
+- New filters or admin modules must declare their requirements in `AdminSearchRegistry` and index the needed fields, or they lose the OpenSearch path.
+- Index size and indexing time of admin indexes grow with more fields; hosting should monitor index size.
+- A missing `loaded-by-opensearch` state on a slow request means it bypassed OpenSearch.
 
-## Code check (6.7.13.0)
-- confirmed `ENABLE_OPENSEARCH_FOR_ADMIN_API` — feature flag, default false, toggleable; read by Administration list modules — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:54
-- confirmed `EntitySearcherInterface` — DAL searcher interface that is decorated — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearcherInterface.php:13
-- confirmed `AdminApiSource` — context source required for forwarding — vendor/shopware/core/Framework/Api/Context/AdminApiSource.php:9
-- confirmed `shopware.elastic.admin-searcher-index` — tag contract requires AbstractAdminIndexer — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/tagged-service-contracts.php:92
-- unverified `AdminElasticsearchEntitySearcher` — lives in the Elasticsearch package, outside the checked vendor roots
-- unverified `AdminSearchRegistry` — Elasticsearch package, out of scope
-- unverified `ProductAdminSearchIndexer` — Elasticsearch package, out of scope
-- unverified `es:admin:index` — console command in the Elasticsearch package, out of scope
-- unverified `loaded-by-opensearch` — not found in core/storefront/administration src; set in the Elasticsearch package per docs
+## Code check (6.7.15.1)
+- confirmed `ENABLE_OPENSEARCH_FOR_ADMIN_API` — experimental, default false, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:54
+- confirmed `adminEsEnable` — admin product list uses ES only with flag active and Context.app.adminEsEnable — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/page/sw-product-list/index.js:290
+- confirmed `shopware.elastic.admin-searcher-index` — tag contract maps to AbstractAdminIndexer — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/tagged-service-contracts.php:100
+- unverified `AdminElasticsearchEntitySearcher` — lives in the Elasticsearch bundle, out of scope
+- unverified `AdminSearchRegistry` — Elasticsearch bundle, out of scope
+- unverified `ProductAdminSearchIndexer` — Elasticsearch bundle, out of scope
+- unverified `loaded-by-opensearch` — not found in core/storefront/administration roots; set in the Elasticsearch bundle per ADR
+- unverified `es:admin:index` — command defined in the Elasticsearch bundle, out of scope

@@ -1,80 +1,87 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-vuex-state.md
-title: Using Vuex Stores
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/using-vuex-state.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md
+sourceHash: 79d60ffce7f53fb81160a3358304ad7b0bc14951
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/data-handling-processing/using-vuex-state.html
-sourceHash: e4b78f0cff930e18479771f5339e7b9e868c38a7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Shopware.Store", "Shopware.State", "registerModule", "unregisterModule", "getComponentHelper", "mapState", "mapVuexState", "vuex", "pinia", "administration state", "namespaced store", "store module"]
-summary: "Admin state in 6.7: register Pinia stores via Shopware.Store.register/get/unregister; Vuex Shopware.State is deprecated (removed in 6.8)."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md"]
+title: Using Vuex Stores
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["vuex", "Shopware.State", "registerModule", "unregisterModule", "namespaced", "mapVuexState", "mapVuexMutations", "getComponentHelper", "Shopware.Store", "pinia", "state management", "store module"]
+summary: Namespaced Vuex store modules in the Administration and their component mapping; Shopware.State is deprecated in 6.7, use Shopware.Store (Pinia).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The guide describes keeping complex Administration state in a store registered through the global Shopware object. The docs show the Vuex API; the installed 6.7.13.0 Administration keeps Vuex only as a deprecated layer and uses Pinia through `Shopware.Store` for its own stores.
+The Administration wraps Vuex so plugins can register their own namespaced store modules and map their state/mutations into components. In the installed 6.7 code this Vuex wrapper is deprecated for removal in 6.8; the Pinia-based `Shopware.Store` is the supported store API.
 
 ## When to use
 
-A plugin component or module needs shared state (e.g. a value edited in one component and displayed in another) that should be available under a name everywhere in the Administration, regardless of where it was registered.
+You maintain plugin code that keeps component-spanning state in a Vuex module, or you need to know how that maps onto the installed helpers. For new code, use `Shopware.Store` (see Key steps, step 4). Background on the global object: [The Shopware object](platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/the-shopware-object.md).
 
 ## Key steps / config
 
-1. Define and register the store. `Shopware.Store.register` accepts either `(id, () => definition)` or one definition object with an `id` string; it returns the Pinia `useStore` function.
+1. Define the store module. It must be `namespaced: true` to avoid collisions with other plugins and the core:
 
-```js
-Shopware.Store.register({
-    id: 'swagBasicState',
+```javascript
+export default {
+    namespaced: true,
     state() {
         return { content: '' };
     },
-    actions: {
-        setContent(content) { this.content = content; },
+    mutations: {
+        setContent(state, content) { state.content = content; },
     },
+};
+```
+
+2. Register it under a name (e.g. `swagBasicState`), either at module scope in your `main.js`, or per component in the `beforeCreate` hook and removed again in `beforeUnmount` so no unused store is left behind. The registering API is the deprecated Vuex wrapper — exact calls in Gotchas. Once registered, the module is available everywhere under that name.
+
+3. Map it in a component through the component helper. The installed helper exposes the Vuex helpers under `mapVuex*` names:
+
+```javascript
+const { mapVuexState, mapVuexMutations } = Shopware.Component.getComponentHelper();
+
+Shopware.Component.register('swag-basic-state', {
+    template,
+    computed: { ...mapVuexState('swagBasicState', ['content']) },
+    methods: { ...mapVuexMutations('swagBasicState', ['setContent']) },
 });
 ```
 
-2. Register it globally from the plugin's `main.js` (module scope), or inside a component lifecycle hook (component scope). A component-scoped store should be removed again with `Shopware.Store.unregister('swagBasicState')` in `beforeUnmount`, so no unused store is left behind. `unregister` is a no-op for an unknown id.
-3. Read the store with `Shopware.Store.get('swagBasicState')` — it throws `Store with id "…" not found` if the id is not registered.
-4. Map state/actions into a component through the component helper:
+The template then shows `content` and calls `setContent(value)` on the field's update event.
 
-```js
-const { mapState, mapActions } = Shopware.Component.getComponentHelper();
-// computed:
-...mapState(() => Shopware.Store.get('swagBasicState'), ['content']),
-// methods:
-...mapActions(() => Shopware.Store.get('swagBasicState'), ['setContent']),
-```
-
-5. Use `content` and `setContent(value)` in the component template, e.g. bound to a text field's value and update event.
+4. New code (Pinia): `Shopware.Store.register({ id: 'myStore', state, getters, actions })` (or `register('myStore', () => definition)`), read with `Shopware.Store.get('myStore')`, remove with `Shopware.Store.unregister('myStore')`. In components, the helper's `mapState`/`mapActions` are Pinia's helpers.
 
 ## Essential identifiers
 
-- `Shopware.Store.register`, `Shopware.Store.get`, `Shopware.Store.unregister`, `Shopware.Store.list`
-- `Shopware.Component.getComponentHelper()` — exposes Pinia `mapState`, `mapActions`
-- `Shopware.Component.register('swag-basic-state', …)`
+- `namespaced: true`
+- `Shopware.Component.getComponentHelper()`
+- `mapVuexState`, `mapVuexMutations`, `mapVuexGetters`, `mapVuexActions`
+- `Shopware.Store.register`, `Shopware.Store.get`, `Shopware.Store.unregister`
+- `beforeCreate`, `beforeUnmount`
 
 ## Gotchas
 
-- `Shopware.State` (Vuex) is `@deprecated tag:v6.8.0`; its `registerModule`, `unregisterModule` and `get` still exist in 6.7, and a Vuex store passed to `registerModule` must be `namespaced: true`, as the docs require.
-- `mapState` from `getComponentHelper()` is **Pinia's** `mapState`, not Vuex's. The Vuex helpers are exposed as `mapVuexState`, `mapVuexMutations`, `mapVuexGetters`, `mapVuexActions`. There is no `mapMutations` key — the docs' `mapState('swagBasicState', …)` / `mapMutations(…)` pairing does not match the installed helper.
-- The docs use the Vue 2 hook `beforeDestroy`; the Vue 3 Administration's own components use `beforeUnmount`.
-- The template example uses `sw-text-field`, which is `@deprecated tag:v6.8.0` in favour of `mt-text-field`.
+- The source registers with `Shopware.State.registerModule('swagBasicState', swagBasicState)`, removes with `Shopware.State.unregisterModule('swagBasicState')` and reads with `Shopware.State.get()`. `Shopware.State` is `@deprecated tag:v6.8.0` ("use Store instead"), and the state factory behind it is deprecated "without replacement".
+- The source destructures `mapState`/`mapMutations` from `getComponentHelper()`. In 6.7 `mapState` there is Pinia's helper and there is no `mapMutations` key — use `mapVuexState`/`mapVuexMutations` for Vuex modules.
+- The source's template uses `sw-text-field` with `:value`/`@update:value`; `sw-text-field` is deprecated for 6.8 ("use mt-text-field instead").
 
 ## Version notes
 
-- 6.7: Vuex (`Shopware.State`, `src/app/init-pre/state.init.ts`) is deprecated for removal in 6.8.0; `Shopware.Store` (Pinia) is the replacement.
+- 6.7: the Vuex wrapper (`Shopware.State`) and the global `VuexRootState` type are deprecated, slated for removal in 6.8; Pinia via `Shopware.Store` replaces it.
 
-## Code check (6.7.13.0)
-- deprecated `Shopware.State` — Vuex state wrapper, file marked deprecated tag:v6.8.0 — vendor/shopware/administration/Resources/app/administration/src/app/init-pre/state.init.ts:13
-- deprecated `registerModule` — Vuex-only, part of deprecated State — vendor/shopware/administration/Resources/app/administration/src/app/init-pre/state.init.ts:48
-- deprecated `unregisterModule` — Vuex-only, part of deprecated State — vendor/shopware/administration/Resources/app/administration/src/app/init-pre/state.init.ts:51
-- confirmed `Store::register()` — Pinia registration by id or definition object — vendor/shopware/administration/Resources/app/administration/src/app/store/index.ts:63
-- confirmed `Store::get()` — throws when id is unknown — vendor/shopware/administration/Resources/app/administration/src/app/store/index.ts:51
-- confirmed `Store::unregister()` — disposes and removes the store — vendor/shopware/administration/Resources/app/administration/src/app/store/index.ts:95
-- confirmed `getComponentHelper` — on Shopware.Component — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137
-- corrected `mapState` — docs: Vuex mapState with namespace string; code: Pinia mapState — vendor/shopware/administration/Resources/app/administration/src/app/init/component-helper.init.ts:12
-- corrected `mapVuexMutations` — docs: `mapMutations` from the component helper — vendor/shopware/administration/Resources/app/administration/src/app/init/component-helper.init.ts:21
-- deprecated `sw-text-field` — replaced by mt-text-field — vendor/shopware/administration/Resources/app/administration/src/app/component/form/sw-text-field/index.ts:8
+## Code check (6.7.15.1)
+- deprecated `Shopware.State` — `@deprecated tag:v6.8.0`, use Store instead — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:182
+- deprecated `FullState::registerModule()` — state factory deprecated without replacement — vendor/shopware/administration/Resources/app/administration/src/core/factory/state.factory.ts:54
+- deprecated `FullState::unregisterModule()` — same deprecated state factory — vendor/shopware/administration/Resources/app/administration/src/core/factory/state.factory.ts:55
+- deprecated `FullState::get()` — same deprecated state factory — vendor/shopware/administration/Resources/app/administration/src/core/factory/state.factory.ts:47
+- corrected `mapState` — docs: Vuex mapState from getComponentHelper; installed helper maps Pinia mapState — vendor/shopware/administration/Resources/app/administration/src/app/init/component-helper.init.ts:18
+- corrected `mapMutations` — docs: exposed by getComponentHelper; installed key is mapVuexMutations — vendor/shopware/administration/Resources/app/administration/src/app/init/component-helper.init.ts:8
+- confirmed `mapVuexState` — registered component helper — vendor/shopware/administration/Resources/app/administration/src/app/init/component-helper.init.ts:20
+- confirmed `Store::register` — Pinia store registration by id — vendor/shopware/administration/Resources/app/administration/src/app/store/index.ts:63
+- confirmed `Store::unregister()` — disposes and removes a Pinia store — vendor/shopware/administration/Resources/app/administration/src/app/store/index.ts:95
+- deprecated `sw-text-field` — `@deprecated tag:v6.8.0`, use mt-text-field — vendor/shopware/administration/Resources/app/administration/src/app/component/form/sw-text-field/index.ts:10

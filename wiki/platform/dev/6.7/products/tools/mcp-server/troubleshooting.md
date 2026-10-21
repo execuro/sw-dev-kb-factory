@@ -1,72 +1,80 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/tools/mcp-server/troubleshooting.md
-sourceHash: 855207b588015c5935732314048b8b25e0dc213f
-sourceUrl: https://developer.shopware.com/docs/products/tools/mcp-server/troubleshooting.html
 title: Troubleshooting
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["/api/_mcp", "sw-access-key", "sw-secret-access-key", "shopware.mcp.tool", "mcp.tool", "scan_dirs", "shopware.mcp.allowed_tools", "debug:mcp", "Missing privilege", "mcp allowlist", "mcp troubleshooting", "authentication failed", ".mcp.json"]
-summary: "Shopware MCP server troubleshooting: auth failures, allowlist and ACL errors, /register fallback, Claude Code .mcp.json type, tool registration checks."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/tools/mcp-server/store-api.md"]
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/products/tools/mcp-server/troubleshooting.html
+sourceHash: a0c9c1b56df7c1015614790ba73a6656b2b4ffd1
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["mcp troubleshooting", "/api/_mcp", "mcp allowlist", "-32001", "Mcp-Session-Id", "shopware.mcp.allowed_tools", "shopware.mcp.tool", "debug:mcp", "McpTool", "sw-access-key", "sw-secret-access-key", "toolsets", "/register", "ECONNREFUSED"]
+summary: "Fixes for Shopware MCP errors: auth/401 -32001, allowlist and ACL denials, missing tools or toolsets, session issues, debug:mcp checks, client config."
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/products/tools/mcp-server/store-api.md
 ---
 ## What it is
 
-Symptom-to-fix reference for the Admin API MCP endpoint `/api/_mcp`: connection and authentication errors, allowlist/ACL denials, client configuration, missing tools, and the three security layers.
+A symptom-to-fix guide for Shopware's MCP server: connection and authentication failures, allowlist/ACL denials, progressive-discovery surprises, sessions, client config, tool registration, and the three security layers.
 
 ## When to use
 
-An MCP client cannot connect, gets an authentication/allowlist/privilege error, or a registered tool does not show up.
+When a client cannot connect to `/api/_mcp`, a tool is missing or blocked, toolsets do not appear, or a tool returns a `shopware://tool-result/...` URI instead of data.
 
 ## Key steps / config
 
-**Quick fixes**
-- `Authentication failed. Configure your MCP client...` — check `sw-access-key` / `sw-secret-access-key`.
-- `Tool "X" is not enabled in your MCP allowlist.` (same for `Resource`/`Prompt`) — Settings → Integrations → Edit MCP Allowlist → enable it.
-- `Missing privilege: {entity}:read` — assign an ACL role with the privilege, or use `--admin`.
-- No tools at all — the global `shopware.mcp.allowed_tools` list removes unlisted tools.
-- Tool missing — extension inactive or registration missing; check `bin/console debug:mcp`.
-- `ECONNREFUSED` / "fetch failed" — start Shopware, verify host/port in the client config.
-- Result is `shopware://tool-result/...` — response exceeded 100 KB; read it as a resource or narrow `limit`/fields.
+| Symptom | Fix |
+|---|---|
+| `Authentication failed. Configure your MCP client...` | Check `sw-access-key` / `sw-secret-access-key` |
+| `Tool "X" is not enabled in your MCP allowlist.` (or `Resource`/`Prompt`) | Settings → Integrations → Edit MCP Allowlist |
+| `Missing privilege: {entity}:read` | Grant the ACL privilege, or use `--admin` |
+| Only three tools in a fresh session | Expected; use `shopware-tool-search` / `shopware-toolset-enable` |
+| Enabled toolset not visible | Refresh `tools/list`, or connect with `?toolsets=<name>` (needed for claude.ai, 6.7.15.0+) |
+| No tools at all | Add the three discovery tools to `shopware.mcp.allowed_tools` |
+| `Cannot enable an MCP toolset without an active MCP session.` | Complete `initialize`, send `Mcp-Session-Id` every request |
+| `Invalid value for pagination parameter "cursor"` | Restart listing without `cursor` |
+| Toolsets forgotten between requests | Redis session store on multi-server setups |
+| Session rejected after updating to 6.7.15.0 | Send `initialize` again |
+| Tool missing entirely | `bin/console debug:mcp`; prompts/resources: `--native` |
+| Result is `shopware://tool-result/...` | Over 100 KB: read it as a resource or narrow `limit`/fields |
+| `ECONNREFUSED` / "fetch failed" | Start Shopware, verify host/port |
 
-**"Needs authentication" / `/register` fallback** — clients such as Cursor POST to `{server-origin}/register` after a failed connect; Shopware returns a structured error. Confirm `sw-access-key` starts with `SWIA`, the secret matches, and the URL ends with `/api/_mcp` (not `/api/_action/mcp/tools`).
+**"Needs authentication" / `/register`**: clients like Cursor POST to `{server-origin}/register` after a failed connect and get a structured error. Check that `sw-access-key` starts with `SWIA`, the secret matches, and the URL ends with `/api/_mcp` (not `/api/_action/mcp/tools`).
 
-**Claude Code** — `.mcp.json` needs `"type": "http"` (not `"streamable-http"`):
+**Claude Code `.mcp.json`** needs `"type": "http"`, not `"streamable-http"`:
 
 ```json
-{"mcpServers": {"shopware": {"type": "http", "url": "https://<shop-host>/api/_mcp",
+{"mcpServers": {"shopware": {"type": "http", "url": "https://localhost:8000/api/_mcp",
   "headers": {"sw-access-key": "SWIA...", "sw-secret-access-key": "..."}}}}
 ```
 
-**Tool missing from `debug:mcp`** (so also from the endpoint)
-- Plugin tools: plugin active (`bin/console plugin:list`); service tagged `shopware.mcp.tool`; `#[McpTool]` on the class, not `__invoke()`; `bin/console cache:clear`.
-- Core/in-tree bundle tools: tagged `mcp.tool` and directory listed in the MCP config `scan_dirs`.
+**Tool missing from `debug:mcp`** (also missing live): plugin active (`bin/console plugin:list`), service tagged `shopware.mcp.tool` in `services.php`, `#[McpTool]` on the class (not `__invoke()`), then `bin/console cache:clear`. Core/bundle tools: correct DI tag (`shopware.mcp.tool`, or `shopware.store_api_mcp.tool`); read the `debug:mcp` footer warning about capabilities no server exposes.
 
-**Security layers**: 1. authentication; 2. MCP allowlist per integration or user (`null` = all, `[]` = none; the integration `admin` flag does not bypass it, admin users do; integration plus `sw-app-user-id` uses the intersection; Administration-login tokens are unrestricted); 3. ACL. The Store API endpoint has no allowlist — see [Store API MCP](platform/dev/6.7/products/tools/mcp-server/store-api.md).
+**Security layers** (all must pass):
 
-## Essential identifiers
+1. Authentication — `sw-access-key` + `sw-secret-access-key`.
+2. MCP allowlist — per integration and per user (Settings → Users & Permissions → [user] → MCP tool allowlist). `null` = all, `[]` = none. The integration `admin` flag does not bypass it; admin users (`admin = true`) do. With `sw-app-user-id` (e.g. Copilot) the intersection of integration and user lists applies.
+3. ACL — entity-level privileges of the integration role.
 
-- `/api/_mcp`, `sw-access-key`, `sw-secret-access-key`
-- `shopware.mcp.tool`, `mcp.tool`, `scan_dirs`, `shopware.mcp.allowed_tools`
-- `bin/console debug:mcp`
+The Store API endpoint has no allowlist — see [Store API MCP](platform/dev/6.7/products/tools/mcp-server/store-api.md).
 
 ## Gotchas
 
-- Test allowlists with integration credentials or a user access key, never an Administration token.
-- Docs list discovery symptoms (three tools per fresh session, toolsets, `shopware-tool-search`, `shopware-toolsets-list`, `shopware-toolset-enable`). Installed 6.7.13.0 has no discovery tools or toolsets.
-- The endpoint returns 404 unless the `MCP_SERVER` feature flag is active.
+- Do not test allowlists with an admin user's Administration token (`client_id = administration`); it bypasses the allowlist.
 
-## Code check (6.7.13.0)
-- corrected `Tool "%s" is not enabled in your MCP allowlist.` — docs: `Tool "X" is not in the allowlist...` — vendor/shopware/core/Framework/Mcp/Controller/McpServerController.php:176
-- confirmed `Authentication failed.` — error description for failed MCP auth — vendor/shopware/core/Framework/Mcp/Authentication/McpExceptionListener.php:66
-- confirmed `/register` — POST OAuth fallback path handled — vendor/shopware/core/Framework/Mcp/Authentication/McpExceptionListener.php:44
-- confirmed `Missing privilege: %s` — ACL denial message — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:151
-- confirmed `shopware.mcp.tool` — plugin tag registered via builder compiler pass — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpServerBuilderCompilerPass.php:43
-- confirmed `scan_dirs` — MCP bundle package config — vendor/shopware/core/Framework/Resources/config/packages/mcp.php:36
-- confirmed `shopware.mcp.allowed_tools` — removes tool services not listed — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:57
-- confirmed `debug:mcp` — lists registered MCP capabilities — vendor/shopware/core/Framework/Mcp/Command/DebugMcpCommand.php:28
-- absent `shopware-toolset-enable` — discovery tools and toolsets (also shopware-tool-search, shopware-toolsets-list) not in installed code
-- unverified `Invalid value for pagination parameter "cursor"` — not in vendor/shopware; likely MCP SDK, out of scope
+## Version notes
+
+- 6.7.15.0+: missing/invalid/expired bearer tokens on `/api/_mcp` return HTTP 401 with `-32001` (e.g. `Access token is expired`); earlier HTTP 500 with `-32000`.
+- 6.7.15.0+: capabilities register from their tag; `scan_dirs` in `config/packages/mcp.php` (needed up to 6.7.14.x) is gone; `debug:mcp` lists tools only.
+
+## Code check (6.7.15.1)
+- confirmed `McpExceptionListener::CODE_UNAUTHORIZED` — value -32001 — vendor/shopware/core/Framework/Mcp/Authentication/McpExceptionListener.php:29
+- confirmed `/register` — POST fallback path handled by the exception listener — vendor/shopware/core/Framework/Mcp/Authentication/McpExceptionListener.php:45
+- confirmed `/api/_mcp` — Admin API MCP route — vendor/shopware/core/Framework/Mcp/Controller/McpServerController.php:79
+- confirmed `is not enabled in your MCP allowlist` — tool denial message — vendor/shopware/core/Framework/Mcp/Controller/McpServerController.php:186
+- confirmed `Missing privilege` — canonical ACL error prefix — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:166
+- confirmed `Cannot enable an MCP toolset without an active MCP session.` — toolset-enable error — vendor/shopware/core/Framework/Mcp/Tool/ToolsetEnableTool.php:41
+- confirmed `shopware.mcp.tool` — plugin tag re-tagged to `mcp.tool` — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:56
+- confirmed `shopware.store_api_mcp.tool` — Store API tag — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:59
+- confirmed `shopware.mcp.allowed_tools` — global compile-time tool allowlist — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:314
+- confirmed `debug:mcp` — console command lists MCP capabilities — vendor/shopware/core/Framework/Mcp/Command/DebugMcpCommand.php:33

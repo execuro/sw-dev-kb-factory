@@ -6,31 +6,30 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/content/
 sourceHash: c9910cbae167bf28d246f92ed08a60ab85131176
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["content", "shopping experiences", "page builder", "cms", "cms_page", "sw-cms", "layouts", "cookie consent", "CookieGroupCollectEvent", "gdpr"]
-summary: "Content concepts overview: Shopping Experiences CMS layouts built in the admin Page Builder, and cookie consent management for GDPR support."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["content", "cms", "Shopping Experiences", "Page Builder", "layouts", "cms_page", "sw-cms", "cookie consent", "Cookie Consent Management", "gdpr", "privacy"]
+summary: Shopware 6.7 content concepts - Shopping Experiences CMS layouts built in the Admin Page Builder, and cookie consent management.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview of Shopware's content concepts. Shopware 6 has an integrated, layout-based content management system called *Shopping Experiences*; layouts are composed and managed in the Administration with the *Page Builder*. Shopware also provides Cookie Consent Management to help with GDPR compliance by handling customer privacy preferences and cookies transparently.
+The entry page for Shopware's content concepts. Shopware 6 ships an integrated content management system based on layouts, called *Shopping Experiences*. Layouts are composed and managed with a tool in the Admin panel referred to as the *Page Builder*.
+
+Beyond content management, the section also covers *Cookie Consent Management*: features that help support GDPR compliance by handling customer privacy preferences and cookie handling transparently.
 
 ## When to use
 
-As an entry point when you work on CMS layouts (Shopping Experiences) or on cookie consent handling and need to know which content concepts exist.
+Start here when you need to find the concept pages on CMS layouts (Shopping Experiences / Page Builder) or on cookie consent and privacy handling in the Storefront and Store API.
 
 ## Essential identifiers
 
-- `cms_page` — entity behind Shopping Experiences layouts
-- `sw-cms` — Administration module of the Page Builder
-- `CookieGroupCollectEvent` — current way to introduce cookies into the consent manager
+- Shopping Experiences (CMS), Page Builder (Admin module `sw-cms`)
+- Cookie Consent Management
 
-## Gotchas
-
-- `CookieProviderInterface` (Storefront) is deprecated for removal in 6.8.0; use `CookieGroupCollectEvent` instead.
-
-## Code check (6.7.13.0)
-- confirmed `cms_page` — CmsPageDefinition entity name — vendor/shopware/core/Content/Cms/CmsPageDefinition.php:34
-- confirmed `sw-cms` — Page Builder admin module registration — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/index.ts:39
-- confirmed `CookieGroupCollectEvent` — event for collecting cookie groups — vendor/shopware/core/Content/Cookie/Event/CookieGroupCollectEvent.php:15
-- deprecated `CookieProviderInterface` — deprecated tag:v6.8.0 — vendor/shopware/storefront/Framework/Cookie/CookieProviderInterface.php:15
+## Code check (6.7.15.1)
+- confirmed `CmsPageDefinition` — entity definition behind Shopping Experiences layouts — vendor/shopware/core/Content/Cms/CmsPageDefinition.php:35
+- confirmed `CmsSectionDefinition` — layout section entity — vendor/shopware/core/Content/Cms/Aggregate/CmsSection/CmsSectionDefinition.php:33
+- confirmed `CmsBlockDefinition` — layout block entity — vendor/shopware/core/Content/Cms/Aggregate/CmsBlock/CmsBlockDefinition.php:32
+- confirmed `CmsSlotDefinition` — layout slot entity — vendor/shopware/core/Content/Cms/Aggregate/CmsSlot/CmsSlotDefinition.php:30
+- confirmed `sw-cms` — Admin module implementing the Page Builder — vendor/shopware/administration/Resources/app/administration/src/module/sw-cms/index.ts:39
+- confirmed `CookieProvider` — core service collecting cookie groups for consent management — vendor/shopware/core/Content/Cookie/Service/CookieProvider.php:28

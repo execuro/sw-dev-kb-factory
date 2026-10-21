@@ -1,72 +1,65 @@
 ---
-id: platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/01-getting_started.md
-title: Getting Started
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/javascript/01-getting_started.html
+id: platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/01-getting_started.md
 sourceHash: 4d6145ef24678986aecca0270d26c7b679b26be7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app server sdk", "javascript app sdk", "typescript", "AppServer", "InMemoryShopRepository", "@shopware-ag/app-server-sdk", "app.registration.authorize", "app.registration.authorizeCallback", "/authorize", "/authorize/callback", "app registration", "bun", "deno"]
-summary: "Install the TypeScript App Server SDK and expose /authorize and /authorize/callback via AppServer and InMemoryShopRepository for app registration."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/javascript/01-getting_started.html
+title: Getting Started
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["app server sdk", "@shopware-ag/app-server-sdk", "@shopware-ag/app-sdk-server", "AppServer", "InMemoryShopRepository", "app.registration.authorize", "authorizeCallback", "/authorize/callback", "app registration", "typescript app backend", "bun", "deno"]
+summary: Install the TypeScript App Server SDK and expose /authorize and /authorize/callback via AppServer to handle Shopware app registration.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Getting-started guide for the Shopware App Server SDK in TypeScript (open source, `https://github.com/shopware/app-sdk-js`): installing it and wiring the app registration handshake into a fetch-style request handler.
+First step of the TypeScript/JavaScript App Server SDK (open source, `https://github.com/shopware/app-sdk-js`): installing it and wiring the app registration handshake with an `AppServer` instance. Assumes an app backend already runs.
 
 ## When to use
 
-Building an app backend in JavaScript/TypeScript (Bun, Deno, Node.js via an adapter) that must handle the Shopware app registration flow. Assumes a running app backend.
+Starting an app backend in JS/TS (Bun, Deno, Node.js, edge/serverless) that must complete the registration handshake with a Shopware shop. The next guide in the series covers lifecycle handling.
 
 ## Key steps / config
 
-1. Install via npm (command as given in the source):
-
-```bash
-npm install --save @shopware-ag/app-sdk-server
-```
-
-2. Create an `AppServer` with app name, app secret and the authorize callback URL, plus a shop repository. `InMemoryShopRepository` keeps shops in memory (local development/testing only); use a persistent database-backed repository in production.
-3. Expose two routes: `/authorize` starts registration, `/authorize/callback` handles Shopware's callback:
+1. Install: `npm install --save @shopware-ag/app-sdk-server` (command as given by the source; the code imports from `@shopware-ag/app-server-sdk` — see Gotchas).
+2. Create an `AppServer` with app name, app secret and the absolute authorize callback URL of your backend, plus a shop repository. `InMemoryShopRepository` keeps shops in memory (local development/testing); replace it with a persistent database-backed repository in production.
+3. Expose two routes in a `fetch(request)` handler:
+   - `/authorize` → `app.registration.authorize(request)` (starts the registration flow)
+   - `/authorize/callback` → `app.registration.authorizeCallback(request)` (handles Shopware's callback)
+   - anything else → `new Response('Not found', { status: 404 })`
 
 ```javascript
 import { AppServer, InMemoryShopRepository } from '@shopware-ag/app-server-sdk'
 const app = new AppServer({
   appName: 'MyApp',
   appSecret: 'my-secret',
-  authorizeCallbackUrl: '<app-base-url>/authorize/callback',
+  authorizeCallbackUrl: '<backend-base-url>/authorize/callback',
 }, new InMemoryShopRepository());
-export default { async fetch(request) {
-  const { pathname } = new URL(request.url);
-  if (pathname === '/authorize') return app.registration.authorize(request);
-  if (pathname === '/authorize/callback') return app.registration.authorizeCallback(request);
-  return new Response('Not found', { status: 404 });
-} };
 ```
 
-(The source example uses a local port-3000 URL for `authorizeCallbackUrl`.)
-
-4. Run it: `bun run index.js` or `deno serve index.js`. Node.js lacks native `Request`/`Response` support for this handler; use `@hono/node-server`, or a framework like Hono.
+4. Run: `bun run index.js` or `deno serve index.js`. Node.js does not support the `Request`/`Response` objects natively; use `@hono/node-server` (the source recommends a framework like Hono).
 
 ## Essential identifiers
 
-- `AppServer`, `InMemoryShopRepository`
-- `app.registration.authorize(request)`, `app.registration.authorizeCallback(request)`
-- Config keys `appName`, `appSecret`, `authorizeCallbackUrl`
-- Routes `/authorize`, `/authorize/callback`
+- `@shopware-ag/app-server-sdk`, `AppServer`, `InMemoryShopRepository`
+- `appName`, `appSecret`, `authorizeCallbackUrl`
+- `app.registration.authorize()`, `app.registration.authorizeCallback()`
+- routes `/authorize`, `/authorize/callback`
 
 ## Gotchas
 
-- The source is inconsistent on the package name: the install command uses `@shopware-ag/app-sdk-server`, the import uses `@shopware-ag/app-server-sdk`. The package is not part of the installed Shopware code, so this could not be resolved here; check the npm registry.
-- The source's install heading says "App PHP SDK" but the package is the JavaScript SDK.
-- Shopware (core) fails a registration when the app returns a new secret identical to the current one.
+- The source's install command names `@shopware-ag/app-sdk-server`, while its import uses `@shopware-ag/app-server-sdk`; the two names differ — check the npm package name before installing.
+- `InMemoryShopRepository` is for development only; production needs a custom repository that stores shops in a database.
+- On the shop side, the `/authorize` route is what the manifest's `registrationUrl` points to (see Code check).
 
-## Code check (6.7.13.0)
-- confirmed `registrationUrl` — manifest setup element used by a shop to register to the app — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:188
-- confirmed `AppRegistrationService::registerApp()` — core side of the registration handshake — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:43
-- confirmed `confirmation_url` — read from the app's registration response — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:55
-- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — `shopware-shop-signature` header — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
-- unverified `AppServer` — class of the external npm SDK, outside vendor/shopware
-- unverified `InMemoryShopRepository` — class of the external npm SDK, outside vendor/shopware
-- unverified `@shopware-ag/app-server-sdk` — npm package, outside vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `registrationUrl` — manifest element the shop calls to start registration — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:199
+- confirmed `secret` — optional manifest registration secret — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:206
+- confirmed `PrivateHandshake::assembleRequest()` — shop sends GET with `shop-id`, `shop-url`, `timestamp` query — vendor/shopware/core/Framework/App/Lifecycle/Registration/PrivateHandshake.php:31
+- confirmed `shopware-app-signature` — HMAC-SHA256 of the query with the app secret — vendor/shopware/core/Framework/App/Lifecycle/Registration/PrivateHandshake.php:44
+- confirmed `confirmation_url` — app response field the shop posts the confirmation to — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:101
+- confirmed `shopware-shop-signature` — header on the shop's confirmation request — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:244
+- unverified `AppServer` — npm SDK class, outside the installed Shopware code
+- unverified `InMemoryShopRepository` — npm SDK class, outside the installed Shopware code
+- unverified `@shopware-ag/app-sdk-server` — npm package name, outside the installed Shopware code

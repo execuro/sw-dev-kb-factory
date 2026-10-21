@@ -1,71 +1,64 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/plugins/plugins/in-app-purchases.md
-sourceHash: 1efc4a13675b01980bcd61f58d3075727ecff0c2
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/in-app-purchases.html
 title: In-App Purchases (IAP)
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["in-app purchases", "iap", "paywall", "InAppPurchase", "isActive", "inAppPurchaseCheckout", "Shopware.InAppPurchase", "Shopware.Store", "InAppPurchasesGatewayEvent", "extension monetization", "paid features", "plugin"]
-summary: In-App Purchases in plugins - request checkout via inAppPurchaseCheckout store, check InAppPurchase::isActive in PHP and admin, InAppPurchasesGatewayEvent.
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/in-app-purchases.html
+sourceHash: 1efc4a13675b01980bcd61f58d3075727ecff0c2
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["in-app purchase", "IAP", "paywall", "InAppPurchase", "isActive", "inAppPurchaseCheckout", "Shopware.InAppPurchase", "Shopware.Store", "InAppPurchasesGatewayEvent", "plugin monetization", "paid feature", "extension partner"]
+summary: "Plugin In-App Purchases: request checkout via the inAppPurchaseCheckout admin store, check InAppPurchase::isActive() in PHP or admin JS, gateway event."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-In-App Purchases (IAP) lock features of an extension behind a paywall inside the same extension, so a free version can be upgraded with paid features. Shopware provides the checkout; the extension requests it and checks which purchases are active.
+How a plugin locks features behind In-App Purchases (IAP) within the same extension: starting the Shopware-provided checkout from the Administration, checking whether a purchase is active in PHP and admin JS, and reacting to the IAP gateway. See also the [Extension Partner documentation](https://docs.shopware.com/en/account-en/extension-partner/in-app-purchases).
 
 ## When to use
 
-You build a plugin (or app) that offers paid features and must trigger the purchase flow in the Administration, or gate behaviour in PHP or admin code on an active purchase.
+You offer a free extension with optional paid features and need to gate code paths or UI on whether a given IAP identifier was bought.
 
 ## Key steps / config
 
-1. **Request a checkout** in the Administration via the `inAppPurchaseCheckout` Pinia store. You provide the button yourself and hide it when the IAP is already active and cannot be bought again:
-   ```ts
-   computed: {
-       inAppPurchaseCheckout() { return Shopware.Store.get('inAppPurchaseCheckout'); },
-       hideButton(): boolean { return Shopware.InAppPurchase.isActive('MyExtensionName', 'my-iap-identifier'); },
-   },
-   methods: {
-       onClick() { this.inAppPurchaseCheckout.request({ identifier: 'my-iap-identifier' }, 'MyExtensionName'); },
-   },
-   ```
-   `request(entry, extension)` throws if the extension name is not a known bundle.
-2. **Check in PHP**: inject `Shopware\Core\Framework\Store\InAppPurchase` and call `isActive(string $extensionName, string $identifier): bool`:
-   ```php
-   public function __construct(private readonly InAppPurchase $inAppPurchase) {}
-   // ...
-   if ($this->inAppPurchase->isActive('MyExtensionName', 'my-iap-identifier')) { /* ... */ }
-   ```
-   The service also exposes `all()`, `getByExtension()`, and `formatPurchases()`.
-3. **Check in the Administration**: `Shopware.InAppPurchase.isActive('MyExtensionName', 'my-iap-identifier')`.
-4. **Manipulate available IAPs**: apps use the In-App Purchase gateway; plugins listen to `Shopware\Core\Framework\App\InAppPurchases\Event\InAppPurchasesGatewayEvent`, dispatched after the gateway receives the app server response (payload: `$response`, an `InAppPurchasesResponse`).
+1. **Offer the purchase (Administration).** Request a checkout via the `inAppPurchaseCheckout` store; Shopware renders the checkout. You provide the button and hide it when the IAP cannot be bought again:
+
+```ts
+computed: {
+    inAppPurchaseCheckout() { return Shopware.Store.get('inAppPurchaseCheckout'); },
+    hideButton(): boolean { return Shopware.InAppPurchase.isActive('MyExtensionName', 'my-iap-identifier'); },
+},
+methods: {
+    onClick() { this.inAppPurchaseCheckout.request({ identifier: 'my-iap-identifier' }, 'MyExtensionName'); },
+},
+```
+
+2. **Check in PHP.** Inject `Shopware\Core\Framework\Store\InAppPurchase` and call `isActive(string $extensionName, string $identifier): bool`. Also available: `all()`, `getByExtension(string $extensionName)`.
+3. **Check in the Administration.** `Shopware.InAppPurchase.isActive('MyExtensionName', 'my-iap-identifier')`.
+4. **Manipulate available IAPs.** Apps use the In-App Purchase gateway; plugins can listen to `Shopware\Core\Framework\App\InAppPurchases\Event\InAppPurchasesGatewayEvent`, dispatched after the gateway received the app server response; it carries the `response` (`InAppPurchasesResponse`).
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Store\InAppPurchase` / `isActive()`
+- `Shopware\Core\Framework\Store\InAppPurchase::isActive()`
+- `inAppPurchaseCheckout` (admin store, action `request(entry, extension)`)
 - `Shopware.InAppPurchase.isActive()`
-- `Shopware.Store.get('inAppPurchaseCheckout')`, `request()`
 - `Shopware\Core\Framework\App\InAppPurchases\Event\InAppPurchasesGatewayEvent`
 
 ## Gotchas
 
-- `InAppPurchase` is a `final` class — inject it, do not extend it; its constructor is `@internal`.
-- `InAppPurchasesGatewayEvent` is marked `@internal` in the installed code, so its shape is not covered by the backward-compatibility promise even though the docs recommend listening to it.
-- Active purchases are cached per request in the service and cleared via `reset()`.
+- `inAppPurchaseCheckout.request()` throws `Extension with the name "..." not found.` if the extension name is not a registered bundle in the admin config.
+- `InAppPurchasesGatewayEvent` is annotated `@internal` in the code, although the docs present it for plugins.
 
 ## Version notes
 
-- Available since Shopware 6.6.9.0.
+In-App Purchases are available since Shopware 6.6.9.0.
 
-## Code check (6.7.13.0)
-- confirmed `InAppPurchase` — final service class in `Shopware\Core\Framework\Store` — vendor/shopware/core/Framework/Store/InAppPurchase.php:10
-- confirmed `InAppPurchase::isActive()` — `(string $extensionName, string $identifier): bool` — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
+## Code check (6.7.15.1)
+- confirmed `InAppPurchase::isActive()` — (extensionName, identifier): bool — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
+- confirmed `InAppPurchase::getByExtension()` — active identifiers per extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:53
 - confirmed `inAppPurchaseCheckout` — Pinia store id — vendor/shopware/administration/Resources/app/administration/src/app/store/in-app-purchase-checkout.store.ts:22
-- confirmed `request()` — store action `(entry, extension)`, throws on unknown extension — vendor/shopware/administration/Resources/app/administration/src/app/store/in-app-purchase-checkout.store.ts:30
-- confirmed `isActive()` — admin `Shopware.InAppPurchase` method — vendor/shopware/administration/Resources/app/administration/src/core/in-app-purchase.ts:25
-- confirmed `InAppPurchase` — exposed on global Shopware object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:216
-- confirmed `InAppPurchasesGatewayEvent` — class exists, marked `@internal` — vendor/shopware/core/Framework/App/InAppPurchases/Event/InAppPurchasesGatewayEvent.php:19
-- confirmed `InAppPurchasesGatewayEvent` — dispatched after gateway response — vendor/shopware/core/Framework/App/InAppPurchases/Gateway/InAppPurchasesGateway.php:36
+- confirmed `request` — store action (entry, extension), throws on unknown bundle — vendor/shopware/administration/Resources/app/administration/src/app/store/in-app-purchase-checkout.store.ts:30
+- confirmed `InAppPurchase` — exposed as Shopware.InAppPurchase on the global object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:229
+- confirmed `isActive` — admin JS (extensionName, inAppPurchase) — vendor/shopware/administration/Resources/app/administration/src/core/in-app-purchase.ts:20
+- confirmed `InAppPurchasesGatewayEvent` — dispatched in InAppPurchasesGateway — vendor/shopware/core/Framework/App/InAppPurchases/Gateway/InAppPurchasesGateway.php:36
+- corrected `InAppPurchasesGatewayEvent` — docs: plugin-facing event; class docblock marks it @internal — vendor/shopware/core/Framework/App/InAppPurchases/Event/InAppPurchasesGatewayEvent.php:21

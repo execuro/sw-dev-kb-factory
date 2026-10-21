@@ -6,18 +6,18 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/
 sourceHash: 04e04014aab50a4d35f46b0587389002008129fa
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "guides", "b2b suite guides", "installation", "core", "storefront", "administration", "b2b", "business to business", "extension"]
-summary: Index of B2B Suite guides - installation plus the Core, Storefront and Administration components required for B2B operations
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "b2b suite guides", "b2b installation", "b2b core", "b2b storefront", "b2b administration", "business to business", "shopware b2b", "b2b components", "b2b extension"]
+summary: Entry point for B2B Suite guides covering installation and the Core, Storefront and Administration components used for B2B operations.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section index for the B2B Suite guides. It covers the B2B Suite installation process and the essential components required for B2B operations: Core, Storefront, and Administration.
+The section index for the B2B Suite guides. It groups the guides on installing the B2B Suite and on its three main components: Core, Storefront and Administration, which together provide the B2B operations of the extension.
 
 ## When to use
 
-Start here when looking for how-to material on installing the B2B Suite or working with its Core, Storefront or Administration parts.
+Use it as the starting point when you need to install the B2B Suite or need to find the guide for one of its components (Core, Storefront, Administration).
 
-## Code check (6.7.13.0)
-- unverified `B2B Suite` — separate extension; not present in the installed vendor/shopware/{core,storefront,administration} roots
+## Code check (6.7.15.1)
+- unverified `B2B Suite` — separate extension, not part of vendor/shopware core, storefront or administration; no identifiers to check on this index page

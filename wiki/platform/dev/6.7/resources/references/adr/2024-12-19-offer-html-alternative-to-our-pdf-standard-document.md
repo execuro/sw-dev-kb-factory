@@ -1,75 +1,79 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2024-12-19-offer-html-alternative-to-our-pdf-standard-document.md
-title: '"[A11y] Offer HTML alternative to our pdf standard documents"'
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-12-19-offer-html-alternative-to-our-pdf-standard-document.html
+id: platform/dev/6.7/resources/references/adr/2024-12-19-offer-html-alternative-to-our-pdf-standard-document.md
 sourceHash: fe9cfc4512560338437799fa1cafa99ff7d4f86c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["AbstractDocumentTypeRenderer", "HtmlRenderer", "PdfRenderer", "document_type.renderer", "DocumentFileRendererRegistry", "document_a11y_media_file_id", "a11yDocuments", "frontend.account.order.single.document.a11y", "document_head_meta_protection", "html documents", "accessibility", "a11y", "pdf alternative", "invoice"]
-summary: "ADR: Shopware generates accessible HTML documents next to PDFs via AbstractDocumentTypeRenderer, the document_type.renderer tag and a11y media file link."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-12-19-offer-html-alternative-to-our-pdf-standard-document.html
+title: '"[A11y] Offer HTML alternative to our pdf standard documents"'
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["AbstractDocumentTypeRenderer", "HtmlRenderer", "PdfRenderer", "DocumentFileRendererRegistry", "document_type.renderer", "document_head_meta_protection", "frontend.account.order.single.document.a11y", "a11yDocuments", "accessibility", "a11y", "html documents", "pdf documents", "wcag", "invoice"]
+summary: "ADR: accessible HTML versions of standard PDF documents, rendered by AbstractDocumentTypeRenderer services tagged document_type.renderer."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2024-12-19, area accessibility): because DomPDF cannot produce accessible (tagged) PDFs, Shopware offers HTML versions of standard documents alongside PDFs to meet WCAG.
+An architecture decision record (2024-12-19, area accessibility) to provide HTML versions of documents alongside PDFs so documents meet WCAG accessibility requirements. The PDF library DomPDF cannot produce accessible (tagged) PDFs, and few PHP tools can; HTML is naturally structured for assistive technology, and the ADR notes that many organisations already moved from PDF to HTML for this reason.
 
 ## When to use
 
-Read this when customising document templates, writing a custom document file renderer, or adapting customised order mail templates to link the HTML (A11y) document.
+You customise document rendering or document templates, add a new output format, ship custom document types in an extension, or maintain customised mail templates that should link to HTML documents.
 
 ## Key steps / config
 
-Scope: default types `invoice`, `delivery note`, `credit note`, `cancellation invoice` (extensions adapt their own). Administration: HTML download on order detail, toggle in Document Settings. Storefront order history offers both formats. Mails link to the HTML document (login required) instead of attaching it.
+Affected areas: all default document types (`invoice`, `delivery note`, `credit note`, `cancellation invoice`; extensions must adapt themselves), the Administration order detail page (download HTML alongside PDF) and document settings (toggle HTML generation), Storefront order history (HTML and PDF), Flow Builder "Generate documents" (follows the document settings), and email delivery (a link to the HTML document instead of an attachment; the customer must log in).
 
-1. **Templates** — document `html.twig` templates get A11y additions (e.g. `tabindex` in block `document_headline`); HTML styles sit in block `document_style_html` of `style_base_html.css.twig`.
-2. **Metadata/CSP** — `base.html.twig` block `document_head_meta_protection`:
-   ```twig
-   {% block document_head_meta_protection %}
-       <meta http-equiv="Content-Security-Policy" content="script-src 'none'; base-uri 'self';">
-       <meta name="date" content="{{ 'now'|date('c') }}">
-   {% endblock %}
-   ```
-3. **Renderer** — extend `Shopware\Core\Checkout\Document\Service\AbstractDocumentTypeRenderer`, which requires three members:
-   ```php
-   class HtmlRenderer extends AbstractDocumentTypeRenderer
-   {
-       public function getContentType(): string { /* 'text/html' */ }
-       public function render(RenderedDocument $document): string { /* ... */ }
-       public function getDecorated(): AbstractDocumentTypeRenderer { /* ... */ }
-   }
-   ```
-4. **Registration** — tag the service `document_type.renderer` with a `key`; `Shopware\Core\Checkout\Document\Service\DocumentFileRendererRegistry` collects tagged services indexed by `key`:
-   ```xml
-   <service id="...\HtmlRenderer">
-       <tag name="document_type.renderer" key="html"/>
-   </service>
-   ```
-5. **Schema** — column `document_a11y_media_file_id` (`BINARY(16)`) on `document`, mapped in `DocumentDefinition` as `FkField('document_a11y_media_file_id', 'documentA11yMediaFileId', MediaDefinition::class)` with `ApiAware`.
-6. **Mail migration** — customised mail templates must loop over `a11yDocuments` and build links with route `frontend.account.order.single.document.a11y` (params `documentId`, `deepLinkCode`, `fileType`), as in the core `invoice_mail` fixtures.
+1. **Templates**: adapt the `html.twig` document templates for A11y (e.g. `tabindex`, CSS in block `document_style_html` of `style_base_html.css.twig`). `base.html.twig` gains block `document_head_meta_protection`, holding a Content-Security-Policy meta tag (`script-src 'none'; base-uri 'self';`) and a `date` meta tag fingerprinting the generation time.
+2. **Renderer**: a file-format renderer extends `Shopware\Core\Checkout\Document\Service\AbstractDocumentTypeRenderer`, which in the installed code declares three abstract methods:
+
+```php
+class MyRenderer extends AbstractDocumentTypeRenderer
+{
+    public function getContentType(): string { /* ... */ }
+    public function render(RenderedDocument $document): string { /* ... */ }
+    public function getDecorated(): AbstractDocumentTypeRenderer { /* ... */ }
+}
+```
+
+   Core ships `HtmlRenderer` (`FILE_EXTENSION = 'html'`, `FILE_CONTENT_TYPE = 'text/html'`) and `PdfRenderer`. `HtmlRenderer` sets content type, file extension and content on the `RenderedDocument`, and returns an empty string when the document config's `fileTypes` does not contain `html`.
+3. **Service registration**: tag the renderer `document_type.renderer` with a `key`, so `Shopware\Core\Checkout\Document\Service\DocumentFileRendererRegistry` collects it:
+
+```xml
+<service id="...\HtmlRenderer">
+    <tag name="document_type.renderer" key="html"/>
+</service>
+```
+
+4. **Mail templates**: customised templates must be migrated by hand; loop over `a11yDocuments` and build links with `rawUrl('frontend.account.order.single.document.a11y', { documentId, deepLinkCode, fileType }, salesChannel.domains|first.url)`.
 
 ## Essential identifiers
 
-- `AbstractDocumentTypeRenderer`, `HtmlRenderer`, `PdfRenderer`, `DocumentFileRendererRegistry`
-- `document_type.renderer` (tag with `key`)
-- `document_a11y_media_file_id` / `documentA11yMediaFileId`
-- `a11yDocuments`, `frontend.account.order.single.document.a11y`
-- `document_head_meta_protection`, `document_style_html`
+- `Shopware\Core\Checkout\Document\Service\AbstractDocumentTypeRenderer`
+- `Shopware\Core\Checkout\Document\Service\HtmlRenderer`, `PdfRenderer`
+- `Shopware\Core\Checkout\Document\Service\DocumentFileRendererRegistry`
+- service tag `document_type.renderer` (attribute `key`: `pdf`, `html`)
+- Twig block `document_head_meta_protection`
+- Storefront route `frontend.account.order.single.document.a11y`; mail variable `a11yDocuments`
 
 ## Gotchas
 
-- The ADR's abstract class sketch lists only `render()`; the installed base also declares abstract `getContentType()` and `getDecorated()`.
-- HTML files are not attached to mails because many providers/virus scanners reject HTML attachments; customised mail templates are not updated automatically.
+- HTML files are not attached to emails because many mail providers and virus scanners block HTML attachments; a login-protected link is used instead.
+- Extensions providing their own document types must add HTML support themselves.
 
-## Code check (6.7.13.0)
-- corrected `AbstractDocumentTypeRenderer::getContentType()` — docs: abstract class declares only render() — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:11
-- confirmed `AbstractDocumentTypeRenderer::render()` — abstract, takes RenderedDocument, returns string — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:13
-- corrected `AbstractDocumentTypeRenderer::getDecorated()` — docs: not mentioned; abstract in installed base — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:15
-- confirmed `HtmlRenderer` — extends AbstractDocumentTypeRenderer, FILE_EXTENSION 'html' — vendor/shopware/core/Checkout/Document/Service/HtmlRenderer.php:16
-- confirmed `document_type.renderer` — HtmlRenderer tagged with key="html" — vendor/shopware/core/Checkout/DependencyInjection/document.xml:166
-- confirmed `DocumentFileRendererRegistry` — receives tagged_iterator document_type.renderer indexed by key — vendor/shopware/core/Checkout/DependencyInjection/document.xml:169
-- confirmed `document_a11y_media_file_id` — FkField documentA11yMediaFileId with ApiAware — vendor/shopware/core/Checkout/Document/DocumentDefinition.php:67
-- confirmed `document_head_meta_protection` — CSP and date meta block in base template — vendor/shopware/core/Framework/Resources/views/documents/base.html.twig:46
+## Version notes
+
+- The ADR adds column `document_a11y_media_file_id` (`BINARY(16)`) to `document` and the field `documentA11yMediaFileId` on `DocumentDefinition`. Both still exist in 6.7.15.1 but are deprecated since v6.7.14.0 (removal in v6.9.0.0) in favour of the `documentFiles` association.
+- `AbstractDocumentTypeRenderer`, `HtmlRenderer` and `PdfRenderer` carry an experimental replacement marker for v6.9.0 (feature `DOCUMENT_GENERATION_REWORK`): DocumentV2's `AbstractDocumentRenderer` ships its own HTML, PDF and ZUGFeRD renderers.
+
+## Code check (6.7.15.1)
+- confirmed `AbstractDocumentTypeRenderer::getContentType()` — abstract, not shown in the ADR snippet — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:19
+- confirmed `AbstractDocumentTypeRenderer::render()` — abstract, takes RenderedDocument — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:21
+- confirmed `AbstractDocumentTypeRenderer::getDecorated()` — abstract, not shown in the ADR snippet — vendor/shopware/core/Checkout/Document/Service/AbstractDocumentTypeRenderer.php:23
+- confirmed `HtmlRenderer::FILE_CONTENT_TYPE` — text/html — vendor/shopware/core/Checkout/Document/Service/HtmlRenderer.php:28
+- confirmed `document_type.renderer` — HtmlRenderer tagged with key html — vendor/shopware/core/Checkout/DependencyInjection/document.php:231
+- confirmed `DocumentFileRendererRegistry` — collects tagged renderers by key — vendor/shopware/core/Checkout/DependencyInjection/document.php:235
+- deprecated `document_a11y_media_file_id` — deprecated v6.7.14.0, replaced by documentFiles — vendor/shopware/core/Checkout/Document/DocumentDefinition.php:83
+- confirmed `document_head_meta_protection` — block in base.html.twig — vendor/shopware/core/Framework/Resources/views/documents/base.html.twig:46
 - confirmed `frontend.account.order.single.document.a11y` — Storefront route name — vendor/shopware/storefront/Controller/DocumentController.php:49
-- confirmed `a11yDocuments` — used in invoice_mail de-plain fixture — vendor/shopware/core/Migration/Fixtures/mails/invoice_mail/de-plain.html.twig:7
+- confirmed `a11yDocuments` — loop variable in shipped mail templates — vendor/shopware/core/Migration/Fixtures/mails/order_delivery.state.cancelled/de-html.html.twig:13

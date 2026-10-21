@@ -1,68 +1,64 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2023-04-01-mocking-repositories.md
-title: Mocking repositories
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-04-01-mocking-repositories.html
+id: platform/dev/6.7/resources/references/adr/2023-04-01-mocking-repositories.md
 sourceHash: 2d16fdd9b25d35c9730c69fe8a89e5672dab67a7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["StaticEntityRepository", "Shopware\\Core\\Test\\Stub\\DataAbstractionLayer\\StaticEntityRepository", "EntitySearchResult", "IdSearchResult", "AggregationResultCollection", "EntityCollection", "EntityRepository", "mock repository", "unit test", "fake search result", "phpunit", "adr"]
-summary: "ADR: StaticEntityRepository test stub fakes EntityRepository search/searchIds results from a queued list of collections, search results, aggregations or ids."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-04-01-mocking-repositories.html
+title: Mocking repositories
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["StaticEntityRepository", "mock repository", "repository stub", "unit test", "EntityRepository", "EntitySearchResult", "IdSearchResult", "AggregationResultCollection", "EntityCollection", "search", "searchIds", "phpunit", "fake search result"]
+summary: "ADR: StaticEntityRepository stub fakes EntityRepository search/searchIds results in unit tests without building EntitySearchResult by hand."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2023) introducing a test stub, `StaticEntityRepository`, that replaces PHPUnit mocks of `EntityRepository`. Instead of building empty `EntitySearchResult`/`IdSearchResult` objects and wiring `createMock(EntityRepository::class)` expectations, you pass the results the repository should return.
+An architecture decision record (dated 2023-01-04, area core) about unit-testing classes that depend on an `EntityRepository`. Mocking a repository's `search` or `searchIds` call used to require building an empty `EntitySearchResult` or `IdSearchResult` by hand, which means a lot of boilerplate when faking database results. The decision adds a stub repository, `StaticEntityRepository`, that is constructed with the results it should return.
 
 ## When to use
 
-- Unit testing a class that depends on an `EntityRepository` and calls `search()` or `searchIds()`.
-- You want to assert on write payloads (`create`, `update`, `upsert`, `delete`) without a database.
+When writing a PHPUnit unit test for a service that receives an `EntityRepository` and calls `search()` or `searchIds()`, and you want to feed it fixed results instead of configuring a `createMock(EntityRepository::class)` with `->method('search')->willReturn($result)`.
 
 ## Key steps / config
 
-1. Use the installed class `Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository` (it extends `EntityRepository`, so it can be injected wherever a repository is typed).
-2. Pass an ordered list of results to the constructor. Every `search()` or `searchIds()` call consumes the next entry (`array_shift`):
+1. Instantiate the stub with a list of results, one per expected call, and inject it in place of the real repository:
 
 ```php
+use Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository;
+
 $repository = new StaticEntityRepository([
-    new UnitCollection([new UnitEntity(), new UnitEntity()]),        // search()
-    new AggregationResultCollection([new AvgResult('some-aggregation', 12.0)]),
-    [Uuid::randomHex(), Uuid::randomHex()],                           // searchIds()
-    new IdSearchResult(0, [], new Criteria(), Context::createDefaultContext()),
+    new UnitCollection([new UnitEntity(), new UnitEntity()]),
 ]);
 $class = new SomeCoreClass($repository);
+$class->foo();
 ```
 
-3. Accepted entry types, as the installed `search()`/`searchIds()` handle them:
-   - an `EntityCollection` (or a plain array of entities), wrapped into a search result with total = count;
-   - an `AggregationResultCollection`, wrapped into a search result with an empty collection;
-   - a prebuilt search result object, returned as is;
-   - for `searchIds()`: an `IdSearchResult`, or a flat array of id strings;
-   - a callable receiving `(Criteria, Context)` that returns any of the above, useful for asserting on the criteria.
-   Anything else throws `RuntimeException('Invalid mock repository configuration')`.
-4. Optional second constructor argument: an `EntityDefinition`; it sets the entity name (otherwise `mock`) and primary keys for write results. `getDefinition()` throws when none is set.
-5. Write calls are recorded in the public `$creates`, `$updates`, `$upserts`, `$deletes` arrays; `getPayloads(StaticEntityRepository::CREATE)` (or `UPDATE`/`UPSERT`/`DELETE`) returns them flattened.
+2. Each `search()` call shifts the next entry off the list. Accepted entries per the installed code:
+   - an `EntitySearchResult` — returned as-is;
+   - an `EntityCollection` (or a plain array of entities, wrapped into one) — wrapped into an `EntitySearchResult`;
+   - an `AggregationResultCollection` — returned as an `EntitySearchResult` with an empty collection and these aggregations;
+   - a callable receiving `Criteria`, `Context` (and the repository) that returns one of the above.
+3. Each `searchIds()` call also shifts the next entry: an `IdSearchResult` is returned as-is; a flat array of ids such as `[Uuid::randomHex(), Uuid::randomHex()]` is turned into an `IdSearchResult`.
+4. Anything else makes the stub throw `Invalid mock repository configuration`.
 
 ## Essential identifiers
 
 - `Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository`
-- `StaticEntityRepository::getPayloads()`, `StaticEntityRepository::CREATE`
-- `IdSearchResult`, `AggregationResultCollection`, `EntityCollection`, `EntityRepository`
+- `StaticEntityRepository::search()`, `StaticEntityRepository::searchIds()`
+- `EntitySearchResult`, `IdSearchResult`, `EntityCollection`, `AggregationResultCollection`
 
 ## Gotchas
 
-- The ADR names the stub `\Shopware\Tests\Unit\Common\Stubs\DataAbstractionLayer\StaticEntityRepository`; the installed code ships it in core as `Shopware\Core\Test\Stub\DataAbstractionLayer\StaticEntityRepository`.
-- `EntitySearchResult` is marked `@deprecated tag:v6.8.0`: it will stop extending `EntityCollection`, and its constructor drops the `$entity` parameter and reorders the rest. Tests that construct it directly (as the ADR's "before" example does) will need changes; queuing an `EntityCollection` avoids that.
-- Entries are consumed in call order across both `search()` and `searchIds()`, so the list order must match the calls in the code under test.
+- The ADR names the class `\Shopware\Tests\Unit\Common\Stubs\DataAbstractionLayer\StaticEntityRepository`; in 6.7 it lives in `Shopware\Core\Test\Stub\DataAbstractionLayer`.
+- Results are consumed in order; queue one entry per call the code under test makes.
+- Besides what the ADR describes, the installed stub records `create`/`update`/`upsert`/`delete` payloads, accepts an optional `EntityDefinition` as second constructor argument, and offers `addSearch()` and a static `of()` factory.
 
-## Code check (6.7.13.0)
-- corrected `StaticEntityRepository` — docs: namespace Shopware\Tests\Unit\Common\Stubs; installed in Shopware\Core\Test\Stub\DataAbstractionLayer — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:31
-- confirmed `StaticEntityRepository::__construct()` — takes array searches plus optional EntityDefinition — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:64
-- confirmed `StaticEntityRepository::search()` — shifts next entry, wraps collections/aggregations — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:87
-- confirmed `StaticEntityRepository::searchIds()` — accepts IdSearchResult or flat id array — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:120
-- confirmed `StaticEntityRepository::getPayloads()` — returns recorded write payloads per operation — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:215
-- deprecated `EntitySearchResult` — class hierarchy and constructor change in v6.8.0 — vendor/shopware/core/Framework/DataAbstractionLayer/Search/EntitySearchResult.php:25
-- confirmed `IdSearchResult` — constructor used by stub with count, ids, criteria, context — vendor/shopware/core/Framework/DataAbstractionLayer/Search/IdSearchResult.php:17
-- confirmed `AggregationResultCollection` — accepted queue entry — vendor/shopware/core/Framework/DataAbstractionLayer/Search/AggregationResult/AggregationResultCollection.php:13
+## Code check (6.7.15.1)
+- corrected `StaticEntityRepository` — docs: namespace Shopware\Tests\Unit\Common\Stubs; code: Shopware\Core\Test\Stub — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:33
+- confirmed `StaticEntityRepository::__construct()` — takes `$searches` plus optional definition — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:68
+- confirmed `StaticEntityRepository::search()` — shifts next entry; handles result, collection, aggregations — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:110
+- confirmed `AggregationResultCollection` — wrapped into an EntitySearchResult — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:133
+- confirmed `StaticEntityRepository::searchIds()` — IdSearchResult or flat id array — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:143
+- confirmed `StaticEntityRepository::addSearch()` — appends further results — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:230
+- confirmed `StaticEntityRepository::of()` — static factory — vendor/shopware/core/Test/Stub/DataAbstractionLayer/StaticEntityRepository.php:101

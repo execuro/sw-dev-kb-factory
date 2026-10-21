@@ -720,9 +720,13 @@ const GUIDELINE_READ_MORE_RE = new RegExp(`^\\s*(?:[-*]\\s*)?${GUIDELINE_READ_MO
 const GUIDELINE_READ_MORE_LINE_RE = new RegExp(`^\\s*(?:[-*]\\s*)?${GUIDELINE_READ_MORE_LABEL}\\s*(.+)$`, "gm");
 
 /** Strips a leading/trailing wrapper (backtick, angle bracket, quote, `*`/`_` emphasis) and
- *  trailing prose punctuation a writer commonly tacks on. */
+ *  trailing prose punctuation a writer commonly tacks on. A `*`/`**` right after a `/` is a
+ *  glob suffix that is part of the target (`code:…/07-testing/**`, spelled exactly like its
+ *  sources[].url), not emphasis, so it is put back after the strip. */
 function cleanReadMoreTarget(raw: string): string {
-  return raw.replace(/^[`<"'*_]+/, "").replace(/[`>"'*_.,;:)]+$/, "");
+  const cleaned = raw.replace(/^[`<"'*_]+/, "").replace(/[`>"'*_.,;:)]+$/, "");
+  const glob = /\/(\*\*?)[`>"'_.,;:)]*$/.exec(raw)?.[1];
+  return glob && cleaned.endsWith("/") ? cleaned + glob : cleaned;
 }
 
 /** Pulls the target(s) out of a "Read more:" line's remainder: a `[text](target)` markdown

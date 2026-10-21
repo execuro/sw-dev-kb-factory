@@ -6,34 +6,32 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-01-10-atomic-theme-compilation.html
 sourceHash: 080fa8d1845cc047500b7d810c57f68f982b5e7e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["AbstractThemePathBuilder", "SeedingThemePathBuilder", "MD5ThemePathBuilder", "generateNewPath", "saveSeed", "assemblePath", "storefront.themeSeed", "theme_path_builder_id", "DeleteThemeFilesTask", "theme compilation", "theme seed", "broken storefront", "paas", "upsun"]
-summary: "ADR 2023-01-10: theme compiles into a new seeded folder via AbstractThemePathBuilder generateNewPath/saveSeed; old folder kept until switch succeeds."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["atomic theme compilation", "theme compile", "theme seed", "AbstractThemePathBuilder", "SeedingThemePathBuilder", "MD5ThemePathBuilder", "generateNewPath", "saveSeed", "assemblePath", "ThemeCompiler", "theme_path_builder_id", "storefront.themeSeeds", "theme.delete_files", "paas", "upsun"]
+summary: "ADR 2023-01-10: themes compile into a new seeded folder via AbstractThemePathBuilder; the seed is saved only on success."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2023-01-10, area storefront) making theme compilation atomic: each compile writes into a new folder derived from a random seed, and the Storefront switches to it only after the compile succeeds.
+An architecture decision record (area: storefront, 2023-01-10) that makes theme compilation atomic: every compile writes into a fresh folder derived from a random seed, and the storefront switches to it only after the compile succeeded. It extends `Shopware\Storefront\Theme\AbstractThemePathBuilder` with a seeding mechanism.
 
 ## When to use
 
-- Writing a custom `Shopware\Storefront\Theme\AbstractThemePathBuilder` implementation.
-- Debugging a broken Storefront after a failed theme compile, or theme folders that change on every compile.
-- Running on PaaS/Upsun with immutable deploys and a build-time theme compile.
+When writing or decorating a custom theme path builder, when debugging broken storefront CSS/JS after a theme compile, or when deploying on PaaS/Upsun where the theme is compiled at build time.
 
 ## Key steps / config
 
-Problem solved: compiling always into the same folder deleted and recreated it first, so a crash (e.g. wrong theme config values) or a request during compilation left the Storefront without all compiled files.
+Problem solved: previously the theme was compiled into the same folder, which was deleted and recreated at compile start. A crash (e.g. a wrongly configured theme value) left an incomplete folder and a broken storefront, and requests hitting the shop during a compile could see missing files.
 
-Flow in the installed `ThemeCompiler`:
+Compile flow in 6.7 (`ThemeCompiler`):
 
-1. Generate a random seed (`Uuid::randomHex()`).
-2. `generateNewPath($salesChannelId, $themeId, $seed)` returns the folder prefix under `theme/` for this compile.
-3. If the new prefix equals `assemblePath()` (non-seeding builder), the old folder is deleted first.
-4. Compiled styles, scripts and assets are copied.
-5. On success, `saveSeed($salesChannelId, $themeId, $seed)` persists the seed; later `assemblePath()` calls resolve to the new folder. The theme config cache tag is invalidated.
+1. A new random seed is generated (`Uuid::randomHex()`).
+2. `generateNewPath($salesChannelId, $themeId, $seed)` returns the folder for this compilation; compiled files are copied there.
+3. Only after the copy succeeded, `saveSeed($salesChannelId, $themeId, $seed)` persists the seed.
+4. Subsequent `assemblePath($salesChannelId, $themeId)` calls (on every storefront request) use the saved seed, so the new folder goes live.
+5. If the old and new path are identical (a non-seeding builder), the compiler deletes the folder before writing, which is the old non-atomic behaviour.
 
-In 6.7 all path-builder members are abstract, so a custom builder must declare all four:
+A custom path builder must implement all four abstract members of `AbstractThemePathBuilder`:
 
 ```php
 class MyThemePathBuilder extends AbstractThemePathBuilder
@@ -45,46 +43,43 @@ class MyThemePathBuilder extends AbstractThemePathBuilder
 }
 ```
 
-Implementations shipped:
+Implementations shipped in 6.7:
 
-- `Shopware\Storefront\Theme\SeedingThemePathBuilder` (default): stores the seed per sales channel in system config key `storefront.themeSeed` (system config is cached and supports per-sales-channel values); path is a hash of themeId + salesChannelId + seed.
-- `Shopware\Storefront\Theme\MD5ThemePathBuilder`: ignores the seed (`saveSeed()` is a no-op, `generateNewPath()` returns `assemblePath()`), always the same path per theme/sales channel. Intended for PaaS or setups that cannot recompile at runtime, and for tests.
+- `Shopware\Storefront\Theme\SeedingThemePathBuilder` — default (`storefront.theme.theme_path_builder_id`). Stores the seed in `system_config` per sales channel under `storefront.themeSeeds.<themeId>`, falling back to the legacy sales-channel-wide `storefront.themeSeed`. The system config is already heavily cached and supports per-sales-channel values, so the per-request lookup stays fast.
+- `Shopware\Storefront\Theme\MD5ThemePathBuilder` — ignores the seed (`saveSeed()` is a no-op, `generateNewPath()` returns `assemblePath()`). Intended for PaaS or tests, where the theme cannot be recompiled at runtime.
 
-Select the builder with the bundle config `storefront.theme.theme_path_builder_id` (default `SeedingThemePathBuilder::class`).
-
-Theme assets are stored in a separate folder named by `themeId`, shared across sales channels instead of duplicated per compiled folder.
-
-Unused theme folders are removed by the scheduled task `DeleteThemeFilesTask`: folders not referenced by any `theme_sales_channel` mapping and whose files are older than 24 hours are deleted.
+Theme assets are stored in a separate folder named after the `themeId`, independent of sales channel and theme configuration, so they are not duplicated on every compile.
 
 ## Essential identifiers
 
 - `Shopware\Storefront\Theme\AbstractThemePathBuilder`
-- `SeedingThemePathBuilder`, `MD5ThemePathBuilder`
-- `generateNewPath()`, `saveSeed()`, `assemblePath()`, `getDecorated()`
-- `storefront.themeSeed` (system config key)
+- `AbstractThemePathBuilder::generateNewPath()`, `::saveSeed()`, `::assemblePath()`, `::getDecorated()`
+- `Shopware\Storefront\Theme\SeedingThemePathBuilder`, `Shopware\Storefront\Theme\MD5ThemePathBuilder`
+- `Shopware\Storefront\Theme\ThemeCompiler`
 - `storefront.theme.theme_path_builder_id`
-- `DeleteThemeFilesTask`
+- `storefront.themeSeeds.<themeId>` (system config)
+- `theme.delete_files` — scheduled task removing unused theme files
 
 ## Gotchas
 
-- Changed asset URLs require invalidating Storefront HTTP cache; CDNs (e.g. Fastly) may serve stale pages that reference the old folder for a while, which is why old folders are not deleted immediately.
-- The seed was deliberately not stored as an extra column in `theme_sales_channel`: the DAL does not allow extra columns in mapping definitions and rewrites mappings with `REPLACE INTO`.
-- A copy-temp-folder-then-move alternative was rejected: moves are not atomic on S3/Google Cloud Storage, need per-file operations (cost), and do not fix requests during compilation.
-- On PaaS/Upsun the compile runs in the `build` step without DB access, so the seeding builder (which writes the seed to the DB) cannot be used there; use the non-seeding builder.
+- Discarded alternative: compiling into a temp folder and moving it over the live folder. Moving is atomic on local filesystems but not on S3 or Google Cloud Storage (no real folders, files are moved one by one), it does not fix requests during an in-progress copy, and it multiplies paid file operations.
+- Storing the seed as an extra column in `theme_sales_channel` and reading it in the `RequestTransformer` was rejected: the DAL does not allow extra columns in mapping definitions and resets them, since mappings are written with `REPLACE INTO`.
+- New asset URLs mean all storefront caches must be invalidated (previously a cache-buster query parameter did the same job). Old folders must survive a while because CDNs such as Fastly may still serve stale HTML pointing at them.
+- PaaS/Upsun: the compile runs in the `build` step without a DB connection, and immutable deploys make the file system read-only, so the seeding builder cannot be used there; use the `MD5ThemePathBuilder`. Rolling back means redeploying the previous release. Once Upsun allows external theme asset storage, compiling can move to the `deploy` step and use seeding.
 
 ## Version notes
 
-- ADR plan: `generateNewPath()`/`saveSeed()` were added in 6.5 as concrete `@deprecated` methods with a BC default (no-op / `assemblePath()`), to become abstract in 6.6. In 6.7.13.0 they are abstract.
-- ADR described deletion via a delayed queue message (`DeleteThemeFilesMessage`, configurable delay default 15 min). In 6.7.13.0 that message is `@deprecated` (removal 6.8.0) in favor of the scheduled task, and the `file_delete_delay` option is deprecated with no effect.
+- The ADR (6.5 era) added `generateNewPath()`/`saveSeed()` as concrete `@deprecated` methods with a seed-ignoring default, to become abstract in 6.6. In 6.7 both are abstract, so custom builders without them fail to load.
+- The ADR described deleting the old folder through a delayed queue message (`DeleteThemeFilesMessage`, delay `storefront.theme.file_delete_delay`, default 15 min). In 6.7 both are deprecated for removal in 6.8.0: the delay option "has no effect anymore", and unused theme files are deleted by the `DeleteThemeFilesTask` scheduled task.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractThemePathBuilder::generateNewPath()` — abstract, docs: concrete deprecated default method — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:28
-- confirmed `AbstractThemePathBuilder::saveSeed()` — abstract in 6.7 — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:34
-- confirmed `AbstractThemePathBuilder::assemblePath()` — abstract — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:22
-- confirmed `AbstractThemePathBuilder::getDecorated()` — abstract, also required — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:14
-- confirmed `storefront.themeSeed` — seed stored in system config per sales channel — vendor/shopware/storefront/Theme/SeedingThemePathBuilder.php:13
-- confirmed `MD5ThemePathBuilder::saveSeed()` — no-op, seed ignored — vendor/shopware/storefront/Theme/MD5ThemePathBuilder.php:26
-- confirmed `theme_path_builder_id` — defaults to SeedingThemePathBuilder — vendor/shopware/storefront/DependencyInjection/Configuration.php:27
-- confirmed `generateNewPath` — compiler calls it with a random seed, then saveSeed after copy — vendor/shopware/storefront/Theme/ThemeCompiler.php:93
-- deprecated `DeleteThemeFilesMessage` — removed in 6.8.0, replaced by scheduled task — vendor/shopware/storefront/Theme/Message/DeleteThemeFilesMessage.php:19
-- deprecated `file_delete_delay` — docs: configurable delay default 15 min; now no effect, default 900 — vendor/shopware/storefront/DependencyInjection/Configuration.php:29
+## Code check (6.7.15.1)
+- corrected `AbstractThemePathBuilder::generateNewPath()` — docs: concrete deprecated default method; now abstract — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:28
+- corrected `AbstractThemePathBuilder::saveSeed()` — docs: concrete no-op default; now abstract — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:34
+- confirmed `AbstractThemePathBuilder::getDecorated()` — abstract, also required in custom builders — vendor/shopware/storefront/Theme/AbstractThemePathBuilder.php:14
+- confirmed `generateNewPath` — `ThemeCompiler` calls it with a `Uuid::randomHex()` seed — vendor/shopware/storefront/Theme/ThemeCompiler.php:93
+- confirmed `saveSeed` — `ThemeCompiler` calls it only after files are copied — vendor/shopware/storefront/Theme/ThemeCompiler.php:128
+- corrected `storefront.themeSeeds.` — docs: seed in system_config; key is per theme, legacy `storefront.themeSeed` fallback — vendor/shopware/storefront/Theme/SeedingThemePathBuilder.php:17
+- confirmed `SeedingThemePathBuilder` — default value of `theme_path_builder_id` — vendor/shopware/storefront/DependencyInjection/Configuration.php:9
+- confirmed `MD5ThemePathBuilder` — seed-ignoring builder for PaaS/tests — vendor/shopware/storefront/Theme/MD5ThemePathBuilder.php:14
+- deprecated `DeleteThemeFilesMessage` — removed in 6.8.0, files now deleted by scheduled task — vendor/shopware/storefront/Theme/Message/DeleteThemeFilesMessage.php:17
+- deprecated `file_delete_delay` — docs: configurable delay, default 15 min; option has no effect, removal in 6.8.0 — vendor/shopware/storefront/DependencyInjection/Configuration.php:30

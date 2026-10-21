@@ -5,58 +5,51 @@ docType: functional
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/content/media
-sourceHash: 9a8c55ff954da86a9532a13b455fd2d2dc0c783a5ff8fdd6be2f574a9521c1ed
+sourceHash: e514f97221c58f2df44ceaa8d048c95ae2682ce2cfe02328851520434be8866a
 revision:
   current: true
-  range: "6.7.8.0 - 6.7.9.1"
-  swMin: "6.7.8.0"
-  swMax: "6.7.9.1"
-keywords: ["Media Manager", "Content > Media", "media folders", "media:delete-unused", "media:generate-thumbnails", "thumbnail settings", "AI Copilot text to image", "Model Viewer", "Model Editor", "glb 3D model", "upload media", "file already exists"]
-summary: "The Media Manager (Content > Media): uploading, organizing, deleting media/folders, thumbnail generation, AI image generation and the 3D Model Viewer/Editor."
-lastBuilt: "2026-09-15"
+  range: "6.7.10.0 - 6.7.13.1"
+  swMax: "6.7.13.1"
+  swMin: "6.7.10.0"
+keywords: ["media", "Content > Media", "media:delete-unused", "media:generate-thumbnails", "thumbnails", "media folder", "3D Optimizer", "Model Viewer", "Model Editor", "AI Copilot text to image", "glb", "upload", "alt text", "medien"]
+summary: "Media manager under Content > Media: uploads, folders, thumbnail sizes, CLI cleanup, 3D Optimizer, AI text-to-image, Model Viewer and Model Editor."
+lastBuilt: 2026-10-20
 ---
 ## What it is
-Describes the Media module under **Content > Media**, used to upload, organize into folders, and manage media files (including 3D models) reused throughout the shop.
+
+The Media module (**Content > Media**) uploads, organises and manages files used in the shop. It also covers folder thumbnail settings, the 3D Optimizer, AI Copilot text-to-image generation and a viewer/editor for 3D models.
 
 ## When to use
-When uploading/organizing storefront media, generating thumbnails, cleaning up unused files, generating AI images, or reviewing/editing 3D models.
+
+When uploading or replacing files, organising folders, changing thumbnail sizes, deleting unused media, generating images from text, or inspecting and adjusting 3D models.
 
 ## Key steps / config
-Overview: search, Upload file button (or upload via URL using the button's arrow), Presentation and Sort by controls, Generate image (AI-Copilot), Add new folder. Selecting a medium/folder shows information and actions on the right, also reachable via a context menu.
 
-Supported upload file types:
+- **Upload**: the Upload file button, or a public URL via the arrow. Supported types: jpg, jpeg, png, webp, gif, svg, bmp, tiff, tif, eps, webm, mkv, flv, ogv, ogg, mov, mp4, avi, wmv, pdf, aac, mp3, wav, flac, oga, wma, txt, doc, glb.
+- **Duplicate file dialog**: Upload and replace, Upload and rename, Use existing file, Skip file (only when uploading more than two files).
+- **File actions**: Replace, Download, Move, Copy link, Delete; plus Preview, Meta data (name, alt text, meta title), Tags, Used in.
+- **Folders**: Add new folder, Move, Settings, Dissolve (contents move up one level), Delete (removes contents). Settings define default location for media types and thumbnails.
+- **Thumbnail settings**: Inherit settings from parent folder, Generate thumbnails for this folder, Keep aspect ratio, Thumbnail quality (1-100), Thumbnail Size list (lock keeps width equal to height). Default sizes are 400x400, 800x800 and 1920x1920.
 
-```
-jpg, jpeg, png, webp, gif, svg, bmp, tiff, tif, eps, webm, mkv, flv, ogv, ogg, mov, mp4, avi, wmv, pdf, aac, mp3, wav, flac, oga, wma, txt, doc, glb
-```
+CLI commands:
 
-Uploading a duplicate filename offers: Upload and replace, Upload and rename, Use existing file, Skip file (multi-file uploads only).
-
-Media actions: Replace, Download, Move, Copy link, Delete. Meta data panel allows changing name, alt-text, meta-title. Used in shows where the medium is referenced (with links).
-
-Deleting unused media via console:
-
-```
+```text
 media:delete-unused
-```
-
-Folder actions: Move, Settings, Dissolve (removes the folder, moving its contents up one level), Delete. Folder settings: general settings (name, default location for certain media files) and Thumbnails (Inherit settings from parent folder, Generate thumbnails for this folder, Keep aspect ratio, Thumbnail quality 1-100, Thumbnail Size list with Edit list / add sizes). Regenerate thumbnails after a size change via:
-
-```
 media:generate-thumbnails
 ```
 
-Default thumbnail sizes for all uploaded images: 400x400, 800x800, 1920x1920.
+Run `media:generate-thumbnails` in the installation main directory after changing thumbnail sizes.
 
-AI-Copilot Text to Image (Shopware Rise plan via Shopware Commercial): enter a description, click generate; images are saved to an auto-created AI-generated folder; generation is rate-limited per day; uses Google's "Nano Banana 2". Supported aspect ratios: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9. Supported resolutions: 1K, 2K. Default aspect ratio 16:9, default resolution 1K.
-
-Model Viewer: appears automatically in the sidebar preview when a 3D file is selected; left mouse button rotates, right mouse button pans, scroll wheel zooms. **Expand** opens the Model Editor as a modal, allowing move/rotate/scale of the model with changes saved directly to the 3D file.
-
-## Essential identifiers
-- `Content > Media`
-- `media:delete-unused`
-- `media:generate-thumbnails`
-- 3D model format: `.glb`
+- **3D Optimizer**: per-folder option, visible only with an active Shopware Intelligence+ subscription; optimises uploaded 3D files and generates previews in the background through a RapidPipeline based service.
+- **AI Copilot - Text to Image**: from the Rise plan via the Shopware Commercial extension. Enter a description, generate, then save to the AI-generated folder. Output is regenerated each time, one image per description, with a daily request limit.
+  - Aspect ratios: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9; resolutions 1K and 2K; defaults 16:9 and 1K. Unsupported formats map to the closest supported ratio.
+- **Model Viewer**: shown in the sidebar preview for a 3D file; left mouse rotates, right mouse moves the camera, wheel zooms. **Expand** opens the **Model Editor**, which offers Move, Rotate and Scale tools; changes are saved into the 3D file in the database and persist when the file is downloaded.
 
 ## Gotchas
-The generated AI image is fully regenerated on each generation — no incremental adjustments are possible, and only one image is produced per description, with a daily request limit.
+
+- Deleting a folder removes everything inside; use Dissolve to keep contents.
+- Image generation cannot edit an already generated image.
+
+## Version notes
+
+The page documents Shopware 6.7.10.0 to 6.7.13.1. The AI text-to-image feature uses Google's "Nano Banana 2" model.

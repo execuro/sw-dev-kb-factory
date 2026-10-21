@@ -5,77 +5,81 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/formatter.html
-sourceHash: "eabd21d314512b5efd935c58f897a0f3ca29e05b"
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli extension format", "shopware-cli project format", "--dry-run", "--only", "php-cs-fixer", "prettier", "admin-twig", ".php-cs-fixer.dist.php", "validation.ignore_extensions", "PROJECT_ROOT", "code formatting", "coding standard", "formatter"]
-summary: "shopware-cli extension/project format: PHP-CS-Fixer, Prettier, Admin Twig formatting; --dry-run, --only flags and config file lookup."
-lastBuilt: 2026-09-15
+sourceHash: 9211c180d534f78628b21aed7a51071fc261afa4
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli extension format", "shopware-cli project format", "php-cs-fixer", "prettier", "--dry-run", "--only", "--exclude", ".php-cs-fixer.dist.php", "validation.ignore_extensions", "PROJECT_ROOT", "code formatting", "coding standard", "code style"]
+summary: Shopware CLI extension format / project format commands - php-cs-fixer and Prettier formatters, --only/--exclude/--dry-run flags, config lookup.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware CLI formats code through two commands: `extension format` (one extension) and `project format` (extensions and configured bundles across a project). It covers PHP (Shopware Coding Standard via PHP-CS-Fixer), Administration Twig files, and Prettier-supported files (JavaScript, TypeScript, Vue, CSS, SCSS).
+Shopware CLI ships two `format` commands: `extension format` formats a single extension, `project format` formats the local extensions and configured bundles of a whole Shopware project. PHP files are formatted with the Shopware Coding Standard (via PHP-CS-Fixer); JavaScript, TypeScript, Vue, CSS and SCSS are formatted with Prettier.
 
 ## When to use
 
-Before committing or in CI to enforce consistent formatting on a plugin/app or on all local extensions of a Shopware project; use `--dry-run` as a formatting check gate.
+- Before committing or in CI, to apply or check (`--dry-run`) the Shopware code style on an extension or a project.
+- When only one tool should run (e.g. PHP only) or one should be skipped.
 
 ## Key steps / config
 
-Formatting tools (without `--only`, every registered verifier tool runs; only these three rewrite files):
+Formatters (all run by default):
 
 | Tool | Formats |
 |---|---|
-| `php-cs-fixer` | PHP files, Shopware Coding Standard |
-| `prettier` | Prettier-supported files in source dirs, CLI-bundled config |
-| `admin-twig` | Administration Twig templates |
+| `php-cs-fixer` | PHP source files, Shopware Coding Standard |
+| `prettier` | Prettier-supported files in source directories, CLI-bundled config |
 
-Format an extension (path required):
-
-```shell
-docker run --rm -v "$(pwd)":/ext ghcr.io/shopware/shopware-cli extension format /ext
-shopware-cli extension format /path/to/your/extension --dry-run
-```
-
-Format a project (path optional):
+Commands (Docker is recommended — the image has all runtime dependencies):
 
 ```shell
-docker run --rm -v "$(pwd)":/project ghcr.io/shopware/shopware-cli project format /project
-shopware-cli project format /path/to/your/project --dry-run
-shopware-cli project format /path/to/your/project --only php-cs-fixer
+docker run --rm -v "$(pwd)":/ext ghcr.io/shopware/shopware-cli extension format /ext [--dry-run]
+docker run --rm -v "$(pwd)":/project ghcr.io/shopware/shopware-cli project format /project [--dry-run]
+shopware-cli extension format /path/to/your/extension --only "php-cs-fixer,prettier"
+shopware-cli project format /path/to/your/project --only "prettier,php-cs-fixer" --exclude prettier
 ```
 
-Project format options: `--dry-run` (check without modifying), `--only <tools>` (comma-separated tool list).
+Flags (both commands):
 
-Project format behavior:
-- Extensions resolved under `vendor/` and those listed in `validation.ignore_extensions` are skipped.
-- Without a path, it walks up from the current directory to the nearest Shopware project: Composer metadata referencing `shopware/core` and an existing `bin/console`. `PROJECT_ROOT` overrides discovery.
+| Flag | Meaning |
+|---|---|
+| `--only <tools>` | Run only these comma-separated formatters |
+| `--exclude <tools>` | Remove formatters from all formatters or from the `--only` selection |
+| `--dry-run` | Check formatting without modifying files |
+| `--verbose` | Log source directories, extension names, external tool commands and arguments |
+
+Path argument: required for `extension format`, optional for `project format`. Without a path, `project format` walks up from the current directory to the nearest Shopware project — a directory whose Composer metadata references `shopware/core` and that has `bin/console`. `PROJECT_ROOT` overrides this discovery.
+
+`project format` skips extensions resolved under `vendor/` and extensions listed in `validation.ignore_extensions`.
 
 Configuration:
-- PHP-CS-Fixer uses `.php-cs-fixer.dist.php` from the target root if present, otherwise the CLI's bundled config.
-- Prettier always uses the CLI-bundled config; a project/extension `.prettierrc` is ignored.
-- Admin Twig formatting uses a built-in formatter with no config file.
+
+- PHP-CS-Fixer uses `.php-cs-fixer.dist.php` from the target root if present, otherwise the bundled config.
+- Prettier always uses the configuration bundled with Shopware CLI.
+
+Local (non-Docker) execution requires PHP 8.2+ and Node.js 20+; Composer and npm are used to initialize the CLI's local tool cache.
 
 ## Essential identifiers
 
 - `shopware-cli extension format`, `shopware-cli project format`
-- `--dry-run`, `--only`
-- `php-cs-fixer`, `prettier`, `admin-twig`
+- `php-cs-fixer`, `prettier`
+- `--only`, `--exclude`, `--dry-run`, `--verbose`
 - `.php-cs-fixer.dist.php`, `validation.ignore_extensions`, `PROJECT_ROOT`
-- Docker image `ghcr.io/shopware/shopware-cli`
 
 ## Gotchas
 
-- The CLI propagates the formatter exit status: a non-zero `--dry-run` usually means formatting changes are needed, not that the formatter crashed.
-- Docker is recommended because the image ships the runtime dependencies. Local runs need PHP 8.2+ and Node.js 20+; Composer and npm are used to initialize the local tool cache.
-- `.prettierrc` files in your project are not honored by `format`.
+- The exit status of the formatter is propagated: a non-zero `--dry-run` usually means formatting changes are needed, not that the tool crashed.
+- A project or extension `.prettierrc` is ignored by the `format` commands.
+- Tools without formatting support cannot be passed to `--only`; the command errors and lists available formatters.
+- Unknown names, excluding a formatter outside the selected set, or excluding every selected formatter is an error — raised before any tool setup or file change.
+- A `Formatters:` table is printed after the run (also on execution errors, with non-zero exit). `invoked` only means the tool was called, not that it analyzed or changed files; `skipped` means deselected by `--only` or removed by `--exclude`.
 
-## Code check (6.7.13.0)
-- confirmed `shopware/core` — Composer package name used for project detection — vendor/shopware/core/composer.json:2
-- confirmed `php` — core requires `~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0`, consistent with the PHP 8.2+ requirement — vendor/shopware/core/composer.json:51
-- confirmed `node` — administration package engines allow Node `^20.0.0` and later majors — vendor/shopware/administration/Resources/app/administration/package.json:224
-- confirmed `PROJECT_ROOT` — env var also read by core's kernel factory for the project dir — vendor/shopware/core/Framework/Adapter/Kernel/KernelFactory.php:76
-- unverified `project format` — implemented in shopware-cli (Go), not in vendor/shopware
-- unverified `php-cs-fixer` — shopware-cli verifier tool, out of scope
-- unverified `admin-twig` — shopware-cli verifier tool, out of scope
-- unverified `validation.ignore_extensions` — .shopware-project.yml key read by shopware-cli, out of scope
-- unverified `.php-cs-fixer.dist.php` — no such file shipped in vendor/shopware/core or storefront; lookup done by shopware-cli
+## Code check (6.7.15.1)
+- confirmed `shopware/core` — Composer package name the project detection looks for — vendor/shopware/core/composer.json:2
+- confirmed `php` — core itself requires PHP ~8.2 or later, consistent with the local tooling requirement — vendor/shopware/core/composer.json:36
+- confirmed `PROJECT_ROOT` — env var also read by the core kernel for the project dir — vendor/shopware/core/Framework/Adapter/Kernel/KernelFactory.php:83
+- unverified `shopware-cli extension format` — Go CLI (shopware-cli), outside the Shopware package roots
+- unverified `shopware-cli project format` — Go CLI, out of scope
+- unverified `php-cs-fixer` — formatter wiring lives in shopware-cli, out of scope
+- unverified `prettier` — formatter wiring lives in shopware-cli, out of scope
+- unverified `.php-cs-fixer.dist.php` — no such file in the core package; CLI-side lookup, out of scope
+- unverified `validation.ignore_extensions` — shopware-cli project config key, out of scope

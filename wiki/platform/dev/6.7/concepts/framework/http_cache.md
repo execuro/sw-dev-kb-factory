@@ -6,94 +6,92 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/http_cache.html
 sourceHash: 8921442921cf10a88c1edd02d1b794726daf1c05
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["http cache", "reverse proxy", "varnish", "_httpCache", "sw-cache-hash", "sw-currency", "sw-states", "CacheResponseSubscriber", "tag_invalidation_log_enabled", "CACHE_REWORK", "sw-dynamic-cache-bypass", "cache invalidation", "cache tags", "caching policy"]
-summary: Shopware HTTP cache - _httpCache route default, sw-cache-hash cache key, deprecated cookies, tag invalidation, CACHE_REWORK response flow.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["http cache", "_httpCache", "sw-cache-hash", "sw-currency", "sw-states", "CacheResponseSubscriber", "CACHE_REWORK", "tag_invalidation_log_enabled", "sw-dynamic-cache-bypass", "reverse proxy", "varnish", "cache invalidation", "cache tags", "caching policies"]
+summary: "HTTP cache: _httpCache route default, sw-cache-hash cookie, Store API cache tags, list-route TTLs, CACHE_REWORK response workflow."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/caching/_index.md", "platform/dev/6.7/guides/hosting/performance/caches.md"]
 ---
 ## What it is
 
-Concept page for Shopware's HTTP (full-page) cache: a reverse proxy layer (Symfony HTTP cache, Varnish, Fastly) between user and application that stores responses, how Shopware decides whether a response is cacheable, how the cache key reflects customer state via the `sw-cache-hash` cookie, and how entries are invalidated through cache tags.
+The HTTP cache stores complete responses of the shop so a repeated identical request can be answered without running the application. It works both with Shopware's internal (Symfony) HTTP cache and with an external reverse proxy (e.g. Varnish, Fastly) placed between the user and the web application. The cache key is derived from the request plus a `cache-hash` that encodes the customer's application state.
 
 ## When to use
 
-- Marking your own Storefront or Store API route as cacheable.
-- Debugging why a page is served stale, not cached, or cached for the wrong customer state.
-- Configuring a reverse proxy that must honour Shopware's cache key.
-- Deciding how listing routes are invalidated (TTL vs. tags). Plugin-side control of the hash is in `platform/dev/6.7/guides/plugins/plugins/framework/caching/_index.md`; TTL policies in `platform/dev/6.7/guides/hosting/performance/caches.md`.
+- Making a custom Storefront/Store API route cacheable.
+- Understanding why a page is or is not served from cache, or why two customers get different cache entries.
+- Configuring a reverse proxy to vary on the right cookies/headers.
+- Deciding how invalidation reaches a controller route (via Store API cache tags) and why listing routes depend on TTL.
 
 ## Key steps / config
 
-**Make a route cacheable** — set route default `_httpCache` (constant `PlatformRequest::ATTRIBUTE_HTTP_CACHE`) to `true`. Only `GET` requests are cached. Core example in the Storefront `ProductController`:
+**Mark a route cacheable** — set the route default `_httpCache` (`PlatformRequest::ATTRIBUTE_HTTP_CACHE`) to `true`. Only `GET` requests are cached; any other method gets a no-cache response.
 
 ```php
 #[Route(
     path: '/detail/{productId}',
-    name: 'frontend.detail.page',
+    name: ProductPageSeoUrlRoute::ROUTE_NAME, // 'frontend.detail.page'
     defaults: [PlatformRequest::ATTRIBUTE_HTTP_CACHE => true],
     methods: [Request::METHOD_GET]
 )]
 public function index(SalesChannelContext $context, Request $request): Response
 ```
 
-**Cache key** — Shopware computes a hash of cache-relevant state (logged-in, tax state, currency, matched cache-relevant rules) and sends it as the `sw-cache-hash` cookie (and response header). It is set once state differs from the default (no customer, default currency, empty cart). Clients must send the latest value on every request, because the cache is resolved before Shopware handles the request; proxies include it in their cache key. Keep permutations low to maximise hits.
+**Cache key / `cache-hash`** — Shopware computes a hash over cache-relevant context (matched rules, currency, tax state, logged-in state) and transports it as the `sw-cache-hash` cookie and header. The cookie is only set once the state differs from the default (no logged-in customer, default currency, empty cart). Clients must send the latest value on every request because the cache is resolved before Shopware handles the request. Plugins can influence the hash (see `platform/dev/6.7/guides/plugins/plugins/framework/caching/_index.md`).
+
+**Vary** — every sales-channel response gets `sw-language-id` and `sw-currency-id` headers, and `Vary` is extended with the access key, language id, currency id, include-SEO-URLs header and `sw-cache-hash`.
+
+**TTL / Cache-Control** — resolved by HTTP caching policies (`platform/dev/6.7/guides/hosting/performance/caches.md`); experimental in 6.7, default from 6.8.0.0.
 
 **Invalidation logging** (since 6.7.7.0, default off):
 
 ```yaml
-# <shopware-root>/config/packages/shopware.yaml
+# config/packages/shopware.yaml
 shopware:
   cache:
     invalidation:
       tag_invalidation_log_enabled: false
 ```
 
-**Invalidation model** — cached responses are tagged with all cache tags generated or loaded during the request; Storefront pages inherit tags from the Store API routes they call, so Store API invalidation drives Storefront invalidation. List-type routes (product listing/search, category listing, SEO URL listing) are not tagged with every returned entity; they expire by the TTL of the active HTTP caching policy — configure a custom policy if defaults do not fit.
+**Response workflow** (6.8.0.0, or 6.7.6.0+ with `CACHE_REWORK` enabled) in `CacheResponseSubscriber`:
 
-**Response workflow with `CACHE_REWORK` or v6.8** — `CacheResponseSubscriber` in 6.7.13.0:
-
-1. `CacheHeadersService` sets `sw-language-id` and `sw-currency-id` response headers and extends `Vary` with `sw-access-key`, `sw-language-id`, `sw-currency-id` and `sw-cache-hash`.
-2. Early exits (HTTP cache disabled, maintenance, 404 → no-cache).
-3. Computes and applies the cache hash for every request, including POST, so the client's cookie stays current; extensions can add parameters.
-4. Non-`GET` or no `_httpCache` attribute → no-cache policy.
-5. If dynamic calculation says not cacheable → sets `sw-dynamic-cache-bypass: 1` and no-cache.
-6. Compares the client hash (header `sw-cache-hash`, else cookie) with the server hash; on mismatch sets `sw-dynamic-cache-bypass` and applies no-cache, preventing cache poisoning.
-7. Resolves the caching policy for the route and sets `Cache-Control`.
+1. Apply `sw-language-id`/`sw-currency-id` headers and extend `Vary`.
+2. Early exits: HTTP cache disabled, maintenance mode, 404 responses.
+3. Calculate the cache hash (also for POST, so the client gets the updated hash).
+4. Non-`GET` request or no `_httpCache` attribute: no-cache policy.
+5. If dynamic calculation says not cacheable, or the client's `sw-cache-hash` (header or cookie) does not match the server hash: `sw-dynamic-cache-bypass: 1` plus no-cache policy. This prevents cache poisoning and lets proxies use short "hit-for-pass" TTLs (custom proxy config required).
+6. Resolve the caching policy for the route/area and set `Cache-Control`.
 
 ## Essential identifiers
 
 - `_httpCache` / `PlatformRequest::ATTRIBUTE_HTTP_CACHE`
 - `sw-cache-hash` / `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE`
-- `sw-language-id`, `sw-currency-id` response headers
 - `sw-dynamic-cache-bypass` / `HttpCacheKeyGenerator::HEADER_DYNAMIC_CACHE_BYPASS`
-- `CacheResponseSubscriber`, `CacheHeadersService`
+- `CacheResponseSubscriber` (`Shopware\Core\Framework\Adapter\Cache\Http`)
+- `CACHE_REWORK` feature flag
 - `shopware.cache.invalidation.tag_invalidation_log_enabled`
-- Feature flag `CACHE_REWORK`
 
 ## Gotchas
 
-- The docs call the compared/`Vary` value `sw-context-hash`; in 6.7.13.0 the HTTP cache code uses `sw-cache-hash` for both the `Vary` entry and the hash comparison. `PlatformRequest::HEADER_CONTEXT_HASH` (`sw-context-hash`) exists but is not what `CacheResponseSubscriber` checks.
-- Cookie `sw-currency` is deprecated (removed in 6.8.0.0); currency is already part of `sw-cache-hash`. It was set when a guest with empty cart changed currency.
-- Cookie `sw-states` and header `sw-invalidation-states` are deprecated (removed in 6.8.0.0). Old behaviour: session tags like `cart-filled`/`logged-in` matching the response's invalidation states skip the cache. With `CACHE_REWORK`/`PERFORMANCE_TWEAKS`/v6.8 states are always empty.
-- Without `CACHE_REWORK`/v6.8, Store API routes marked `_httpCache` still get no-cache headers.
-- Listing pages accept some staleness: no strict immediate consistency.
-- `hit-for-pass` handling based on `sw-dynamic-cache-bypass` needs custom proxy configuration.
+- Storefront controller routes are invalidated through the cache tags of the Store API routes they call; an HTTP cache entry carries the sum of all Store API tags collected during the request.
+- List-type routes (product listings, search, category listings, SEO URL listings) are not tagged with every returned entity; they rely on the policy TTL and can be briefly stale. Configure a custom caching policy if the default TTL does not fit.
+- Keep the number of `cache-hash` permutations low to keep hit rates high.
+- Without `CACHE_REWORK`/6.8, Store API routes marked `_httpCache` still receive no-cache headers.
 
 ## Version notes
 
-- `CACHE_REWORK` (default `false`, "Experimental!") enables the workflow above and caching policies; per docs available since 6.7.6.0 and default from 6.8.0.0. It also removes cache states and caches pages for logged-in customers/filled carts by default.
-- `tag_invalidation_log_enabled` since 6.7.7.0.
-- `sw-currency`, `sw-states`, `sw-invalidation-states` removed in 6.8.0.0.
+- `sw-currency` cookie: deprecated, removed in 6.8.0.0 (currency is part of `sw-cache-hash`).
+- `sw-states` cookie and the `sw-invalidation-states` response header (tags like `logged-in`, `cart-filled` that skip the cache): deprecated, removed in 6.8.0.0. With `CACHE_REWORK` states are always empty, so pages are cached for logged-in customers and filled carts too.
+- The docs' workflow names `sw-context-hash` as the compared/varied hash; in 6.7.15.1 that header constant is deprecated and the code compares and varies on `sw-cache-hash`.
 
-## Code check (6.7.13.0)
-- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — value `_httpCache` — vendor/shopware/core/PlatformRequest.php:80
-- confirmed `frontend.detail.page` — route default uses ATTRIBUTE_HTTP_CACHE, GET only — vendor/shopware/storefront/Controller/ProductController.php:57
-- corrected `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE` — docs: client `sw-context-hash` is compared; code compares `sw-cache-hash` header/cookie — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheResponseSubscriber.php:174
-- corrected `PlatformRequest::HEADER_CURRENCY_ID` — docs: Vary gets `sw-context-hash`; code adds access key, language, currency ids and `sw-cache-hash` — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:46
-- deprecated `HttpCacheKeyGenerator::CURRENCY_COOKIE` — `sw-currency`, removed in v6.8.0 — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:26
-- deprecated `HttpCacheKeyGenerator::SYSTEM_STATE_COOKIE` — `sw-states`, removed in v6.8.0 — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:31
-- deprecated `HttpCacheKeyGenerator::INVALIDATION_STATES_HEADER` — `sw-invalidation-states`, removed in v6.8.0 — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:35
-- confirmed `HttpCacheKeyGenerator::HEADER_DYNAMIC_CACHE_BYPASS` — value `sw-dynamic-cache-bypass` — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:41
-- confirmed `tag_invalidation_log_enabled` — boolean, default false — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:759
-- confirmed `CACHE_REWORK` — toggleable flag, default false, read by cache subscribers — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:64
+## Code check (6.7.15.1)
+- confirmed `_httpCache` — value of `ATTRIBUTE_HTTP_CACHE` — vendor/shopware/core/PlatformRequest.php:82
+- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — route default on the product detail route — vendor/shopware/storefront/Controller/ProductController.php:59
+- confirmed `sw-cache-hash` — transported as cookie/header, part of Vary — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheVariantHeaders.php:23
+- deprecated `sw-currency` — `CURRENCY_COOKIE` tagged v6.8.0 removal — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:26
+- deprecated `sw-states` — `SYSTEM_STATE_COOKIE` tagged v6.8.0 removal — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:31
+- deprecated `sw-invalidation-states` — `INVALIDATION_STATES_HEADER` tagged v6.8.0 removal — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:35
+- deprecated `sw-context-hash` — docs present it as the compared hash; code compares `sw-cache-hash` — vendor/shopware/core/PlatformRequest.php:65
+- confirmed `sw-dynamic-cache-bypass` — hint header for hit-for-pass objects — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:41
+- confirmed `CACHE_REWORK` — gates the client/server hash comparison — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheResponseSubscriber.php:179
+- confirmed `tag_invalidation_log_enabled` — default false — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:677

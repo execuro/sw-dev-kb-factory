@@ -6,67 +6,64 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/routing-navigation/add-menu-entry.html
 sourceHash: 02f1b9945a5a2c38fc18059deccf8e190dcb8edc
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["admin menu entry", "main menu", "navigation", "Shopware.Module.register", "parent", "sw-catalogue", "sw-manufacturer", "position", "label", "menu nesting", "sidebar item", "plugin menu"]
-summary: Add an Administration menu entry via the module navigation array - id, label, path, parent category; plugins cannot add first-level entries.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["navigation", "menu entry", "main menu", "admin menu", "Shopware.Module.register", "parent", "sw-catalogue", "sw-manufacturer", "position", "label", "nested menu", "sidebar", "first level menu"]
+summary: "Admin menu entries via a module's navigation array (id, label, path, parent, position); plugin entries must set a parent such as sw-catalogue."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to add a menu entry to the Shopware 6 Administration main menu for a plugin module, using the `navigation` key of the module registration.
+A module's menu entry in the Administration main menu is declared in the `navigation` key of the module configuration passed to `Shopware.Module.register`. It is an array of objects, each linking a menu item to one of the module's routes.
 
 ## When to use
 
-When a custom Administration module (registered with `Shopware.Module.register`) needs a clickable entry in the main menu that opens one of its routes.
+When a plugin module needs to be opened from the Administration main menu, nested under an existing category such as Catalogues.
 
 ## Key steps / config
 
-1. Register the module in `<plugin root>/src/Resources/app/administration/src/module/swag-example/index.js` with `Shopware.Module.register('swag-plugin', { ... })`.
-2. Add a `navigation` array; each object is one menu entry pointing to a route of the module:
-
-```javascript
-navigation: [{
-    id: 'swag-custommodule-list',
-    label: 'CustomModule',
-    color: '#ff3d58',
-    path: 'swag.custommodule.list',
-    icon: 'default-shopping-paper-bag-product',
-    parent: 'sw-catalogue',
-    position: 100
-}]
-```
-
-| Key | Meaning |
-|---|---|
-| `id` | Entry id; other entries reference it as `parent`. |
-| `label` | Text shown for the entry (required — entries without it are dropped). |
-| `color` | Theme color of the entry; may differ from the module color. |
-| `path` | Route name: module id with dashes as dots plus route key, e.g. `swag-example` + `index` = `swag.example.index`. |
-| `icon` | Separate icon, useful with several entries per module. |
-| `parent` | `id` of the menu entry to nest under (required for plugin modules). |
-| `position` | Higher value = lower in the list. |
-
-3. Find valid parent ids in the `navigation` of core modules' `index.js` (e.g. `sw-catalogue` in `sw-product`, `sw-manufacturer` in `sw-manufacturer`).
+1. In `<plugin root>/src/Resources/app/administration/src/module/swag-example/index.js`, add `navigation` to the module configuration:
+   ```javascript
+   Shopware.Module.register('swag-plugin', {
+       // ...routes etc.
+       navigation: [{
+           id: 'swag-custommodule-list',
+           label: 'CustomModule',
+           color: '#ff3d58',
+           path: 'swag.custommodule.list',
+           icon: 'default-shopping-paper-bag-product',
+           parent: 'sw-catalogue',
+           position: 100
+       }]
+   });
+   ```
+2. Keys:
+   - `label` — text shown for the entry; required.
+   - `path` — full name of one of your module's routes: module id with dashes as dots plus route key (`swag-example` + `index` → `swag.example.index`).
+   - `parent` — id of the menu entry to append to; required for plugin modules.
+   - `id` — node id in the menu tree; other entries can use it as their `parent`.
+   - `color`, `icon` — theme color and icon of the entry (may differ from the module's own).
+   - `position` — higher values sort further down.
+3. Find a parent id in the `navigation` of the core module's `index.js` (e.g. `sw-catalogue` in `sw-product`, `sw-manufacturer` in `sw-manufacturer`). Nesting depth is unlimited; using `sw-manufacturer` as parent places the item on the third level.
 
 ## Essential identifiers
 
-- `Shopware.Module.register`, `navigation`
-- `id`, `label`, `color`, `path`, `icon`, `parent`, `position`
-- Parent ids `sw-catalogue`, `sw-manufacturer`
+- `navigation` (array) in `Shopware.Module.register`
+- keys `id`, `label`, `path`, `parent`, `position`, `color`, `icon`
+- parent ids `sw-catalogue`, `sw-manufacturer`
 
 ## Gotchas
 
-- Plugin modules may not add first-level entries: an entry of a `plugin`-type module without `parent` is filtered out with the warning "Navigation entries from plugins are not allowed on the first level." The Shopware Store also rejects plugins with first-level menu entries.
-- `navigation` must be an array, otherwise module registration is aborted.
-- For plugin modules the factory adds 1000 to `position` (or sets 1000 if none), so plugin entries sort after core entries.
-- The source says nesting depth is unlimited; the 6.7 menu supports at most three levels — an entry nested on level 4 or deeper is removed with a console error. Using `sw-manufacturer` as `parent` puts the entry on level 3.
+- Plugin entries without `parent` are dropped at registration ("Navigation entries from plugins are not allowed on the first level"). The Shopware Store also rejects plugins that add first-level menu entries.
+- An entry without `label` is dropped.
+- For plugin modules the factory adds 1000 to `position` (or sets 1000 if none), so plugin items sort after core items.
+- The docs say an `id` is required to show up; the menu tree actually uses `id` and falls back to `path` as the node identifier. Setting `id` is still needed if other entries should nest under yours by id.
 
-## Code check (6.7.13.0)
-- confirmed `navigation` — must be an array, else registration aborted — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:285
-- confirmed `parent` — plugin entries without it are dropped (no first level) — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:293
-- confirmed `label` — entries without a label are dropped — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:312
-- confirmed `position` — plugin entries get `+= 1000` (default 1000) — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:319
-- confirmed `id` — declared as required `string` on `Navigation` — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:56
-- corrected `levelThreeParent` — docs: infinite depth nesting; menu supports up to three levels, deeper entries removed — vendor/shopware/administration/Resources/app/administration/src/app/component/structure/sw-admin-menu/index.js:114
-- confirmed `sw-catalogue` — core parent navigation id — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/index.js:266
-- confirmed `sw-manufacturer` — navigation id with parent `sw-catalogue` — vendor/shopware/administration/Resources/app/administration/src/module/sw-manufacturer/index.js:68
+## Code check (6.7.15.1)
+- confirmed `navigation` — manifest key, array of entries — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:99
+- confirmed `parent` — plugin entries without `parent` are filtered out — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:293
+- confirmed `label` — entries without a label are filtered out — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:312
+- confirmed `position` — plugin entries get +1000 or default 1000 — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:319
+- confirmed `Navigation` — keys id, path, label, position, color, icon, parent — vendor/shopware/administration/Resources/app/administration/src/core/factory/module.factory.ts:53
+- corrected `nodeIdentifier` — docs: entry needs an `id` to show up; tree uses `id` or falls back to `path` — vendor/shopware/administration/Resources/app/administration/src/core/helper/flattree.helper.js:67
+- confirmed `sw-catalogue` — navigation id in sw-product module — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/index.js:265
+- confirmed `sw-manufacturer` — navigation id in sw-manufacturer module — vendor/shopware/administration/Resources/app/administration/src/module/sw-manufacturer/index.js:68

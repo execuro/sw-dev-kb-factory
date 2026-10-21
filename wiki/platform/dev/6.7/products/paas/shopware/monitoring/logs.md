@@ -6,61 +6,66 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/monitoring/logs.html
 sourceHash: 187b9f132181ccace3f1ac31a53d0bd2272e9691
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw-paas application logs", "sw-paas application deploy logs", "sw-paas application cronjob logs", "sw-paas command logs", "sw-paas open grafana", "LogQL", "--follow", "--component", "application logs", "log retention", "grafana explore", "paas native"]
-summary: "sw-paas application logs (--follow, --component, --since, --query LogQL, --output json), deploy/cronjob/command logs, Grafana Logs, 45-day retention."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["logs", "sw-paas application logs", "sw-paas application deploy logs", "sw-paas application cronjob logs", "sw-paas command logs", "sw-paas open grafana", "logql", "grafana", "log streaming", "follow logs", "log retention", "paas native", "runtime logs"]
+summary: Query, follow and filter Shopware PaaS Native runtime, deployment, cron job and command logs with sw-paas CLI or Grafana; 45-day retention.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to query and follow runtime, deployment, cron job and command logs of a Shopware PaaS Native application from the `sw-paas` CLI, and how to view them in Grafana.
+How to read application logs on Shopware PaaS Native: the `sw-paas` CLI log commands (runtime, deployment, cron job, command logs) and the Grafana **Logs** dashboard.
 
 ## When to use
 
-When debugging a PaaS Native environment: inspecting recent errors, streaming live output, reading deployment setup/migration output, or checking a cron job or dedicated-container command run.
+When you need to inspect or stream runtime errors, deployment setup/migration output, cron job runs, or output of commands executed in dedicated containers for a PaaS Native application environment.
 
 ## Key steps / config
 
-### Runtime logs
+**Runtime logs**: `sw-paas application logs` returns logs from the last 15 minutes by default. If the target cannot be inferred from the current git remote, the CLI prompts for organization, project and application, or pass them explicitly:
 
-- `sw-paas application logs` — latest logs from the last 15 minutes. If the target cannot be inferred from the git remote, the CLI prompts; or pass `--organization-id <org-id> --project-id <project-id> --application-id <app-id>`.
+```bash
+sw-paas application logs \
+  --organization-id <org-id> \
+  --project-id <project-id> \
+  --application-id <app-id>
+```
+
+Options:
+
 - `--follow` / `-f` — stream new lines only; add `--since 30m` to include recent history first.
-- `--component storefront` — filter by component. Supported: `admin`, `command`, `cronjob`, `migration`, `scheduled-task`, `setup`, `storefront`, `worker`, `app.build`.
+- `--component <name>` — one of `admin`, `command`, `cronjob`, `migration`, `scheduled-task`, `setup`, `storefront`, `worker`, `app.build`.
 - `--time-range 09:00-10:00` — local time window for the current day.
 - `--limit 500` — maximum number of returned lines.
-- `--query '{component="storefront"} |= "error"'` — raw LogQL query.
-- `--raw` — messages only; `--output json` — machine-readable output.
+- `--query '{component="storefront"} |= "error"'` — raw `LogQL` query.
+- `--raw` — print only log messages; `--output json` — machine-readable output.
 
-After printing, the CLI outputs a Grafana Explore URL for the same query.
+After printing, the CLI prints a Grafana Explore URL for the same query.
 
-### Specialized log commands
+**Specialized commands** (all accept `--follow`/`-f` and also print a Grafana Explore URL):
 
 - Deployment setup and migration logs: `sw-paas application deployment logs` (alias `sw-paas application deploy logs`), optionally `--deployment-id <deployment-id>`.
-- Cron job run logs: `sw-paas application cronjob logs` (alias `cron`), optionally `--run-id <run-id>`, or select by `--cronjob-id <cronjob-id> --history-limit 100`.
-- Dedicated-container command logs: `sw-paas command logs`, optionally `--command-id <command-id>`.
-- All three accept `--follow` / `-f` and print a Grafana Explore URL at the end.
+- Cron job run logs: `sw-paas application cronjob logs` (alias `sw-paas application cron logs`), optionally `--run-id <run-id>`, or select by `--cronjob-id <cronjob-id>` with `--history-limit 100` controlling how many history entries are used for selection.
+- Commands executed in dedicated containers: `sw-paas command logs`, optionally `--command-id <command-id>`.
 
-### Grafana
-
-1. Run `sw-paas open grafana` to get the URL, username and password.
-2. Open **Dashboards**, select the **Logs** dashboard.
-3. Filter by component, then use the search box next to the filter.
+**Grafana**: run `sw-paas open grafana` to get the URL, username and password. Then open **Dashboards** → **Logs**, filter by component, and use the search box next to the filter to search within the selected logs.
 
 ## Essential identifiers
 
-- `sw-paas application logs`, `sw-paas application deploy logs`, `sw-paas application cronjob logs`, `sw-paas command logs`, `sw-paas open grafana`
-- Flags: `--follow`/`-f`, `--since`, `--component`, `--time-range`, `--limit`, `--query`, `--raw`, `--output json`, `--deployment-id`, `--run-id`, `--cronjob-id`, `--history-limit`, `--command-id`
+- `sw-paas application logs` with `--follow`, `--since`, `--component`, `--time-range`, `--limit`, `--query`, `--raw`, `--output json`
+- `sw-paas application deployment logs` / `sw-paas application deploy logs` (`--deployment-id`)
+- `sw-paas application cronjob logs` / `sw-paas application cron logs` (`--run-id`, `--cronjob-id`, `--history-limit`)
+- `sw-paas command logs` (`--command-id`)
+- `sw-paas open grafana`
 
 ## Gotchas
 
 - `--follow` starts with new lines only; without `--since` you see no history.
-- `--time-range` applies to the current day only.
-- Logs older than 45 days are removed automatically.
+- `--time-range` applies to the current day only, in local time.
+- Logs older than 45 days are automatically removed.
 
-## Code check (6.7.13.0)
-- unverified `sw-paas application logs` — PaaS CLI command, not part of vendor/shopware
-- unverified `sw-paas application deploy logs` — PaaS CLI command, not part of vendor/shopware
-- unverified `sw-paas application cronjob logs` — PaaS CLI command, not part of vendor/shopware
-- unverified `sw-paas command logs` — PaaS CLI command, not part of vendor/shopware
-- unverified `sw-paas open grafana` — PaaS CLI command, not part of vendor/shopware
-- unverified `LogQL` — Grafana Loki query language, outside vendor/shopware
+## Code check (6.7.15.1)
+- unverified `sw-paas application logs` — PaaS CLI command, out of scope of the installed Shopware packages
+- unverified `sw-paas application deploy logs` — PaaS CLI command, out of scope of the installed Shopware packages
+- unverified `sw-paas application cronjob logs` — PaaS CLI command, out of scope of the installed Shopware packages
+- unverified `sw-paas command logs` — PaaS CLI command, out of scope of the installed Shopware packages
+- unverified `sw-paas open grafana` — PaaS CLI command; Grafana/Loki are platform services, not Shopware code

@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { clusterConcepts, isSynonymDataLine, validateSynonymsBatch, writeSynonymsOutput, type Concept } from "../ingest/platform/synonyms.js";
+import { clusterConcepts, isSynonymDataLine, pruneSynonymsOutput, validateSynonymsBatch, writeSynonymsOutput, type Concept } from "../ingest/platform/synonyms.js";
 import type { PlatformConfig, WorkItem } from "../ingest/shared/types.js";
 
 function page(path: string, keywords: string[], title = path, summary = "") {
@@ -52,13 +52,14 @@ test("isSynonymDataLine: a real data line is recognized, header/comment lines ar
 // --------------------------------------------------------------------------------
 
 const CONFIG = { sizeLimits: { synonymsMaxBytes: 1_000_000 } } as unknown as PlatformConfig;
+const KNOWN = new Set(["platform/func/a.md", "platform/dev/6.7/b.md"]);
 
 test("writeSynonymsOutput: two batches sharing a canonical term merge aliases and paths instead of the second dropping the first", () => {
   const wikiRoot = mkdtempSync(join(tmpdir(), "kb-synonyms-write-"));
   try {
     mkdirSync(resolve(wikiRoot, "platform"), { recursive: true });
-    writeSynonymsOutput(wikiRoot, ["promotion — voucher, coupon — platform/func/a.md"], CONFIG);
-    writeSynonymsOutput(wikiRoot, ["promotion — coupon, Gutschein — platform/dev/6.7/b.md"], CONFIG);
+    writeSynonymsOutput(wikiRoot, ["promotion — voucher, coupon — platform/func/a.md"], CONFIG, KNOWN);
+    writeSynonymsOutput(wikiRoot, ["promotion — coupon, Gutschein — platform/dev/6.7/b.md"], CONFIG, KNOWN);
 
     const text = readFileSync(resolve(wikiRoot, "platform/synonyms.md"), "utf8");
     const line = text.split("\n").find((l) => l.startsWith("promotion —"));
@@ -192,7 +193,7 @@ test("writeSynonymsOutput: splits into parts that each stay at or under synonyms
       const n = String(i).padStart(3, "0");
       return `term-${n} — alias-a-${n}, alias-b-${n} — platform/func/page-${n}.md`;
     });
-    writeSynonymsOutput(wikiRoot, lines, smallConfig);
+    writeSynonymsOutput(wikiRoot, lines, smallConfig, new Set(lines.map((l) => l.split(" — ")[2])));
 
     const partsDir = resolve(wikiRoot, "platform/synonyms");
     const files = readFileSync(resolve(partsDir, "index.md"), "utf8")
@@ -220,10 +221,57 @@ test("writeSynonymsOutput: the merged single-file order is plain code-unit order
     mkdirSync(resolve(wikiRoot, "platform"), { recursive: true });
     // Under ICU/locale collation "Ä" often sorts adjacent to "A"; under plain code-unit
     // (UTF-16) order every uppercase letter sorts before every lowercase letter.
-    writeSynonymsOutput(wikiRoot, ["ä-term — x — platform/func/a.md", "Z-term — y — platform/func/a.md"], CONFIG);
+    writeSynonymsOutput(wikiRoot, ["ä-term — x — platform/func/a.md", "Z-term — y — platform/func/a.md"], CONFIG, KNOWN);
     const text = readFileSync(resolve(wikiRoot, "platform/synonyms.md"), "utf8");
     const lines = text.split("\n").filter(isSynonymDataLine);
     assert.deepEqual(lines, ["Z-term — y — platform/func/a.md", "ä-term — x — platform/func/a.md"]);
+  } finally {
+    rmSync(wikiRoot, { recursive: true, force: true });
+  }
+});
+
+// --------------------------------------------------------------------------------
+// writeSynonymsOutput / pruneSynonymsOutput: paths of removed pages are dropped
+// --------------------------------------------------------------------------------
+
+test("writeSynonymsOutput: an existing line's path outside knownPaths is dropped, and a line left with no paths is removed", () => {
+  const wikiRoot = mkdtempSync(join(tmpdir(), "kb-synonyms-filter-"));
+  try {
+    mkdirSync(resolve(wikiRoot, "platform"), { recursive: true });
+    const before = new Set(["platform/func/a.md", "platform/func/gone.md", "platform/dev/6.7/b.md"]);
+    writeSynonymsOutput(wikiRoot, ["cart — basket — platform/func/a.md, platform/func/gone.md", "preview — insider — platform/func/gone.md"], CONFIG, before);
+    writeSynonymsOutput(wikiRoot, ["dal — data abstraction layer — platform/dev/6.7/b.md"], CONFIG, KNOWN);
+    const lines = readFileSync(resolve(wikiRoot, "platform/synonyms.md"), "utf8").split("\n").filter(isSynonymDataLine);
+    assert.deepEqual(lines, ["cart — basket — platform/func/a.md", "dal — data abstraction layer — platform/dev/6.7/b.md"]);
+  } finally {
+    rmSync(wikiRoot, { recursive: true, force: true });
+  }
+});
+
+test("pruneSynonymsOutput: re-writes the split form without stale paths, returns the dropped count; a clean or absent output is left untouched", () => {
+  const wikiRoot = mkdtempSync(join(tmpdir(), "kb-synonyms-prune-"));
+  try {
+    mkdirSync(resolve(wikiRoot, "platform"), { recursive: true });
+    assert.equal(pruneSynonymsOutput(wikiRoot, KNOWN, CONFIG), 0);
+    assert.equal(existsSync(resolve(wikiRoot, "platform/synonyms.md")), false, "never creates the output");
+
+    const smallConfig = { sizeLimits: { synonymsMaxBytes: 2000 } } as unknown as PlatformConfig;
+    const lines = Array.from({ length: 60 }, (_, i) => `term-${String(i).padStart(2, "0")} — alias — platform/func/a.md${i % 10 === 0 ? ", platform/func/gone.md" : ""}`);
+    lines.push("insider previews — preview — platform/func/gone.md");
+    writeSynonymsOutput(wikiRoot, lines, smallConfig, new Set(["platform/func/a.md", "platform/func/gone.md"]));
+    assert.ok(existsSync(resolve(wikiRoot, "platform/synonyms/index.md")), "fixture must be in the split form");
+
+    assert.equal(pruneSynonymsOutput(wikiRoot, KNOWN, smallConfig), 7);
+    const partsDir = resolve(wikiRoot, "platform/synonyms");
+    const data = readdirSync(partsDir)
+      .filter((f) => f !== "index.md")
+      .flatMap((f) => readFileSync(resolve(partsDir, f), "utf8").split("\n").filter(isSynonymDataLine));
+    assert.equal(data.length, 60, "the line whose only path was removed is gone");
+    assert.ok(data.every((l) => l.endsWith(" — platform/func/a.md")), "no line still names the removed page");
+
+    const indexBefore = readFileSync(resolve(partsDir, "index.md"), "utf8");
+    assert.equal(pruneSynonymsOutput(wikiRoot, KNOWN, smallConfig), 0, "second run finds nothing to drop");
+    assert.equal(readFileSync(resolve(partsDir, "index.md"), "utf8"), indexBefore);
   } finally {
     rmSync(wikiRoot, { recursive: true, force: true });
   }

@@ -6,70 +6,52 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/gateways/checkout/command-reference.html
 sourceHash: 0bd10ecae672c8d2db9b5f68c8d83b954a210b9b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["remove-payment-method", "remove-shipping-method", "add-cart-error", "add-payment-method", "add-shipping-method", "add-payment-method-extension", "add-shipping-method-extension", "AbstractCheckoutGatewayCommand", "AddCartErrorCommand", "checkout gateway", "gateway commands", "app server response", "cart error"]
-summary: Checkout gateway command names and payloads an app server returns to remove/add payment and shipping methods or add cart errors.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["checkout gateway", "command reference", "remove-payment-method", "remove-shipping-method", "add-cart-error", "paymentMethodTechnicalName", "shippingMethodTechnicalName", "blocking", "cart error", "gateway commands"]
+summary: Checkout gateway command keys and payloads (remove-payment-method, remove-shipping-method, add-cart-error) an app server can return.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Reference of the commands an app's checkout gateway endpoint can return to Shopware. Each command has a `command` key and a `payload` object; Shopware maps the payload onto the command class constructor.
-
-## When to use
-
-When implementing the app-server side of the checkout gateway (manifest `<gateways><checkout>` URL) and you need the exact command keys and payload field names.
+Reference for the commands an app server can return in a Checkout Gateway response, with each command's payload.
 
 ## Key steps / config
 
-Response shape per command:
+Each response entry has the shape `{"command": "<key>", "payload": {...}}`. Shopware builds the command object by passing the payload keys as named constructor arguments, so the keys must match exactly.
 
-```json
-{
-  "commands": [
-    { "command": "remove-payment-method", "payload": { "paymentMethodTechnicalName": "..." } }
-  ]
-}
-```
-
-Documented commands (since 6.6.3.0):
-
-| Command | Payload | Effect |
+| Command | Payload | Since |
 |---|---|---|
-| `remove-payment-method` | `{"paymentMethodTechnicalName": "string"}` | Removes a payment method from the available ones |
-| `remove-shipping-method` | `{"shippingMethodTechnicalName": "string"}` | Removes a shipping method from the available ones |
-| `add-cart-error` | `{"message": "string", "level": int, "blocking": bool}` | Adds a cart error; `level` sets the flash message severity, `blocking` blocks checkout |
+| `remove-payment-method` | `{"paymentMethodTechnicalName": "string"}` | 6.6.3.0 |
+| `remove-shipping-method` | `{"shippingMethodTechnicalName": "string"}` | 6.6.3.0 |
+| `add-cart-error` | `{"message": "string", "level": "int", "blocking": "boolean"}` | 6.6.3.0 |
 
-Additional commands registered in the installed core (not listed on the docs page):
+- `remove-payment-method` / `remove-shipping-method` drop a method from the available payment or shipping methods.
+- `add-cart-error` adds a cart error. `level` sets the severity of the flash message: `0` notice, `10` warning, `20` error. `blocking` decides whether checkout is blocked for the customer. In the installed code, `blocking` defaults to `false` and `level` to `10`.
 
-| Command | Payload |
-|---|---|
-| `add-payment-method` | `{"paymentMethodTechnicalName": "string"}` |
-| `add-shipping-method` | `{"shippingMethodTechnicalName": "string"}` |
-| `add-payment-method-extension` | `{"paymentMethodTechnicalName": "string", "extensionKey": "string", "extensionsPayload": {}}` |
-| `add-shipping-method-extension` | `{"shippingMethodTechnicalName": "string", "extensionKey": "string", "extensionsPayload": {}}` |
+The installed core also registers commands the source page does not list. Their payload keys are the constructor parameters:
 
-For `add-cart-error`, only `message` is mandatory in code: `blocking` defaults to `false` and `level` defaults to `Error::LEVEL_WARNING` (10); `LEVEL_NOTICE` is 0, `LEVEL_ERROR` is 20.
+- `add-payment-method`: `{"paymentMethodTechnicalName"}`
+- `add-shipping-method`: `{"shippingMethodTechnicalName"}`
+- `add-payment-method-extension`: `{"paymentMethodTechnicalName", "extensionKey", "extensionsPayload"}`
+- `add-shipping-method-extension`: `{"shippingMethodTechnicalName", "extensionKey", "extensionsPayload"}`
 
 ## Essential identifiers
 
-- `Shopware\Core\Checkout\Gateway\Command\AbstractCheckoutGatewayCommand` (`createFromPayload()` spreads the payload as named constructor arguments)
+- `remove-payment-method`, `remove-shipping-method`, `add-cart-error`
 - `Shopware\Core\Checkout\Gateway\Command\RemovePaymentMethodCommand`, `RemoveShippingMethodCommand`, `AddCartErrorCommand`
-- `AddPaymentMethodCommand`, `AddShippingMethodCommand`, `AddPaymentMethodExtensionCommand`, `AddShippingMethodExtensionCommand`
-- `Shopware\Core\Checkout\Gateway\Command\Event\CheckoutGatewayCommandsCollectedEvent`
 
 ## Gotchas
 
-- Payload keys must match the constructor parameter names exactly; unknown or missing keys raise an `\Error` that is logged or thrown as an invalid payload.
-- A command without `command` or `payload`, or with an unknown key, is rejected as invalid / handler not found.
+- If a payload key is unknown or missing, the named-argument construction fails. That entry is logged as an invalid payload and skipped.
 
-## Code check (6.7.13.0)
-- confirmed `RemovePaymentMethodCommand::COMMAND_KEY` — value `remove-payment-method`, payload `paymentMethodTechnicalName` — vendor/shopware/core/Checkout/Gateway/Command/RemovePaymentMethodCommand.php:10
-- confirmed `RemoveShippingMethodCommand::COMMAND_KEY` — value `remove-shipping-method`, payload `shippingMethodTechnicalName` — vendor/shopware/core/Checkout/Gateway/Command/RemoveShippingMethodCommand.php:10
-- confirmed `AddCartErrorCommand::COMMAND_KEY` — value `add-cart-error` — vendor/shopware/core/Checkout/Gateway/Command/AddCartErrorCommand.php:11
-- corrected `AddCartErrorCommand::$blocking` — docs: listed as a plain payload field; code gives it default `false` and `level` default `Error::LEVEL_WARNING` — vendor/shopware/core/Checkout/Gateway/Command/AddCartErrorCommand.php:15
-- confirmed `Error::LEVEL_WARNING` — value 10 — vendor/shopware/core/Checkout/Cart/Error/Error.php:26
-- confirmed `AddPaymentMethodCommand::COMMAND_KEY` — `add-payment-method`, missing from docs table — vendor/shopware/core/Checkout/Gateway/Command/AddPaymentMethodCommand.php:10
-- confirmed `AddShippingMethodCommand::COMMAND_KEY` — `add-shipping-method`, missing from docs table — vendor/shopware/core/Checkout/Gateway/Command/AddShippingMethodCommand.php:10
-- confirmed `AddPaymentMethodExtensionCommand::COMMAND_KEY` — `add-payment-method-extension` with `extensionKey`/`extensionsPayload` — vendor/shopware/core/Checkout/Gateway/Command/AddPaymentMethodExtensionCommand.php:10
-- confirmed `AddShippingMethodExtensionCommand::COMMAND_KEY` — `add-shipping-method-extension` — vendor/shopware/core/Checkout/Gateway/Command/AddShippingMethodExtensionCommand.php:10
+## Code check (6.7.15.1)
+- confirmed `RemovePaymentMethodCommand::COMMAND_KEY` — `remove-payment-method`, arg paymentMethodTechnicalName — vendor/shopware/core/Checkout/Gateway/Command/RemovePaymentMethodCommand.php:10
+- confirmed `RemoveShippingMethodCommand::COMMAND_KEY` — `remove-shipping-method`, arg shippingMethodTechnicalName — vendor/shopware/core/Checkout/Gateway/Command/RemoveShippingMethodCommand.php:10
+- confirmed `AddCartErrorCommand::COMMAND_KEY` — `add-cart-error`, args message, blocking=false, level=LEVEL_WARNING — vendor/shopware/core/Checkout/Gateway/Command/AddCartErrorCommand.php:11
 - confirmed `AbstractCheckoutGatewayCommand::createFromPayload()` — `new static(...$payload)` — vendor/shopware/core/Checkout/Gateway/Command/AbstractCheckoutGatewayCommand.php:16
+- confirmed `Error::LEVEL_WARNING` — value 10 (NOTICE 0, ERROR 20) — vendor/shopware/core/Checkout/Cart/Error/Error.php:26
+- confirmed `AddPaymentMethodCommand::COMMAND_KEY` — `add-payment-method` — vendor/shopware/core/Checkout/Gateway/Command/AddPaymentMethodCommand.php:10
+- confirmed `AddShippingMethodCommand::COMMAND_KEY` — `add-shipping-method` — vendor/shopware/core/Checkout/Gateway/Command/AddShippingMethodCommand.php:10
+- confirmed `AddPaymentMethodExtensionCommand::COMMAND_KEY` — `add-payment-method-extension` — vendor/shopware/core/Checkout/Gateway/Command/AddPaymentMethodExtensionCommand.php:10
+- confirmed `AddShippingMethodExtensionCommand::COMMAND_KEY` — `add-shipping-method-extension` — vendor/shopware/core/Checkout/Gateway/Command/AddShippingMethodExtensionCommand.php:10
+- confirmed `CheckoutGatewayException::payloadInvalid()` — construction error logged, entry skipped — vendor/shopware/core/Framework/App/Checkout/Gateway/AppCheckoutGateway.php:146

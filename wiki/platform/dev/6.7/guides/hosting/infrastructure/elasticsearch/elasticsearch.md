@@ -6,36 +6,35 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/infrastructure/elasticsearch/elasticsearch.html
 sourceHash: 2d33607f748e7ac70b5d331eb83cee085614b628
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["SHOPWARE_ES_THROW_EXCEPTION", "SHOPWARE_ES_NGRAM_MIN_GRAM", "SHOPWARE_ES_NGRAM_MAX_GRAM", "es:index", "system:update:finish", "n-gram tokenizer", "split search term", "mysql fallback", "opensearch error handling", "search precision", "fuzzy search"]
-summary: "Shopware Elasticsearch error handling (SHOPWARE_ES_THROW_EXCEPTION, MySQL fallback) and n-gram tuning via SHOPWARE_ES_NGRAM_MIN_GRAM/MAX_GRAM plus reindex."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["SHOPWARE_ES_THROW_EXCEPTION", "SHOPWARE_ES_NGRAM_MIN_GRAM", "SHOPWARE_ES_NGRAM_MAX_GRAM", "es:index", "system:update:finish", "n-gram tokenizer", "split search term", "mysql fallback", "error handling", "search precision", "fuzzy search", "opensearch"]
+summary: Elasticsearch error handling via SHOPWARE_ES_THROW_EXCEPTION (MySQL fallback) and n-gram tuning with SHOPWARE_ES_NGRAM_MIN_GRAM/MAX_GRAM.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/elasticsearch-debugging.md"]
 ---
 ## What it is
 
-Configuration notes for Shopware's Elasticsearch/OpenSearch integration: how exception handling affects fallback behaviour, and how the n-gram tokenizer settings control search precision. Troubleshooting is covered in platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/elasticsearch-debugging.md.
+Operational settings for Shopware's Elasticsearch/OpenSearch integration: how errors are handled (exception vs. MySQL fallback) and how the n-gram tokenizer used for "Split search term" fields is tuned. For troubleshooting see [Debugging and Troubleshooting Elasticsearch](platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/elasticsearch-debugging.md).
 
 ## When to use
 
-- Deciding whether search-server errors should throw or fall back silently in a given environment.
-- Partial-word search matches too much (or too little) on fields using "Split search term".
+Deciding how a production vs. development shop should react to search-server failures, or making search matches fuzzier or stricter.
 
 ## Key steps / config
 
-**Error handling.** Set `SHOPWARE_ES_THROW_EXCEPTION=0` in production and `SHOPWARE_ES_THROW_EXCEPTION=1` in development.
+**Error handling** — set per environment:
 
-- Search server unreachable: with `0`, Shopware falls back to the MySQL-based search; the same applies when product updates in the Administration fail to sync to the search server.
-- System updates (web UI or `bin/console system:update:finish`) may change index mappings and require a reindex; with `0` these expected errors do not block the update.
+- Production: `SHOPWARE_ES_THROW_EXCEPTION=0` — errors are not thrown; Shopware falls back to the default MySQL-based search when the search server is unreachable. The same applies when product updates in the Administration fail to sync to the search server.
+- Development: `SHOPWARE_ES_THROW_EXCEPTION=1` — errors surface as exceptions.
 
-**N-gram settings.** A field marked *searchable* with "Split search term" enabled is indexed and searched with an n-gram tokenizer. Defaults:
+**N-gram settings** — used for searchable fields with the "Split search term" option enabled. Defaults:
 
 ```bash
 SHOPWARE_ES_NGRAM_MIN_GRAM=4
 SHOPWARE_ES_NGRAM_MAX_GRAM=5
 ```
 
-With these, `"shopware"` becomes `shop, hopw, opwa, pwar, ware, shopw, hopwa, opwar, pware`, so searching `"ware"` finds `"shopware"`. Lower values make search fuzzier; higher values make it stricter. After changing them, reindex fully:
+With these, `"shopware"` is tokenized into `["shop", "hopw", "opwa", "pwar", "ware", "shopw", "hopwa", "opwar", "pware"]`, so searching `"ware"` finds `"shopware"`. Lower/raise the values to make matching fuzzier or stricter, then run a full reindex:
 
 ```bash
 bin/console es:index
@@ -49,12 +48,13 @@ bin/console es:index
 
 ## Gotchas
 
-- The installer's default `.env` template writes `SHOPWARE_ES_THROW_EXCEPTION=1`; switch it to `0` for production as recommended here.
-- N-gram changes have no effect until a full reindex.
+- System updates (web UI or `bin/console system:update:finish`) can change index mappings and require a reindex; the resulting expected errors should not block production updates — another reason to keep exceptions disabled there.
+- N-gram changes only take effect after a full reindex.
+- The installer writes `SHOPWARE_ES_THROW_EXCEPTION=1`, so production `.env` files need it set to `0` explicitly.
 
-## Code check (6.7.13.0)
-- confirmed `SHOPWARE_ES_THROW_EXCEPTION` — env var in the installer's default .env template, written as 1 — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:52
-- confirmed `system:update:finish` — core CLI command — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:29
-- unverified `SHOPWARE_ES_NGRAM_MIN_GRAM` — read by shopware/elasticsearch, outside the checked roots
-- unverified `SHOPWARE_ES_NGRAM_MAX_GRAM` — read by shopware/elasticsearch, outside the checked roots
-- unverified `es:index` — command ships in shopware/elasticsearch, outside the checked roots
+## Code check (6.7.15.1)
+- confirmed `SHOPWARE_ES_THROW_EXCEPTION` — installer env template writes `1` by default — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:51
+- confirmed `system:update:finish` — command name of SystemUpdateFinishCommand — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:30
+- unverified `SHOPWARE_ES_NGRAM_MIN_GRAM` — read by the shopware/elasticsearch package, outside the checked roots
+- unverified `SHOPWARE_ES_NGRAM_MAX_GRAM` — shopware/elasticsearch package, out of scope
+- unverified `es:index` — shopware/elasticsearch package, out of scope

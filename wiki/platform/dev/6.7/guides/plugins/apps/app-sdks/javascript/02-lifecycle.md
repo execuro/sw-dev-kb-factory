@@ -1,27 +1,28 @@
 ---
-id: platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/02-lifecycle.md
-title: Lifecycle
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/javascript/02-lifecycle.html
+id: platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/02-lifecycle.md
 sourceHash: 06b07c8772891167a5df3a8f11ba23687b27f07c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app lifecycle", "app server sdk", "javascript app sdk", "app.activated", "app.deactivated", "app.deleted", "webhooks", "manifest.xml", "app.registration.activate", "app.registration.deactivate", "app.registration.delete", "uninstall app"]
-summary: "TypeScript App Server SDK lifecycle: register app.activated/app.deactivated/app.deleted webhooks in manifest.xml and route them to app.registration handlers."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/javascript/02-lifecycle.html
+title: Lifecycle
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["app lifecycle", "app server sdk", "@shopware-ag/app-server-sdk", "app.activated", "app.deactivated", "app.deleted", "app.registration.activate", "app.registration.deactivate", "app.registration.delete", "webhooks", "manifest.xml", "uninstall app"]
+summary: TypeScript App Server SDK lifecycle - app.activated/deactivated/deleted webhooks routed to app.registration activate/deactivate/delete.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Guide for handling app lifecycle events (activate, deactivate, uninstall) in an app backend built with the Shopware App Server SDK in TypeScript, so the backend can keep the shop's app state in its database in sync.
+Second guide of the TypeScript App Server SDK: how the app backend tracks the app's lifecycle state (activated, deactivated, uninstalled) in its own database. Shopware notifies the backend of these changes through webhooks registered in `manifest.xml`.
 
 ## When to use
 
-Your JavaScript/TypeScript app backend stores per-shop state and must react when a shop activates, deactivates or deletes (uninstalls) the app. Builds on the registration setup from the getting-started page.
+An app backend built with `@shopware-ag/app-server-sdk` needs to know when a shop activates, deactivates or uninstalls the app, to keep the stored shop state correct.
 
 ## Key steps / config
 
-1. Register lifecycle webhooks in `manifest.xml`; each `<webhook>` needs `name`, `url` and `event`:
+1. Register one webhook per lifecycle method in `manifest.xml`:
 
 ```xml
 <webhooks>
@@ -31,39 +32,38 @@ Your JavaScript/TypeScript app backend stores per-shop state and must react when
 </webhooks>
 ```
 
-2. Route the webhook paths to the SDK's registration handlers, next to the registration routes:
+2. Route those URLs to the SDK's registration handlers, alongside the registration routes from the getting-started guide (same `AppServer` + `InMemoryShopRepository` setup):
 
-```javascript
-import { AppServer, InMemoryShopRepository } from '@shopware-ag/app-server-sdk'
-// app = new AppServer({ appName, appSecret, authorizeCallbackUrl }, new InMemoryShopRepository())
-if (pathname === '/authorize') return app.registration.authorize(request);
-if (pathname === '/authorize/callback') return app.registration.authorizeCallback(request);
-if (pathname === '/app/activate') return app.registration.activate(request);
-if (pathname === '/app/deactivate') return app.registration.deactivate(request);
-if (pathname === '/app/delete') return app.registration.delete(request);
-return new Response('Not found', { status: 404 });
-```
+| Path | Handler |
+|---|---|
+| `/authorize` | `app.registration.authorize(request)` |
+| `/authorize/callback` | `app.registration.authorizeCallback(request)` |
+| `/app/activate` | `app.registration.activate(request)` |
+| `/app/deactivate` | `app.registration.deactivate(request)` |
+| `/app/delete` | `app.registration.delete(request)` |
 
-3. With these routes the backend is notified of every app state change and can track it in its database.
+Unmatched paths return `new Response('Not found', { status: 404 })`.
 
 ## Essential identifiers
 
-- Webhook events `app.activated`, `app.deactivated`, `app.deleted`
-- Manifest elements `<webhooks>` / `<webhook name url event>`
-- `app.registration.activate(request)`, `app.registration.deactivate(request)`, `app.registration.delete(request)`
-- Routes `/app/activate`, `/app/deactivate`, `/app/delete`
+- Lifecycle methods: `activate`, `deactivate`, `uninstall`
+- Webhook events: `app.activated`, `app.deactivated`, `app.deleted`
+- `<webhook name="..." url="..." event="..."/>` inside `<webhooks>`
+- `app.registration.activate()`, `app.registration.deactivate()`, `app.registration.delete()`
 
 ## Gotchas
 
-- Shopware only sends lifecycle notifications for events you registered as webhooks in the manifest.
-- The `<webhook>` element also accepts an optional `onlyLiveVersion` boolean (default `false`) in the installed manifest schema; the source does not use it.
+- Uninstall is delivered as the `app.deleted` event (handler `delete`), not an `uninstall` event.
+- The `app.deleted` webhook payload carries `keepUserData` (whether the merchant chose to keep app data), and the event is only dispatched to the app being removed.
+- Every `<webhook>` needs `name`, `url` and `event`.
 
-## Code check (6.7.13.0)
-- confirmed `AppActivatedEvent::NAME` — value `app.activated` — vendor/shopware/core/Framework/App/Event/AppActivatedEvent.php:13
-- confirmed `AppDeactivatedEvent::NAME` — value `app.deactivated` — vendor/shopware/core/Framework/App/Event/AppDeactivatedEvent.php:13
-- confirmed `AppDeletedEvent::NAME` — value `app.deleted` — vendor/shopware/core/Framework/App/Event/AppDeletedEvent.php:16
-- confirmed `webhooks` — manifest element holding webhook entries — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:241
-- confirmed `webhook.event` — required attribute, with required `name` and `url` — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:268
-- confirmed `webhook.onlyLiveVersion` — optional boolean, default false — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:269
-- unverified `app.registration.activate` — method of the external npm SDK, outside vendor/shopware
-- unverified `@shopware-ag/app-server-sdk` — npm package, outside vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `app.activated` — `AppActivatedEvent::NAME` — vendor/shopware/core/Framework/App/Event/AppActivatedEvent.php:13
+- confirmed `app.deactivated` — `AppDeactivatedEvent::NAME` — vendor/shopware/core/Framework/App/Event/AppDeactivatedEvent.php:13
+- confirmed `app.deleted` — `AppDeletedEvent::NAME`, fired on uninstall — vendor/shopware/core/Framework/App/Event/AppDeletedEvent.php:16
+- confirmed `AppDeletedEvent::getWebhookPayload()` — payload `keepUserData` — vendor/shopware/core/Framework/App/Event/AppDeletedEvent.php:45
+- confirmed `AppDeletedEvent::isAllowed()` — only the app itself receives it — vendor/shopware/core/Framework/App/Event/AppDeletedEvent.php:52
+- confirmed `webhook` — manifest element inside `webhooks` — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:252
+- confirmed `webhook.name` — required attribute; `url` and `event` also required, `onlyLiveVersion` optional — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:277
+- unverified `app.registration.activate()` — npm SDK method, outside the installed Shopware code
+- unverified `app.registration.delete()` — npm SDK method, outside the installed Shopware code

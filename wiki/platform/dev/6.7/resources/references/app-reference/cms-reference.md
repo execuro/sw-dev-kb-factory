@@ -6,27 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/cms-reference.html
 sourceHash: 5fca70b5cda0d80c3f38a92f66d2dea5c9770776
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cms.xml", "cms-1.0.xsd", "cms block", "shopping experiences", "app cms", "block", "slots", "slot", "config-value", "default-config", "sizing-mode", "CmsExtensions", "layout block"]
-summary: "Reference for an app's Resources/cms.xml: CMS blocks with name, category, labels, slots with config-value entries, and default-config margins/sizing."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cms.xml", "cms-1.0.xsd", "cms block", "app cms block", "shopping experiences", "slot", "config-value", "default-config", "sizing-mode", "text-image", "category", "layout block"]
+summary: Reference for an app's Resources/cms.xml - defining CMS blocks with name, category, labels, slots with config-value entries and default-config.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Annotated example of the `cms.xml` file an app uses to register custom CMS (Shopping Experiences) blocks for the Administration. The installed core loads it from `Resources/cms.xml` in the app and validates it against `cms-1.0.xsd`.
+The reference example for `cms.xml`, the file in which an app declares its own CMS (Shopping Experiences) blocks. Each block gets a technical name, a category, translatable labels, a set of named slots pointing to CMS element types, and a default block configuration.
 
 ## When to use
 
-When an app needs to provide its own layout blocks composed of existing CMS elements (e.g. `image-gallery`, `buy-box`, `youtube-video`) with preset slot configuration and default spacing.
+When an app should add custom blocks to the Administration's CMS layout editor, and you need the exact XML structure the installer validates.
 
 ## Key steps / config
 
-1. Create `Resources/cms.xml` in the app, root `<cms>` with schema location `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Cms/Schema/cms-1.0.xsd` (declared via `xsi:noNamespaceSchemaLocation`).
-2. Add one `<block>` per block inside `<blocks>`, with children in this order: `name`, `category`, one or more `label` (optional `lang`, default `en-GB`), `slots`, `default-config`.
-3. Each `<slot>` needs `name` and `type` attributes (type = CMS element) and a `<config>` with at least one `<config-value name source value>`.
+1. Place the file at `Resources/cms.xml` inside the app; it is read during app install/update and validated against `cms-1.0.xsd`.
+2. Reference the schema: `xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/Framework/App/Cms/Schema/cms-1.0.xsd"`.
+3. Inside `<blocks>`, each `<block>` needs, in this order: `name`, `category`, one or more `label`, `slots`, `default-config`.
 
 ```xml
-<cms>
+<cms xmlns:xsi="..." xsi:noNamespaceSchemaLocation="...cms-1.0.xsd">
   <blocks>
     <block>
       <name>my-first-block</name>
@@ -38,33 +38,35 @@ When an app needs to provide its own layout blocks composed of existing CMS elem
           <config><config-value name="display-mode" source="static" value="cover"/></config>
         </slot>
       </slots>
-      <default-config>margin-top/-bottom/-left/-right, sizing-mode, background-color</default-config>
+      <default-config><margin-top>20px</margin-top><sizing-mode>boxed</sizing-mode></default-config>
     </block>
-  </blocks>
-</cms>
 ```
+
+- `category` must be one of `commerce`, `form`, `image`, `sidebar`, `text`, `text-image`, `video`.
+- `label` without `lang` defaults to `en-GB`; `lang` follows the `xx-XX` pattern (e.g. `de-DE`).
+- Each `slot` requires `name` and `type` (a CMS element type such as `image-gallery`, `buy-box`, `form`, `image`, `youtube-video`) and a `config` with at least one `config-value`.
+- `config-value` requires all three attributes `name`, `source`, `value` (example settings: `display-mode`, `min-height`, `background-color`).
+- `default-config` accepts `margin-bottom`, `margin-top`, `margin-left`, `margin-right`, `sizing-mode` (`boxed` or `full_width`) and `background-color`, all optional.
 
 ## Essential identifiers
 
-- `Resources/cms.xml`, `cms-1.0.xsd`
-- Elements: `blocks`, `block`, `name`, `category`, `label`, `slots`, `slot`, `config`, `config-value`, `default-config`
-- `default-config` children: `margin-bottom`, `margin-top`, `margin-left`, `margin-right`, `sizing-mode`, `background-color`
-- Slot types used in the example: `manufacturer-logo`, `image-gallery`, `buy-box`, `form`, `image`, `youtube-video`
+- `Resources/cms.xml`
+- `cms-1.0.xsd`
+- Elements: `cms`, `blocks`, `block`, `name`, `category`, `label`, `slots`, `slot`, `config`, `config-value`, `default-config`
+- Default-config keys: `margin-bottom`, `margin-top`, `margin-left`, `margin-right`, `sizing-mode`, `background-color`
 
 ## Gotchas
 
-- `category` is an enumeration: `commerce`, `form`, `image`, `sidebar`, `text`, `text-image`, `video`.
-- `sizing-mode` accepts only `boxed` or `full_width`.
-- Block `name` must be unique within `blocks`, and slot `name` unique within a block (XSD unique constraints).
-- `slots` and `default-config` are required elements of a block (all `default-config` children are optional); `config-value` requires all three attributes `name`, `source`, `value`.
+- Block `name` values must be unique within the file, and slot `name` values must be unique within a block — the schema enforces both.
+- The source example prefixes the XML with a `// cms.xml` comment line; that is a filename hint only, not valid XML.
 
-## Code check (6.7.13.0)
-- confirmed `Resources/cms.xml` — file path read by the CMS block lifecycle handler — vendor/shopware/core/Framework/App/Lifecycle/Handler/CmsBlockLifecycleHandler.php:42
-- confirmed `cms-1.0.xsd` — schema used to validate the file — vendor/shopware/core/Framework/App/Cms/CmsExtensions.php:16
-- confirmed `uniqueBlockName` — block names must be unique — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:12
-- confirmed `category` — enumeration commerce/form/image/sidebar/text/text-image/video — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:31
-- confirmed `slots` — required block child with unique slot names — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:60
-- confirmed `default-config` — required block child — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:66
-- confirmed `config-value` — name/source/value attributes all required — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:125
-- confirmed `sizingMode` — allowed values boxed, full_width — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:149
-- confirmed `lang` — label language attribute, default en-GB — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:138
+## Code check (6.7.15.1)
+- confirmed `Resources/cms.xml` — file location read by the CMS block lifecycle handler — vendor/shopware/core/Framework/App/Lifecycle/Handler/CmsBlockLifecycleHandler.php:42
+- confirmed `uniqueBlockName` — block names unique per file — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:12
+- confirmed `category` — enumerated values incl. `text-image` — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:31
+- confirmed `uniqueSlotName` — slot names unique per block — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:61
+- confirmed `default-config` — required element of every block — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:66
+- confirmed `sizing-mode` — optional default-config key — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:81
+- confirmed `config-value` — at least one per slot config, attributes name/source/value required — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:125
+- confirmed `lang` — defaults to en-GB — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:138
+- confirmed `full_width` — second allowed sizing mode besides boxed — vendor/shopware/core/Framework/App/Cms/Schema/cms-1.0.xsd:152

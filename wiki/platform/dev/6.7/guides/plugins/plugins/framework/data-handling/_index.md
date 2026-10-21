@@ -6,45 +6,45 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/data-handling/
 sourceHash: 47ac5a5e066530b1f0ca002ebad2951f1bdbc615
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["data abstraction layer", "DAL", "data handling", "EntityDefinition", "EntityRepository", "MigrationStep", "shopware.entity.definition", "migration", "custom entity", "reading data", "writing data", "database events", "EntityWrittenEvent"]
-summary: Entry point for plugin DAL guides - migrations first, then a custom entity definition, then reading, writing and reacting to database events.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md"]
+codeCheckedAgainst: "6.7.15.1"
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md
+keywords: ["DAL", "data abstraction layer", "data handling", "EntityDefinition", "EntityRepository", "MigrationStep", "shopware.entity.definition", "repository", "criteria", "custom entity", "database migration", "entity events"]
+summary: Entry point for plugin data handling with the DAL - which guide to use for migrations, custom entities, reading, writing and database events.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page for the plugin guides on data handling via Shopware's Data Abstraction Layer (DAL). It routes you to the right guide for the data task at hand and states the order in which custom plugin data is set up.
+Index of the plugin guides on the Data Abstraction Layer (DAL), Shopware's layer for defining entities and reading/writing them through repositories.
 
 ## When to use
 
-You are starting any plugin work that touches the database or DAL entities and need to know which guide to open first.
+You need to store, read or write plugin data, or react to entity changes, and want to know which guide to start with.
 
 ## Key steps / config
 
-For custom plugin data, create the database table first with a migration, then add the DAL entity definition that maps to that table:
+Pick the guide matching the task:
 
-1. Create or change database tables — a migration class extending `Shopware\Core\Framework\Migration\MigrationStep` (implements `getCreationTimestamp()` and `update()`): [Database migrations](platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md).
-2. Add a custom DAL entity for that table — an `EntityDefinition` subclass (implements `getEntityName()` and `defineFields()`) registered with the `shopware.entity.definition` tag: [Adding Custom Complex Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md).
-3. Read data through repositories and criteria (`EntityRepository::search()`): [Reading Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md).
-4. Write data through repositories (`create()`, `update()`, `upsert()`, `delete()`): [Writing Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md).
-5. React to DAL write or entity events (e.g. `<entity>.written`, `<entity>.deleted`): [Using Database Events](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/using-database-events.md).
+- Create or change plugin database tables: [Database migrations](platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md)
+- Map a plugin table to a custom DAL entity: [Adding Custom Complex Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md)
+- Read data through repositories and criteria: [Reading Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/reading-data.md)
+- Write data through repositories: [Writing Data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/writing-data.md)
+- React to DAL write or entity events: [Using Database Events](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/using-database-events.md)
+
+Order for custom plugin data: first create the table with a migration (a `Shopware\Core\Framework\Migration\MigrationStep` subclass), then add the `EntityDefinition` that maps to it. Each registered definition gets a `<entity_name>.repository` service.
 
 ## Essential identifiers
 
-- `MigrationStep`
-- `EntityDefinition`, tag `shopware.entity.definition`
-- `EntityRepository` (service id `<entity_name>.repository`)
-- `EntityWrittenEvent`, `EntityDeletedEvent`
+- `Shopware\Core\Framework\Migration\MigrationStep`
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition`
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`
+- `shopware.entity.definition` (service tag)
 
-## Code check (6.7.13.0)
-- confirmed `MigrationStep` — abstract base for migrations — vendor/shopware/core/Framework/Migration/MigrationStep.php:17
-- confirmed `MigrationStep::getCreationTimestamp()` — abstract — vendor/shopware/core/Framework/Migration/MigrationStep.php:28
-- confirmed `MigrationStep::update()` — abstract — vendor/shopware/core/Framework/Migration/MigrationStep.php:33
-- confirmed `EntityDefinition::getEntityName()` — abstract — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:130
-- confirmed `EntityDefinition::defineFields()` — abstract — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:458
-- confirmed `shopware.entity.definition` — tag collected by the entity compiler pass — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/EntityCompilerPass.php:39
-- confirmed `EntityRepository::search()` — reads with Criteria — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:62
-- confirmed `EntityRepository::upsert()` — write method — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:113
-- confirmed `EntityWrittenEvent` — event class; name is entity name + '.written' — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityWrittenEvent.php:18
-- confirmed `EntityDeletedEvent` — event class; name is entity name + '.deleted' — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityDeletedEvent.php:15
+## Code check (6.7.15.1)
+- confirmed `MigrationStep::update()` — abstract, required in every migration — vendor/shopware/core/Framework/Migration/MigrationStep.php:33
+- confirmed `EntityDefinition::getEntityName()` — abstract, defines the entity/table name — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:143
+- confirmed `shopware.entity.definition` — tag collected to register definitions — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/EntityCompilerPass.php:40
+- confirmed `.repository` — repository service id is `getEntityName() . '.repository'` — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/EntityCompilerPass.php:68

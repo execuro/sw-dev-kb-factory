@@ -6,33 +6,28 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/core/audit-log.html
 sourceHash: be40b887ccd721993a7a3c42c1dc212576c26b5a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["audit log", "b2b suite", "AuditLogEntity", "AuditLogValueDiffEntity", "AuditLogIndexEntity", "AuditLogSearchStruct", "createAuditLog", "fetchList", "b2b_audit_log", "b2b_audit_log_index", "b2b_audit_log_author", "change history", "activity log"]
-summary: "B2B Suite audit log component: b2b_audit_log tables, AuditLogEntity/AuditLogIndexEntity and auditLogService createAuditLog/fetchList usage."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "audit log", "change history", "b2b_audit_log", "b2b_audit_log_index", "b2b_audit_log_author", "AuditLogEntity", "AuditLogValueDiffEntity", "AuditLogIndexEntity", "AuditLogSearchStruct", "createAuditLog", "fetchList"]
+summary: B2B Suite audit log - tables b2b_audit_log, _index, _author; create entries via auditLogService->createAuditLog() and list them via fetchList().
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The B2B Suite ships a general audit log component that any B2B component can use. It stores different log types together with author information (salutation, title, first name, last name, email) and keeps a one-to-many association index so a log entry can be shown on every affected entity (e.g. an order position change shown in the main order view).
+The B2B Suite ships a general audit log that any B2B component can use. It stores different log types plus author information (first name, last name, email) and provides a one-to-many association index linking log entries to affected entities. The source offers a downloadable example plugin (`B2bAcl.zip`).
 
 ## When to use
 
-When a B2B Suite component or a B2B plugin must record who changed what (e.g. changing the quantity of an order position) and list those entries later for a referenced record.
+When a B2B component should record changes (e.g. changing an order position quantity) and show that history on related entities, such as the main order view.
 
 ## Key steps / config
 
-Database structure (flat, three tables):
+Database structure (flat):
 
-```
-b2b_audit_log        id, log_value, log_type, event_date, author_hash
-b2b_audit_log_author hash, salutation, title, firstname, lastname, email
-b2b_audit_log_index  id, audit_log_id, reference_table, reference_id
-```
+- `b2b_audit_log` — `id`, `log_value` (serialized *AuditLogValueEntity*), `log_type`, `event_date`, `author_hash`
+- `b2b_audit_log_author` — `hash`, `salutation`, `title`, `firstname`, `lastname`, `email` (n:1 from `b2b_audit_log` via the author hash)
+- `b2b_audit_log_index` — `id`, `audit_log_id`, `reference_table`, `reference_id` (n:1 to `b2b_audit_log`; associates a log with affected entities)
 
-- `b2b_audit_log` stores the log type and a serialized *AuditLogValueEntity* (`log_value`); many logs point to one author via `author_hash`.
-- `b2b_audit_log_index` links a log to affected entities (`reference_table` + `reference_id`); many index rows per log.
-
-Create a log entry:
+Create an audit log entry:
 
 ```php
 $auditLogValue = new AuditLogValueDiffEntity();
@@ -50,33 +45,29 @@ $orderReferenceIndex->referenceTable = OrderContextRepository::TABLE_NAME;
 $this->auditLogService->createAuditLog($auditLog, $identity, [$orderReferenceIndex]);
 ```
 
-Fetch all logs for a reference:
+Fetch audit logs for a referenced entity:
 
 ```php
 $auditLogSearchStruct = new AuditLogSearchStruct();
 $auditLogs = $this->auditLogService->fetchList(OrderContextRepository::TABLE_NAME, 10, $auditLogSearchStruct);
 ```
 
-The `$identity` passed to `createAuditLog` supplies the author data.
-
 ## Essential identifiers
 
-- `AuditLogEntity` (`logValue`, `logType`)
-- `AuditLogValueDiffEntity` (`newValue`, `oldValue`, `toDatabaseString()`)
-- `AuditLogIndexEntity` (`referenceId`, `referenceTable`)
-- `AuditLogSearchStruct`
-- `auditLogService->createAuditLog()`, `auditLogService->fetchList()`
-- Tables `b2b_audit_log`, `b2b_audit_log_author`, `b2b_audit_log_index`
+- Tables: `b2b_audit_log`, `b2b_audit_log_author`, `b2b_audit_log_index`
+- `AuditLogEntity` (`logValue`, `logType`), `AuditLogValueDiffEntity` (`newValue`, `oldValue`, `toDatabaseString()`), `AuditLogIndexEntity` (`referenceId`, `referenceTable`), `AuditLogSearchStruct`
+- Audit log service: `createAuditLog($auditLog, $identity, $indexes)`, `fetchList($referenceTable, $referenceId, $searchStruct)`
+- `OrderContextRepository::TABLE_NAME` as reference table
 
 ## Gotchas
 
-- The B2B Suite is a separate commercial extension; none of these classes or tables exist in the installed Shopware core, storefront or administration packages, so they could not be checked against code.
+- `log_value` holds a serialized value entity; convert with `toDatabaseString()` before assigning to `logValue`.
+- Author data is not stored per log row but in `b2b_audit_log_author`, referenced by `author_hash`; `createAuditLog()` takes the acting `$identity`.
 
-## Code check (6.7.13.0)
-- unverified `AuditLogEntity` — B2B Suite class, not part of vendor/shopware core/storefront/administration
-- unverified `AuditLogValueDiffEntity` — B2B Suite class, out of scope of the installed packages
-- unverified `AuditLogIndexEntity` — B2B Suite class, out of scope of the installed packages
-- unverified `AuditLogSearchStruct` — B2B Suite class, out of scope of the installed packages
-- unverified `createAuditLog` — B2B Suite audit log service method, out of scope
-- unverified `OrderContextRepository::TABLE_NAME` — B2B Suite repository constant, out of scope
-- unverified `b2b_audit_log` — B2B Suite table, no migration in the installed packages
+## Code check (6.7.15.1)
+- unverified `AuditLogEntity` — B2B Suite plugin class, not in vendor/shopware core, storefront or administration
+- unverified `AuditLogValueDiffEntity` — B2B Suite plugin class, out of the checked vendor roots
+- unverified `AuditLogIndexEntity` — B2B Suite plugin class, out of the checked vendor roots
+- unverified `AuditLogSearchStruct` — B2B Suite plugin class, out of the checked vendor roots
+- unverified `b2b_audit_log` — B2B Suite table, no migration in the checked vendor roots
+- unverified `OrderContextRepository::TABLE_NAME` — B2B Suite constant, out of the checked vendor roots

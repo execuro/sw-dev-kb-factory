@@ -6,44 +6,41 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/rule-system/
 sourceHash: 8c77c2154d2e260f464db9026373458e565124bf
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["rule system", "rule builder", "rules", "conditions", "business rules", "Rule", "RuleDefinition", "availability_rule_id", "promotion rules", "flow builder", "shipping method availability", "payment method availability", "product prices"]
-summary: Overview of Shopware's cross-domain rule system (composable conditions evaluated against cart/order/customer) and the Admin Rule Builder that configures it.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["rule system", "rule builder", "rules", "conditions", "Rule", "RuleScope", "CartRuleScope", "RuleEntity", "RuleAreas", "business conditions", "promotions", "flow builder", "shipping methods", "payment methods"]
+summary: "Shopware's generic rule system: composable business conditions evaluated against a cart, order or customer scope, used by checkout, promotions and Flow Builder."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Shopware's generic **rule system** describes business conditions as composable rules, evaluated against a specific context (cart, order, customer). The **Rule Builder** is the Administration feature for configuring and combining rule conditions visually. In code, a rule is stored as a `rule` entity with `rule_condition` records and evaluated as a tree of `Shopware\Core\Framework\Rule\Rule` objects.
+Shopware's **rule system** describes business conditions as composable rules that are evaluated against a specific context such as a cart, an order or a customer. The **Rule Builder** is the Administration feature on top of it for configuring and combining rule conditions visually.
+
+Example: "If a customer orders a car, a pair of sunglasses will be free in the same order." This combines persistent data (the products "car" and "sunglasses", stored in the database) with runtime state (the whole cart, a line item's quantity). The rule system maps from "car is in the cart" to "sunglasses are free" — adjusting one line item's price and thereby the cart calculation — without embedding that logic in the cart itself.
 
 ## When to use
 
-When business logic must depend on runtime state (cart content, line item quantity, customer) without hard-coding that logic into the cart or other domains — e.g. "if a customer orders a car, a pair of sunglasses is free in the same order". The rule system maps from "`car` is in the cart" to "`sunglasses` are free".
+Rules are cross-domain; among others they are used for:
 
-## Key steps / config
-
-Where rules are consumed (cross-domain):
-
-- **Checkout and cart** — availability and behaviour of shipping methods and payment methods (entity field `availability_rule_id`), and product prices (`product_price.rule_id`), based on the current cart and customer.
-- **Promotions** — applying or restricting promotions by customer, cart content or other criteria (associations `personaRules`, `orderRules`, `cartRules` on the promotion; `discountRules` on promotion discounts).
-- **Flow Builder** — rule conditions controlling flow behaviour (`flow_sequence.rule_id`), based on order, checkout, customer or product context.
-
-The example scenario combines persistent data (products "car" and "sunglasses", stored in the database, independently buyable) with runtime data (the whole cart state, a line item's quantity); the resulting price adjustment of one line item changes the whole cart calculation.
+- **Checkout and cart** — availability and behavior of shipping methods, payment methods and product prices based on the current cart and customer.
+- **Promotions** — applying or restricting promotions by customer, cart content or other criteria.
+- **Flow Builder** — rule conditions that control flow behavior and outcome based on order, checkout, customer or product context.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Rule\Rule`
-- `Shopware\Core\Content\Rule\RuleDefinition` (entity `rule`)
-- `RuleConditionDefinition` (entity `rule_condition`)
-- `availability_rule_id`
-- `shopware.rule.definition` (DI tag for rule condition classes)
+Verified in the installed code (not named in the source page):
 
-## Code check (6.7.13.0)
-- confirmed `Rule` — abstract base of all rule conditions — vendor/shopware/core/Framework/Rule/Rule.php:10
-- confirmed `RuleDefinition::ENTITY_NAME` — entity name `rule` — vendor/shopware/core/Content/Rule/RuleDefinition.php:49
-- confirmed `RuleConditionDefinition::ENTITY_NAME` — entity name `rule_condition` — vendor/shopware/core/Content/Rule/Aggregate/RuleCondition/RuleConditionDefinition.php:26
-- confirmed `availability_rule_id` — shipping method availability rule — vendor/shopware/core/Checkout/Shipping/ShippingMethodDefinition.php:81
-- confirmed `availability_rule_id` — payment method availability rule — vendor/shopware/core/Checkout/Payment/PaymentMethodDefinition.php:76
-- confirmed `rule_id` — product prices per rule — vendor/shopware/core/Content/Product/Aggregate/ProductPrice/ProductPriceDefinition.php:65
-- confirmed `cartRules` — promotion cart rules association — vendor/shopware/core/Checkout/Promotion/PromotionDefinition.php:115
-- confirmed `rule_id` — flow sequence rule — vendor/shopware/core/Content/Flow/Aggregate/FlowSequence/FlowSequenceDefinition.php:66
-- confirmed `shopware.rule.definition` — tagged iterator feeding the condition registry — vendor/shopware/core/Framework/DependencyInjection/rule.xml:7
+- `Shopware\Core\Framework\Rule\Rule` — base condition class; subclasses implement `match(RuleScope $scope): bool` and `getConstraints(): array`.
+- `Shopware\Core\Framework\Rule\RuleScope` — evaluation context (`getContext()`, `getSalesChannelContext()`); `CartRuleScope` for cart evaluation.
+- `Shopware\Core\Content\Rule\RuleEntity` — a stored rule configured in the Rule Builder.
+- `RuleAreas` — areas a rule is used in: `product`, `payment`, `shipping`, `promotion`, `flow`, `flow-condition`, `category`, `landing-page`.
+
+## Code check (6.7.15.1)
+- confirmed `Rule` — abstract base class — vendor/shopware/core/Framework/Rule/Rule.php:10
+- confirmed `Rule::match()` — abstract, takes `RuleScope` — vendor/shopware/core/Framework/Rule/Rule.php:62
+- confirmed `Rule::getConstraints()` — abstract — vendor/shopware/core/Framework/Rule/Rule.php:74
+- confirmed `RuleScope` — abstract evaluation scope — vendor/shopware/core/Framework/Rule/RuleScope.php:11
+- confirmed `CartRuleScope` — cart scope, extends `CheckoutRuleScope` — vendor/shopware/core/Checkout/Cart/Rule/CartRuleScope.php:11
+- confirmed `RuleEntity` — persisted rule entity — vendor/shopware/core/Content/Rule/RuleEntity.php:23
+- confirmed `RuleAreas::PAYMENT_AREA` — `payment` area — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Flag/RuleAreas.php:11
+- confirmed `RuleAreas::PROMOTION_AREA` — `promotion` area — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Flag/RuleAreas.php:13
+- confirmed `RuleAreas::FLOW_AREA` — `flow` area — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Flag/RuleAreas.php:14

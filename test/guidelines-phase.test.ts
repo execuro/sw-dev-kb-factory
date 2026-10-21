@@ -23,6 +23,7 @@ import {
   ingestGuidelineOutput,
   guidelineSizeBudget,
   validateGuidelineCodeCheckSection,
+  extractReadMoreTargets,
   type GuidelineWorkItem,
   type GuidelineCodeContext,
   type PackageRoots,
@@ -928,6 +929,17 @@ for (const [label, line] of [
     }
   });
 }
+
+// A trailing `/**` or `/*` after a `/` is a code-glob target spelled exactly like its
+// sources[].url — it must survive the wrapper strip, while emphasis wrappers still go.
+test("extractReadMoreTargets: a trailing /** or /* glob suffix survives, emphasis wrappers are still stripped", () => {
+  const glob = "code:administration/Resources/app/administration/technical-docs/07-testing/**";
+  assert.deepEqual(extractReadMoreTargets(glob), [glob]);
+  assert.deepEqual(extractReadMoreTargets(`\`${glob}\`.`), [glob]);
+  assert.deepEqual(extractReadMoreTargets("code:core/Framework/*"), ["code:core/Framework/*"]);
+  assert.deepEqual(extractReadMoreTargets("**platform/dev/6.7/foo.md**"), ["platform/dev/6.7/foo.md"]);
+  assert.deepEqual(extractReadMoreTargets("*platform/dev/6.7/foo.md*"), ["platform/dev/6.7/foo.md"]);
+});
 
 // --------------------------------------------------------------------------------
 // This task: more "Read more:" label/target forms, per-section requirement, link

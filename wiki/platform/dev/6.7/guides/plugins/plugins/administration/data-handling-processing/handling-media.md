@@ -1,27 +1,28 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/handling-media.md
-title: Handling Media
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/guides/plugins/plugins/administration/data-handling-processing/handling-media.md
+sourceHash: d5e54ffe425df5a9818b40690ce6db4432663f02
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/data-handling-processing/handling-media.html
-sourceHash: 24e479d6bad45b2cb3a0154aeabe6738dc971a94
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["media", "file upload", "image upload", "sw-media-upload-v2", "sw-upload-listener", "sw-media-preview-v2", "uploadTag", "media-upload-finish", "media-upload-add", "media-upload-fail", "media-upload-cancel", "autoUpload", "media preview", "administration components"]
-summary: Admin media components sw-media-upload-v2, sw-upload-listener (events linked by uploadTag) and sw-media-preview-v2, with their props and events.
-lastBuilt: 2026-09-15
+title: Handling Media
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["sw-media-upload-v2", "sw-upload-listener", "sw-media-preview-v2", "uploadTag", "media-upload-finish", "media-upload-add", "media-upload-fail", "media-upload-cancel", "autoUpload", "file upload", "image upload", "media preview", "administration media"]
+summary: "Admin media components: sw-media-upload-v2 props, sw-upload-listener upload events via shared uploadTag, and sw-media-preview-v2 preview options."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Administration ships components for media handling: `sw-media-upload-v2` to upload images, videos, audio and other files, `sw-upload-listener` to react to upload progress, and `sw-media-preview-v2` to preview a media item.
+Reference for the three Administration components used to upload, track and preview media in a plugin: `sw-media-upload-v2` (upload UI for images, videos, audio and other files), `sw-upload-listener` (turns upload-store events into Vue events) and `sw-media-preview-v2` (renders a preview of a media item).
 
 ## When to use
 
-A plugin's Administration module needs a file/image upload field, needs to act when an upload finishes (e.g. store the media id on an entity), or needs to show a media thumbnail/player.
+When a custom Administration module or component must let the user upload files, react to finished/failed uploads, or display an existing media entity.
 
 ## Key steps / config
 
-Pair an upload component with a listener using the same `uploadTag`:
+1. Place `sw-media-upload-v2` and a `sw-upload-listener` in the template with the **same** `uploadTag` so they communicate. Auto-uploading is a prop of the listener, not of the upload component:
 
 ```html
 <sw-media-upload-v2
@@ -31,54 +32,56 @@ Pair an upload component with a listener using the same `uploadTag`:
     label="My image-upload">
 </sw-media-upload-v2>
 <sw-upload-listener
+    @media-upload-finish="onUploadFinish"
     uploadTag="my-upload-tag"
-    :autoUpload="true"
-    @media-upload-finish="onUploadFinish">
+    :autoUpload="true">
 </sw-upload-listener>
 ```
 
-`sw-media-upload-v2` props (installed defaults):
+2. `sw-media-upload-v2` props:
 
 | Prop | Meaning |
 |---|---|
-| `uploadTag` | required; links to `sw-upload-listener` |
-| `source` | media used for the internal `sw-media-preview-v2` when not multi-select |
-| `variant` | `regular` (default), `compact`, `small` |
-| `allowMultiSelect` | multiple files at once; default `true` |
-| `label` / `helpText` | header text / help text |
-| `defaultFolder` / `targetFolderId` | target folder; `targetFolderId` is the fallback |
-| `fileAccept` | accept attribute of the file input; default `*/*` |
-| `disabled` | disables the component |
+| `uploadTag` | Required; pairs the component with `sw-upload-listener` |
+| `source` | Source for the embedded `sw-media-preview-v2` when not in `allowMultiSelect` mode |
+| `variant` | `regular` (default), `compact` or `small` |
+| `allowMultiSelect` | Multiple files at once (default `true`) |
+| `label` / `helpText` | Header text / header help text |
+| `defaultFolder` | Path where the file is put |
+| `targetFolderId` | Fallback to `defaultFolder` |
+| `fileAccept` | Accept attribute of the `<input>`; default `*/*`, use `image/*` for images only |
+| `disabled` | Disables the whole component |
 
-`sw-upload-listener` props: `uploadTag` (required), `autoUpload` (default `false`; when `true`, added uploads are run immediately instead of emitting `media-upload-add`). Events: `media-upload-add`, `media-upload-finish`, `media-upload-fail`, `media-upload-cancel`.
+3. Listen on `sw-upload-listener` events: `media-upload-add` (upload added), `media-upload-finish` (upload finished), `media-upload-fail` (upload failed), `media-upload-cancel` (upload canceled).
 
-`sw-media-preview-v2` props: `source` (required; media id or path), `showControls` (default `false`), `autoplay` (default `false`), `hideTooltip` (default `true`), `mediaIsPrivate` (default `false`, shows lock symbols).
+4. Preview media separately with `sw-media-preview-v2` (already embedded inside `sw-media-upload-v2`):
+
+```html
+<sw-media-preview-v2 :source="mediaId"></sw-media-preview-v2>
+```
+
+Props: `source` (required; media id or path), `showControls` (video/audio controls), `autoplay`, `hideTooltip` (hide filename tooltip), `mediaIsPrivate` (shows lock symbols).
 
 ## Essential identifiers
 
 - `sw-media-upload-v2`, `sw-upload-listener`, `sw-media-preview-v2`
-- `uploadTag`, `autoUpload`, `fileAccept`, `targetFolderId`, `defaultFolder`
-- `media-upload-add`, `media-upload-finish`, `media-upload-fail`, `media-upload-cancel`
+- Props: `uploadTag`, `allowMultiSelect`, `variant`, `defaultFolder`, `targetFolderId`, `fileAccept`, `autoUpload` (listener)
+- Events: `media-upload-add`, `media-upload-finish`, `media-upload-fail`, `media-upload-cancel`
 
 ## Gotchas
 
-- `uploadTag` must be identical on the upload component and the listener, or no events arrive.
-- The docs put `:autoUpload="true"` on `sw-media-upload-v2`; the installed upload component has no `autoUpload` prop — it belongs on `sw-upload-listener`.
-- The docs state `fileAccept` defaults to `image/*`; the installed default is `*/*`, so set it explicitly to restrict to images.
-- `allowMultiSelect` defaults to `true`; pass `false` for a single file.
+- The `uploadTag` must be identical on `sw-media-upload-v2` and `sw-upload-listener`, otherwise no events arrive.
+- The docs sample sets `:autoUpload="true"` on `sw-media-upload-v2`; that component declares no such prop. In 6.7 `autoUpload` is a `sw-upload-listener` prop (default `false`); when true, the listener runs the uploads itself on `media-upload-add` instead of emitting that event.
+- `allowMultiSelect` defaults to `true`; set it to `false` explicitly for a single-file upload.
 
-## Version notes
-
-- `sw-upload-listener` notification helpers `updateSuccessNotification` / `showErrorNotification` are `@deprecated tag:v6.8.0`, to be replaced by centralized upload state in `sw-upload-status`.
-
-## Code check (6.7.13.0)
-- confirmed `uploadTag` — required String prop on the upload component — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:76
-- corrected `variant` — docs: only `regular`/`compact`; valid values also include `small` — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:58
-- confirmed `allowMultiSelect` — Boolean prop, default true — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:81
-- corrected `fileAccept` — docs: standard is `image/*`; default is `*/*` — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:132
-- corrected `autoUpload` — docs: prop of sw-media-upload-v2; declared only on sw-upload-listener, default false — vendor/shopware/administration/Resources/app/administration/src/app/component/utils/sw-upload-listener/index.js:64
-- confirmed `disabled` — Boolean prop, default false — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:156
-- confirmed `UPLOAD_FINISHED` — emitted as `media-upload-finish` (also add/fail/cancel) — vendor/shopware/administration/Resources/app/administration/src/core/service/api/media.api.service.js:11
-- confirmed `hideTooltip` — preview Boolean prop, default true — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-preview-v2/index.js:100
-- confirmed `mediaIsPrivate` — preview Boolean prop, default false — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-preview-v2/index.js:106
-- deprecated `updateSuccessNotification` — listener helper deprecated for v6.8.0 — vendor/shopware/administration/Resources/app/administration/src/app/component/utils/sw-upload-listener/index.js:155
+## Code check (6.7.15.1)
+- confirmed `uploadTag` — required String prop of sw-media-upload-v2 — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:62
+- confirmed `variant` — validValues compact/regular/small, default regular — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:52
+- confirmed `allowMultiSelect` — Boolean prop, default true — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:67
+- confirmed `fileAccept` — default `*/*` — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:118
+- confirmed `targetFolderId` — String prop, default null — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-upload-v2/index.js:100
+- corrected `autoUpload` — docs: prop of sw-media-upload-v2; actually a sw-upload-listener prop, default false — vendor/shopware/administration/Resources/app/administration/src/app/component/utils/sw-upload-listener/index.js:59
+- confirmed `UPLOAD_ADDED` — emits `media-upload-add` — vendor/shopware/administration/Resources/app/administration/src/core/service/api/media.api.service.js:9
+- confirmed `UPLOAD_FINISHED` — emits `media-upload-finish`; fail/cancel follow at lines 12–13 — vendor/shopware/administration/Resources/app/administration/src/core/service/api/media.api.service.js:11
+- confirmed `source` — required prop of sw-media-preview-v2 — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-preview-v2/index.js:66
+- confirmed `mediaIsPrivate` — prop of sw-media-preview-v2, next to `hideTooltip` — vendor/shopware/administration/Resources/app/administration/src/app/component/media/sw-media-preview-v2/index.js:100

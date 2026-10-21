@@ -6,52 +6,57 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/advanced-configuration/extending-webpack.html
 sourceHash: 6bb7fb0d4af4c44105189a75b990c1b3002589d1
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["webpack", "webpack.config.js", "build configuration", "bundler", "resolve.alias", "webpack-merge", "webpackMerge", "administration build", "vite", "plugins.vite.ts", "module.exports", "alias"]
-summary: Extend the Administration bundler config from a plugin by exporting a function from build/webpack.config.js; result is merged per plugin via webpack-merge.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["webpack.config.js", "webpack", "webpack-merge", "webpackMerge", "build config", "resolve.alias", "BundleConfigGenerator", "administration build", "bundler configuration", "module.exports", "plugin build customization"]
+summary: Extend the Administration webpack config per plugin via build/webpack.config.js exporting a function; merged with the core config, not across plugins.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Shopware 6 Administration documentation describes how a plugin can extend the Webpack (static module bundler) configuration used to build its Administration code. Changing it is normally unnecessary; the page covers the case where you must.
+The Administration build uses webpack as a module bundler. A plugin can extend the webpack configuration with its own file, which is loaded automatically and merged into the Shopware-provided configuration.
 
 ## When to use
 
-Your plugin's Administration sources need extra bundler configuration, for example a `resolve.alias` so imports like `SwagBasicExample/...` resolve to the plugin's `src` directory.
+Rarely needed — for example to add a `resolve.alias` for your plugin's sources or other webpack options the default build does not provide.
 
 ## Key steps / config
 
 1. Create `<plugin root>/src/Resources/app/administration/build/webpack.config.js`.
-2. Export a function (`module.exports = () => { ... }`) that returns a webpack configuration object:
+2. Export a function that returns a webpack configuration object:
 
 ```javascript
 const path = require('path');
+
 module.exports = () => {
     return {
         resolve: {
-            alias: { SwagBasicExample: path.join(__dirname, '..', 'src') }
-        }
+            alias: {
+                SwagBasicExample: path.join(__dirname, '..', 'src'),
+            },
+        },
     };
 };
 ```
 
-3. The file is loaded automatically during the Administration build and merged into the Shopware-provided configuration.
+3. The file is detected per bundle by the bundle config generator (only for active plugins) and its path is passed to the build as the bundle's `administration.webpack` entry; the build merges it with the core configuration using webpack-merge.
 
 ## Essential identifiers
 
-- `<plugin root>/src/Resources/app/administration/build/webpack.config.js`
-- `module.exports` function returning a config object
-- `resolve.alias`
-- webpackMerge (`webpack-merge` library) — performs the merge
+- `src/Resources/app/administration/build/webpack.config.js`
+- `module.exports = () => ({ ... })`
+- `BundleConfigGenerator` (`administration.webpack` / `storefront.webpack` bundle config keys)
 
 ## Gotchas
 
-- Plugin configurations are **not** merged into each other; each plugin's config is merged only with the Shopware base configuration.
-- The installed 6.7 Administration source describes its boot as a Vite application and references both `webpack.config.js` and `plugins.vite.ts` as producers of the dev-mode plugin list (`sw-plugin-dev.json`). Whether a plugin's `build/webpack.config.js` is still honoured by the installed build could not be verified from the Administration `src` tree, since the build tooling lives outside it; check the build setup before relying on this file.
+- Configurations of different plugins are **not** merged into each other — each is merged only with the Shopware configuration.
+- The generator also accepts `build/webpack.config.ts`, `.cts` and `.cjs`; the first match in the order `.ts`, `.cts`, `.js`, `.cjs` wins.
+- Apps only get a `storefront.webpack` entry; an Administration webpack config is collected for plugins/bundles, not apps.
 
-## Code check (6.7.13.0)
-- confirmed `webpack.config.js` — referenced in a comment as source of the dev plugin metadata, alongside `plugins.vite.ts` — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:620
-- confirmed `sw-plugin-dev.json` — plugin list fetched in development mode — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:617
-- confirmed `vite` — application boot documented as "Boot the whole vite application" — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:402
-- unverified `build/webpack.config.js` — plugin config loading lives in Administration build tooling outside the checked `src` root
-- unverified `webpackMerge` — third-party build dependency, out of scope
+## Code check (6.7.15.1)
+- confirmed `BundleConfigGenerator::getWebpackConfig()` — resolves `<component>/build/webpack.config.*` per bundle — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:141
+- confirmed `webpack.config.js` — accepted file name — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:149
+- confirmed `webpack.config.ts` — checked first, then .cts, .js, .cjs — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:147
+- confirmed `'webpack'` — administration entry built from Resources/app/administration — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:80
+- confirmed `generateAppConfigs()` — apps only get a storefront webpack entry — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:98
+- confirmed `$activePlugins` — deactivated plugins are skipped — vendor/shopware/core/Framework/Plugin/BundleConfigGenerator.php:62
+- unverified `webpackMerge` — merge step lives in the Administration build tooling, outside the checked package roots

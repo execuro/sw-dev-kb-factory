@@ -6,41 +6,40 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/themes/assets/
 sourceHash: 82639e15da15fb7e9eef9e659cebfaa6bc73a3f3
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["theme assets", "theme.json", "asset", "images", "fonts", "icon packs", "custom icons", "twig asset function", "scss asset path", "$app-css-relative-asset-path", "theme:compile", "storefront theme"]
-summary: Section index for Shopware theme assets - adding images, fonts and icon packs to a theme and referencing them from Twig and SCSS.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["theme assets", "images", "fonts", "icon packs", "custom icons", "theme.json", "asset", "iconSets", "sw_icon", "twig asset", "scss asset path", "storefront theme"]
+summary: "Section index for theme assets: adding images, fonts and icon packs to a Storefront theme and referencing them from Twig and SCSS."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md", "platform/dev/6.7/guides/plugins/themes/assets/add-icons.md"]
 ---
 ## What it is
 
-Section index for working with assets in a Shopware Storefront theme: adding custom images, fonts and icon packs, and referencing them from Twig templates and SCSS. The section itself contains no instructions; it points to two guides.
+Section index for working with assets in a Shopware Storefront theme: adding custom images, fonts and icon packs, and referencing them in Twig and SCSS.
 
 ## When to use
 
-You are building a theme and need to ship static files with it, or want to use custom icons. Pick the sub-guide:
+You are building a theme and need to ship static files with it, or want to render your own icons with `sw_icon`. Pick the child page that matches the task:
 
-- [Add assets to a Theme](platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md) — where to store assets (via `theme.json` or the plugin way) and how to link them in Twig and SCSS
-- [Add custom icons](platform/dev/6.7/guides/plugins/themes/assets/add-icons.md) — adding icon packs to a theme and rendering them
+- [Add assets to a Theme](platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md) — declare asset directories in `theme.json` (`asset` key), compile them with `bin/console theme:compile`, link them via Twig `asset(..., 'theme')` or SCSS.
+- [Add custom icons](platform/dev/6.7/guides/plugins/themes/assets/add-icons.md) — place SVG icons in icon pack folders or declare custom packs with the `iconSets` key in `theme.json`, then render them with the `sw_icon` tag.
 
 ## Key steps / config
 
-Orientation, as verified in the installed code (details in the add-assets guide):
-
-1. A theme declares its asset directories in the `asset` array of its `theme.json`; relative entries resolve against the theme's `Resources` directory, and the core Storefront theme itself declares `app/storefront/dist/assets`.
-2. `bin/console theme:compile` copies those directories into the public `theme/` directory for the theme.
-3. Twig links to them through the `theme` asset package, e.g. `asset('/assets/your-image.png', 'theme')`.
-4. SCSS references the same folder through the `$app-css-relative-asset-path` variable.
+The two `theme.json` keys covered by this section:
 
 ```json
 {
-  "asset": ["app/storefront/src/assets"]
+  "asset": ["app/storefront/src/assets"],
+  "iconSets": { "custom-icons": "app/storefront/src/assets/icon-pack/custom-icons" }
 }
 ```
 
-## Code check (6.7.13.0)
-- confirmed `asset` — theme.json key read into the plugin configuration's asset paths — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:90
-- confirmed `app/storefront/dist/assets` — asset path declared by the core Storefront theme.json — vendor/shopware/storefront/Resources/theme.json:29
-- confirmed `theme:compile` — console command name — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:19
-- confirmed `$app-css-relative-asset-path` — SCSS variable with default — vendor/shopware/storefront/Resources/app/storefront/src/scss/abstract/variables/_custom.scss:34
-- confirmed `shopware.asset.theme` — theme asset package service — vendor/shopware/storefront/DependencyInjection/theme.php:310
+## Essential identifiers
+
+`theme.json`, `asset`, `iconSets`, `sw_icon`, `theme:compile`
+
+## Code check (6.7.15.1)
+- confirmed `asset` — theme.json key read into the theme's asset paths — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:90
+- confirmed `iconSets` — theme.json key read into the theme's icon sets — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:113
+- confirmed `sw_icon` — Storefront Twig tag — vendor/shopware/storefront/Framework/Twig/TokenParser/IconTokenParser.php:44
+- confirmed `theme:compile` — console command name — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:21

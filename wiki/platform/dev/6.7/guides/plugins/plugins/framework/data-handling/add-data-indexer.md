@@ -5,76 +5,75 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/data-handling/add-data-indexer.html
-sourceHash: 21fdde45c4fae9be6f64008aec2edcff881f9ea3
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["EntityIndexer", "EntityIndexingMessage", "shopware.entity_indexer", "EntityIndexerRegistry::DISABLE_INDEXING", "IteratorFactory", "EntityWrittenContainerEvent", "CustomerIndexerEvent", "MultiInsertQueryQueue", "dal:refresh:index", "data indexer", "indexing", "forceQueue", "precomputed data"]
-summary: Custom DAL EntityIndexer (getName, iterate, update, handle, getTotal, getDecorated), shopware.entity_indexer tag, async forceQueue, and indexer events.
-lastBuilt: 2026-09-15
+sourceHash: 3cd68f20a1caaa5f18eda6a7b5af61af6a6114cd
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["EntityIndexer", "EntityIndexingMessage", "shopware.entity_indexer", "EntityIndexerRegistry::DISABLE_INDEXING", "dal:refresh:index", "EntityWrittenContainerEvent", "IteratorFactory", "CustomerIndexerEvent", "DecorationPatternException", "forceQueue", "data indexer", "indexing", "precalculated data"]
+summary: "Custom DAL EntityIndexer: six required methods, shopware.entity_indexer tag, forceQueue, DISABLE_INDEXING, core indexer events."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/hosting/infrastructure/message-queue.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md", "platform/dev/6.7/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md"]
 ---
 ## What it is
 
-Data indexers precompute expensive values whenever entities are written through the DAL (e.g. the product `cheapest_price` column), so reads stay cheap. A plugin can add its own indexer by extending `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`, or react to the events core indexers already dispatch. Indexing work can run via the [message queue](platform/dev/6.7/guides/hosting/infrastructure/message-queue.md).
+A data indexer precomputes expensive derived data whenever the DAL writes an entity, so reads stay cheap (core example: the `cheapest_price` column of products). This page shows how to add an indexer for your own or existing entities, and how to hook into the events core indexers dispatch instead. Indexers can hand their work to the [message queue](platform/dev/6.7/guides/hosting/infrastructure/message-queue.md).
 
 ## When to use
 
-- You need to maintain derived/denormalised data for your own entity (see [Adding custom complex data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md)) or an existing one.
-- For changes to existing core entities, prefer subscribing to the existing indexer events instead of writing a new indexer.
+- You have a custom entity (see [Adding custom complex data](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-custom-complex-data.md)) with derived values that are expensive to compute on read.
+- To react to changes of existing core entities, prefer subscribing to the indexer event that core already dispatches (e.g. `CustomerIndexerEvent`) over writing another indexer.
 
 ## Key steps / config
 
-1. Create a class extending `EntityIndexer`. The installed base class declares six abstract methods; all must be implemented:
+1. Extend `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`. All six abstract members are mandatory:
 
 ```php
 class ExampleIndexer extends EntityIndexer
 {
     public function getName(): string { return 'swag.basic.example.indexer'; }
-    public function iterate(?array $offset): ?EntityIndexingMessage { /* IteratorFactory->createIterator(..., $offset)->fetch() */ }
+    public function iterate(?array $offset): ?EntityIndexingMessage { /* IteratorFactory->createIterator(...)->fetch() */ }
     public function update(EntityWrittenContainerEvent $event): ?EntityIndexingMessage { /* $event->getPrimaryKeys(CustomerDefinition::ENTITY_NAME) */ }
-    public function handle(EntityIndexingMessage $message): void { /* $message->getData(); write via Connection */ }
+    public function handle(EntityIndexingMessage $message): void { /* write via Connection */ }
     public function getTotal(): int { /* iterator->fetchCount() */ }
     public function getDecorated(): EntityIndexer { throw new DecorationPatternException(static::class); }
 }
 ```
 
-2. Register the service with its dependencies (`Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\IteratorFactory`, e.g. `customer.repository`, `Doctrine\DBAL\Connection`) and tag it `shopware.entity_indexer`. With autoconfiguration enabled, subclasses of `EntityIndexer` receive this tag automatically.
-3. Method roles:
-   - `getName()` — unique name; used by `EntityIndexerRegistry` to route messages.
-   - `iterate()` — full reindex (`bin/console dal:refresh:index` or the Administration's index refresh); returns `new EntityIndexingMessage(array_values($ids), $iterator->getOffset())` or `null` when done.
-   - `update()` — called on DAL writes; filter the event's primary keys as tightly as possible; also usable for synchronous updates.
-   - `handle()` — processes messages from `iterate`/`update`; write with the `Connection` directly rather than the DAL.
-   - `getTotal()` / `getDecorated()` — record count for progress, and the decoration hook (core indexers throw `DecorationPatternException`).
-4. Async handling: `update()` messages are handled synchronously by default. Constructor is `EntityIndexingMessage($data, $offset = null, $context = null, $forceQueue = false, $isFullIndexing = false)`; pass `forceQueue: true` to process via the message queue.
-5. To use the DAL inside an indexer without retriggering indexing: `$context->addState(EntityIndexerRegistry::DISABLE_INDEXING);`.
-
-### Using existing indexer events
-
-Core indexers such as `CustomerIndexer`, `CategoryIndexer`, `LandingPageIndexer`, `ProductIndexer`, `ProductStreamIndexer`, `PromotionIndexer`, `RuleIndexer`, `MediaIndexer`, `MediaFolderIndexer`, `MediaFolderConfigurationIndexer`, `SalesChannelIndexer` dispatch events in `handle()`. Subscribe (tag `kernel.event_subscriber`) to e.g. `Shopware\Core\Checkout\Customer\Event\CustomerIndexerEvent`, read `getIds()`, and batch writes with `Shopware\Core\Framework\DataAbstractionLayer\Doctrine\MultiInsertQueryQueue` (`addInsert('log_entry', [...])`, then `execute()`).
+2. Register the service with `->tag('shopware.entity_indexer')`; the guide injects `service(IteratorFactory::class)`, `service('customer.repository')`, `service(Connection::class)`. Core also autoconfigures this tag for every `EntityIndexer` subclass.
+3. Member roles:
+   - `getName()`: unique name; `EntityIndexerRegistry` uses it to route messages to the indexer.
+   - `getTotal()`: record count, used for progress output of `bin/console dal:refresh:index`.
+   - `iterate()`: full reindex (`dal:refresh:index` or the Administration "update indexes" action). Use `Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\IteratorFactory` with the offset to batch ids; return `null` when done.
+   - `update()`: called on DAL writes; return `new EntityIndexingMessage(array_values($ids), null, $event->getContext())`, or `null` if nothing matches. Filter as tightly as possible (the event can be filtered by changed columns). Also usable for data that must change synchronously.
+   - `handle()`: processes messages from `iterate`/`update`. Write with the DBAL `Connection`, not the DAL.
+4. Async handling: messages from `update()` are handled synchronously by default. Pass `forceQueue: true` (4th constructor argument of `EntityIndexingMessage`) to push them onto the message queue.
+5. DAL writes inside an indexer re-trigger `EntityWrittenContainerEvent` and can loop forever. If you must use the DAL, add the context state `EntityIndexerRegistry::DISABLE_INDEXING` (`$context->addState(...)`) before returning the message.
+6. Event alternative: register an `EventSubscriberInterface` (tag `kernel.event_subscriber`) on e.g. `CustomerIndexerEvent`, read `getIds()`, and batch inserts with `Shopware\Core\Framework\DataAbstractionLayer\Doctrine\MultiInsertQueryQueue` (`addInsert()` then `execute()`).
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`
-- `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexingMessage`
+- `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexingMessage` (`$forceQueue`)
 - `EntityIndexerRegistry::DISABLE_INDEXING`
-- `Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent`
-- `Shopware\Core\Framework\DataAbstractionLayer\Dbal\Common\IteratorFactory`
-- `shopware.entity_indexer` tag, `dal:refresh:index`
-- `CustomerIndexerEvent`, `MultiInsertQueryQueue`
+- `shopware.entity_indexer` tag
+- `bin/console dal:refresh:index`
+- `EntityWrittenContainerEvent::getPrimaryKeys()`
+- `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`
+- `Shopware\Core\Checkout\Customer\Event\CustomerIndexerEvent`
+- Core indexers that dispatch events: `CustomerIndexer`, `CategoryIndexer`, `LandingPageIndexer`, `ProductIndexer`, `ProductStreamIndexer`, `PromotionIndexer`, `RuleIndexer`, `MediaIndexer`, `MediaFolderIndexer`, `MediaFolderConfigurationIndexer`, `SalesChannelIndexer`
 
 ## Gotchas
 
-- Writing through the DAL in `handle()` or an indexer-event subscriber emits `EntityWrittenContainerEvent` again and can loop forever — use `Connection` (also faster) or `DISABLE_INDEXING`. See the ADR [when to use plain SQL or the DAL](platform/dev/6.7/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.md).
-- The docs' example only implements `getName`, `iterate($offset)`, `update`, `handle`; the installed base class also requires `getTotal()` and `getDecorated()`, and `iterate` is typed `?array $offset`.
-- The docs list a `BreadcrumpIndexer`; no such class exists in the installed code.
+- Writing through the DAL in `handle()` or in an indexer-event subscriber dispatches new written events and causes an infinite loop; use the `Connection` directly (also faster). See the ADR [when to use plain SQL or the DAL](platform/dev/6.7/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.md).
+- A non-decorating indexer must still implement `getDecorated()` and throw `DecorationPatternException`.
+- In 6.7.15.1 `EntityIndexingMessage` has a fifth constructor argument, `isFullIndexing` (default `false`), that the guide does not mention.
 
-## Code check (6.7.13.0)
-- corrected `EntityIndexer::iterate()` — docs: untyped `iterate($offset)`; signature is `iterate(?array $offset)` — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:23
-- corrected `EntityIndexer::getTotal()` — docs: not mentioned; abstract, required — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:37
-- corrected `EntityIndexer::getDecorated()` — docs: not mentioned; abstract, required — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:39
-- confirmed `EntityIndexer::getName()` — abstract — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:15
-- confirmed `EntityIndexingMessage::$forceQueue` — 4th ctor param, default false — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexingMessage.php:31
-- confirmed `shopware.entity_indexer` — autoconfigured for EntityIndexer subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:118
-- confirmed `EntityIndexerRegistry::DISABLE_INDEXING` — context state 'disable-indexing' — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexerRegistry.php:31
-- confirmed `dal:refresh:index` — RefreshIndexCommand name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:22
-- confirmed `CustomerIndexerEvent` — exists — vendor/shopware/core/Checkout/Customer/Event/CustomerIndexerEvent.php:10
-- absent `BreadcrumpIndexer` — no class of this name in the installed code
+## Code check (6.7.15.1)
+- confirmed `EntityIndexer` — abstract base with abstract getName/iterate/update/handle/getTotal/getDecorated — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:9
+- confirmed `EntityIndexer::getDecorated()` — abstract, so every indexer must declare it — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:39
+- confirmed `EntityIndexingMessage::$forceQueue` — 4th constructor parameter, default false — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexingMessage.php:31
+- confirmed `EntityIndexingMessage::$isFullIndexing` — additional 5th parameter, default false — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexingMessage.php:32
+- confirmed `EntityIndexerRegistry::DISABLE_INDEXING` — context state value 'disable-indexing' — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexerRegistry.php:32
+- confirmed `forceQueue()` — registry queues a message when the queue state or forceQueue is set — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexerRegistry.php:286
+- confirmed `shopware.entity_indexer` — tag, also autoconfigured for EntityIndexer subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:119
+- confirmed `dal:refresh:index` — console command name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:23
+- confirmed `CustomerIndexerEvent` — dispatched in CustomerIndexer::handle() — vendor/shopware/core/Checkout/Customer/DataAbstractionLayer/CustomerIndexer.php:105
+- confirmed `IteratorFactory` — class exists at the documented namespace — vendor/shopware/core/Framework/DataAbstractionLayer/Dbal/Common/IteratorFactory.php:17

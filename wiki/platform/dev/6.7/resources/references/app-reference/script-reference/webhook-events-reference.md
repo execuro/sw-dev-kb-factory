@@ -1,98 +1,73 @@
 ---
-id: platform/dev/6.7/resources/references/app-reference/script-reference/webhook-events-reference.md
-title: Webhook Event Reference
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/resources/references/app-reference/script-reference/webhook-events-reference.md
+sourceHash: 7cbb99fb4b6723ae17c55d8008fd7ebf980a1b1f
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/script-reference/webhook-events-reference.html
-sourceHash: 1b253d0971859e73f019185d8e949e60d1f9dbc0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["webhooks", "app webhook events", "permissions", "payload", "checkout.order.placed", "product.written", "entity written deleted events", "app.installed", "app.system_heartbeat", "app.config.changed", "consent.backend_data.accepted", "media.uploaded", "shopware.updated", "state_enter"]
-summary: "App webhook event names with required ACL permissions and payload shapes: business events, state transitions, entity written/deleted, app lifecycle, consent."
-lastBuilt: 2026-09-15
+title: Webhook Event Reference
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["webhook events", "app webhooks", "checkout.order.placed", "state_enter.order.state.open", "product.written", "app.system_heartbeat", "app.config.changed", "consent.backend_data.accepted", "document.generation.completed", "media.uploaded", "event permissions", "webhook payload", "Hookable"]
+summary: Table of webhook event names an app can subscribe to in 6.7, with the ACL permission each needs and its payload shape.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The list of events an app can subscribe to via webhooks, with the ACL permission the app needs to receive each one and the shape of the payload delivered.
+A lookup table of every event name a Shopware app can register a webhook for, the permission (ACL privilege) the app must hold to receive it, and the shape of the payload delivered. It covers business events, order state-machine transitions, entity write/delete events and app-system lifecycle events.
 
 ## When to use
 
-Use when registering webhooks in an app manifest: to pick the exact event name, know which `<entity>:read` permission the app must request, and what keys the payload contains.
+When declaring webhooks in an app manifest and you need the exact event name, the `<entity>:read` permission to request, or the keys the payload carries.
 
 ## Key steps / config
 
-### Business events
+1. Pick the event name from the groups below.
+2. Request the listed permission in the app's permissions, otherwise the event is not delivered to the app.
+3. Expect the payload shape shown for the group.
 
-| Event | Permissions | Payload keys |
-|---|---|---|
-| `checkout.customer.before.login` | - | `email` |
-| `checkout.customer.deleted` | - | `customer` |
-| `checkout.customer.login` | `customer:read` | `entity`, `contextToken` |
-| `checkout.customer.logout`, `checkout.customer.register`, `checkout.customer.guest_register` | `customer:read` | `entity` |
-| `checkout.customer.double_opt_in_registration`, `checkout.customer.double_opt_in_guest_order` | `customer:read` | `entity`, `confirmUrl` |
-| `checkout.order.placed` | `order:read` | `entity` (`order`) |
-| `checkout.order.payment_method.changed` | `order:read` `order_transaction:read` | `entity` (`order_transaction`) |
-| `customer.group.registration.accepted` / `.declined` | `customer:read` `customer_group:read` | `entity` |
-| `customer.password.changed` | `customer:read` | `entity`, `shopName` |
-| `customer.recovery.request` | `customer_recovery:read` `customer:read` | `entity`, `resetUrl`, `shopName` |
-| `user.recovery.request` | `user_recovery:read` | `entity`, `resetUrl` |
-| `contact_form.send` | - | `contactFormData` |
-| `review_form.send` | `product:read` | `reviewFormData`, `entity` |
-| `revocation_request.sent` | - | `revocationRequestFormData` |
-| `mail.after.create.message` | - | `data`, `message` |
-| `mail.before.send` | - | `data`, `templateData` |
-| `mail.sent` | - | `subject`, `contents`, `recipients` |
-| `newsletter.confirm`, `newsletter.unsubscribe` | `newsletter_recipient:read` | `entity` |
-| `newsletter.register` | `newsletter_recipient:read` | `entity`, `url` |
-| `product_export.log` | - | `name` |
+**Business events** (payload usually `{"entity":"<name>"}`):
+- Customer: `checkout.customer.before.login` (no permission, payload `{"email":"string"}`), `checkout.customer.login`, `checkout.customer.logout`, `checkout.customer.register`, `checkout.customer.guest_register`, `checkout.customer.deleted`, `checkout.customer.double_opt_in_guest_order`, `checkout.customer.double_opt_in_registration` — all `customer:read`. `customer.password.changed` adds `shopName`.
+- Order: `checkout.order.placed` (`order:read`); `checkout.order.payment_method.changed` (`order:read` `order_transaction:read`, entity `order_transaction`).
+- Customer group: `customer.group.registration.accepted` / `.declined` (`customer:read` `customer_group:read`).
+- Forms and mail, no permission: `contact_form.send` (`contactFormData`), `revocation_request.sent` (`revocationRequestFormData`), `mail.sent` (`subject`, `recipients`), `product_export.log` (`name`). `review_form.send` needs `product:read` (`reviewFormData`, `entity`).
+- Newsletter: `newsletter.confirm`, `newsletter.register`, `newsletter.unsubscribe` (`newsletter_recipient:read`).
+- Documents, no permission: `document.generation.completed` (`documentId`, `documentType`, `documentNumber`, `orderId`, `orderVersionId`) and `document.generation.deleted` (`documentId`, `documentNumber`, `deletedAt`, `orderId`, `orderVersionId`).
 
-### State transitions
+**State machine events** — `state_enter.<machine>.state.<state>` and `state_leave.<machine>.state.<state>` for machines `order`, `order_delivery`, `order_transaction`, `order_transaction_capture`, `order_transaction_capture_refund`. All need `order:read` and carry `{"entity":"order"}`. Examples: `state_enter.order_transaction.state.paid`, `state_leave.order_delivery.state.shipped`.
 
-`state_enter.<machine>.state.<state>` and `state_leave.<machine>.state.<state>` for `order`, `order_delivery`, `order_transaction`, `order_transaction_capture`, `order_transaction_capture_refund` (e.g. `state_enter.order_transaction.state.paid`). All require `order:read`; payload `{"entity":"order"}`.
-
-### Entity written/deleted events
-
-`<entity>.written` and `<entity>.deleted` for `sales_channel`, `sales_channel_domain`, `category`, `media`, `product`, `product_price`, `customer`, `customer_address`, `document`, `order`, `order_address`. Permission: `<entity>:read`. Payload:
+**Entity events** — `<entity>.written` and `<entity>.deleted` for `sales_channel`, `sales_channel_domain`, `category`, `media`, `product`, `product_price`, `customer`, `customer_address`, `order`, `order_address`, `document`; permission `<entity>:read`:
 
 ```json
-{"entity": "product", "operation": "update insert", "primaryKey": "array string", "payload": "array"}
+{"entity":"product","operation":"update insert","primaryKey":"array string","payload":"array"}
 ```
 
-(`operation` is `deleted` for `.deleted` events.)
+(`operation` is `deleted` for `.deleted`.)
 
-### System, app lifecycle and consent (no payload listed)
-
-- `media.uploaded` (`media:read`), `shopware.updated`
-- `app.activated`, `app.deactivated`, `app.deleted`, `app.installed`, `app.updated`
-- `app.permissions.updated` — lists currently accepted permissions after grant/revoke
-- `app.config.changed` (`system_config:read`)
-- `app.system_heartbeat` — recurring task signalling the system is up
-- `consent.backend_data.accepted` / `.revoked` (`consent:backend_data:read`), `consent.product_analytics.accepted` / `.revoked` (`consent:product_analytics:read`)
+**App-system events** (no documented payload): `media.uploaded` (`media:read`), `app.activated`, `app.deactivated`, `app.deleted`, `app.installed`, `app.updated`, `app.permissions.updated`, `shopware.updated`, `app.config.changed` (`system_config:read`), `app.system_heartbeat` (recurring "system is up" signal), `consent.backend_data.accepted` / `.revoked` (`consent:backend_data:read`), `consent.product_analytics.accepted` / `.revoked` (`consent:product_analytics:read`).
 
 ## Essential identifiers
 
-- `checkout.order.placed`, `checkout.customer.login`
-- `product.written`, `order.written`, `customer.deleted`
-- `app.installed`, `app.permissions.updated`, `app.config.changed`, `app.system_heartbeat`
+- `checkout.order.placed`, `checkout.customer.login`, `checkout.customer.before.login`
+- `state_enter.*` / `state_leave.*` order state events
+- `<entity>.written` / `<entity>.deleted`
+- `app.system_heartbeat`, `app.config.changed`, `app.permissions.updated`, `shopware.updated`
 - `consent.backend_data.accepted`, `consent.product_analytics.revoked`
+- `document.generation.completed`, `document.generation.deleted`, `revocation_request.sent`
 
 ## Gotchas
 
-- An app without the listed read permission does not receive the event.
-- Consent events are generated per registered consent definition: pattern `consent.<name>.accepted|revoked` with privilege `consent:<name>:read`.
+- Many rows have no description in the source (`__EMPTY__`); the event name is the only documentation.
+- `checkout.customer.before.login` and the app/document events need no permission; all entity-related events need the matching `:read` privilege.
 
-## Version notes
-
-- The docs also list `document.generation.completed` (document generated/uploaded; payload `documentId`, `documentType`, `documentNumber`, `orderId`, `orderVersionId`) and `document.generation.deleted`; neither event name exists in the installed 6.7.13.0.
-
-## Code check (6.7.13.0)
-- absent `document.generation.completed` — not found in the installed code; newer than 6.7.13.0
-- absent `document.generation.deleted` — not found in the installed code; newer than 6.7.13.0
-- confirmed `app.config.changed` — `SystemConfigChangedHook::EVENT_NAME` — vendor/shopware/core/System/SystemConfig/Event/SystemConfigChangedHook.php:16
-- confirmed `app.system_heartbeat` — `SystemHeartbeatEvent::NAME` — vendor/shopware/core/Framework/App/Event/SystemHeartbeatEvent.php:16
+## Code check (6.7.15.1)
+- confirmed `checkout.customer.before.login` — `CustomerBeforeLoginEvent::EVENT_NAME` — vendor/shopware/core/Checkout/Customer/Event/CustomerBeforeLoginEvent.php:26
+- confirmed `document.generation.completed` — `DocumentGeneratedEvent::EVENT_NAME` — vendor/shopware/core/Checkout/DocumentV2/Event/DocumentGeneratedEvent.php:19
+- confirmed `document.generation.deleted` — `DocumentDeletedEvent::EVENT_NAME` — vendor/shopware/core/Checkout/DocumentV2/Event/DocumentDeletedEvent.php:25
+- confirmed `revocation_request.sent` — `RevocationRequestEvent::EVENT_NAME` — vendor/shopware/core/Content/RevocationRequest/Event/RevocationRequestEvent.php:24
+- confirmed `customer.password.changed` — `CustomerPasswordChangedEvent::EVENT_NAME` — vendor/shopware/core/Checkout/Customer/Event/CustomerPasswordChangedEvent.php:29
+- confirmed `Hookable::HOOKABLE_EVENTS` — app-system events incl. `media.uploaded`, `app.system_heartbeat`, `app.config.changed` — vendor/shopware/core/Framework/Webhook/Hookable.php:21
+- confirmed `Hookable::HOOKABLE_EVENTS_PRIVILEGES` — `media:read` for `media.uploaded`, `system_config:read` for `app.config.changed` — vendor/shopware/core/Framework/Webhook/Hookable.php:47
 - confirmed `app.permissions.updated` — `AppPermissionsUpdated::NAME` — vendor/shopware/core/Framework/App/Event/AppPermissionsUpdated.php:16
-- confirmed `media.uploaded` — `MediaUploadedEvent::EVENT_NAME` — vendor/shopware/core/Content/Media/Event/MediaUploadedEvent.php:20
-- confirmed `shopware.updated` — `UpdatePostFinishEvent::EVENT_NAME` — vendor/shopware/core/Framework/Update/Event/UpdatePostFinishEvent.php:14
-- confirmed `consent.%s.accepted` — per-consent event with `consent:<name>:read` privilege — vendor/shopware/core/System/Consent/Event/ConsentHookableEventDescriber.php:47
-- confirmed `revocation_request.sent` — `RevocationRequestEvent::EVENT_NAME` — vendor/shopware/core/Content/RevocationRequest/Event/RevocationRequestEvent.php:21
-- confirmed `checkout.order.placed` — `CheckoutOrderPlacedEvent::EVENT_NAME` — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:29
+- confirmed `consent.backend_data.accepted` — built as `consent.%s.accepted` / `consent.%s.revoked` — vendor/shopware/core/System/Consent/Event/ConsentHookableEventDescriber.php:47
+- confirmed `HookableEventCollector::getEntityWrittenEventNamesWithPrivileges()` — emits `<entity>.written`/`.deleted` with `<entity>:read` — vendor/shopware/core/Framework/Webhook/Hookable/HookableEventCollector.php:72

@@ -6,19 +6,20 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/deployments/deployment-helper/
 sourceHash: b9e863220bbf376cb2fca806edcdb95de0824ef9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["deployment helper", "shopware/deployment-helper", "shopware-deployment-helper run", "system:install", "system:update:finish", "--skip-theme-compile", "--skip-assets-install", "shopware-cli project ci", "PostDeploy", "maintenance mode", "deploy-time tasks", "install or update detection", "container deployment", "deployer sftp"]
-summary: Deployment Helper (shopware/deployment-helper) - run command detecting install vs update, execution flow, maintenance mode scope, CI/deploy split.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/configuration.md", "platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/environment.md", "platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/troubleshooting.md", "platform/dev/6.7/products/tools/cli/project-commands/build.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware/deployment-helper", "shopware-deployment-helper run", "system:install", "system:update:finish", "shopware-cli project ci", "--skip-theme-compile", "--skip-assets-install", "PostDeploy", "deployment.maintenance.enabled", "deploy tool", "install or update", "maintenance mode", "zero-downtime deployment"]
+summary: shopware/deployment-helper runs deploy-time steps; `run` detects install vs update and manages extensions, themes and one-time tasks.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/troubleshooting.md", "platform/dev/6.7/products/tools/cli/project-commands/build.md", "platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/environment.md", "platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/configuration.md"]
 ---
 ## What it is
 
-The Deployment Helper (`shopware/deployment-helper`) is a standalone, Shopware-version-independent PHP tool installed via Composer that runs the deploy-time steps after code is on the server (or, in containers, against the new source before traffic switches). Its `run` command detects whether Shopware is installed and performs a fresh install or an update. It complements, not replaces, the CI build done by Shopware CLI `project ci`.
+The [Deployment Helper](https://github.com/shopware/deployment-helper) is a standalone PHP tool installed via Composer. It works independently of the Shopware version and runs the deploy-time steps after code reaches the server, or against new source code in a container before traffic switches over. It does not replace the CI build (`shopware-cli project ci`); it complements it. Its single `run` command detects whether Shopware is installed and either installs or updates it.
 
 ## When to use
 
-When scripting deployments of a Shopware project (bare-metal, SFTP/Deployer, or container init job) and you want one command that installs/updates Shopware, manages extensions, compiles themes and runs one-time tasks.
+- You deploy a pre-built Shopware artifact and need one command to install or update Shopware, manage plugins and apps, compile themes, and run one-time tasks.
+- Container deployments (init container or second container), SFTP uploads and Deployer pipelines.
 
 ## Key steps / config
 
@@ -29,48 +30,48 @@ composer require shopware/deployment-helper
 vendor/bin/shopware-deployment-helper run
 ```
 
-Typical pipeline (build once, deploy the artifact):
+Typical two-phase pipeline:
 
 ```bash
-shopware-cli project ci .     # CI: dependencies, assets, theme
+# CI build: dependencies, assets, compiled theme
+shopware-cli project ci .
+# Deploy: consume the artifact, do not rebuild assets
 vendor/bin/shopware-deployment-helper run --skip-theme-compile --skip-assets-install
 ```
 
-Only pass `--skip-theme-compile` / `--skip-assets-install` if the build really produced them.
+Pass `--skip-theme-compile` or `--skip-assets-install` only if the build actually produced the theme or the assets.
 
-What `run` does:
+Before any step, the helper waits for the database: up to 10 retries with a one-second pause (`MySQLFactory` in the helper repo). It then checks the install state. Shopware counts as installed when the `system_config` table exists and there is at least one user and one sales channel.
 
-1. Waits for the database server (up to 10 retries, 1 s apart).
-2. Detects installation: `system_config` table present, at least one user and one sales channel.
-3. Fresh install: pre-install hooks → `system:install` → one admin user (from env vars) → one Storefront sales channel, default Storefront theme, first-run wizard disabled → install/activate all plugins and apps (unless overridden) → post-install hooks.
-4. Update: pre-update hooks → maintenance mode on (if configured) → `system:update:finish` only if the Shopware version changed → refresh/install/update/deactivate/remove extensions → theme refresh and compile (unless skipped) → one-time tasks → post-update hooks → maintenance mode off.
-5. Dispatches the PostDeploy event; listeners: cache clear (if configured), Fastly VCL update (if configured), usage data consent, staging setup (if enabled), Platform.sh tasks. Then `post` hooks run.
+**Fresh install flow:** pre-install hooks → `system:install` → create an admin user from env vars → create a Storefront sales channel and set the default theme → disable the first-run wizard → install and activate plugins and apps (unless overridden) → post-install hooks → PostDeploy event.
 
-Deployment models: in containers, prepare the image with [`project ci`](platform/dev/6.7/products/tools/cli/project-commands/build.md) and run the helper in a second or init container; with SFTP/Deployer, run `project ci` on the CI server, upload, then run the helper on the server.
+**Update flow:** pre-update hooks → enable maintenance mode (if configured) → `system:update:finish` (migrations run only if the Shopware version changed; a redeploy of the same version skips them) → refresh, install, update, deactivate or remove extensions → refresh and compile themes (unless skipped) → one-time tasks → post-update hooks → disable maintenance mode → PostDeploy event.
 
-Next reads: [environment](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/environment.md), [YAML configuration](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/configuration.md), [troubleshooting](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/troubleshooting.md).
+**PostDeploy listeners:** clear the cache (if configured), update the Fastly VCL (if configured), set usage data consent, run the staging setup (if enabled), and run Platform.sh-specific tasks. Post hooks run after them.
+
+**Maintenance mode** (`deployment.maintenance.enabled: true`) is toggled only around `system:update:finish`. It is enabled first, then the cache is cleared, the updates run, maintenance is disabled, and the cache is cleared again. It affects only the Storefront and is set per sales channel. `/admin/` stays reachable.
+
+Related pages: [environment](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/environment.md), [store auth](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/store.md), [extensions](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/extensions.md), [YAML configuration](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/configuration.md), [one-time tasks](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/one-time-tasks.md), [staging](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/staging.md), [hosting](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/hosting.md), [reference](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/reference.md), [troubleshooting](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/troubleshooting.md), [Shopware CLI project ci](platform/dev/6.7/products/tools/cli/project-commands/build.md).
 
 ## Essential identifiers
 
-- `shopware/deployment-helper`, `vendor/bin/shopware-deployment-helper run`
-- `--skip-theme-compile`, `--skip-assets-install`
+- `shopware/deployment-helper` (Composer package)
+- `vendor/bin/shopware-deployment-helper run`, `--skip-theme-compile`, `--skip-assets-install`
 - `system:install`, `system:update:finish`
 - `deployment.maintenance.enabled`
+- `shopware-cli project ci`
 
 ## Gotchas
 
-- Maintenance mode (`deployment.maintenance.enabled: true`) is toggled only around `system:update:finish`, with a cache clear after enabling and after disabling. It affects only the Storefront, per sales channel; `/admin/` stays reachable.
-- Redeploying the same Shopware version skips migrations entirely.
-- A database with schema but no user or sales channel is treated as not installed, so `system:install` runs again.
+- If the schema exists but there is no user or no sales channel, the helper treats Shopware as not installed and runs the install flow.
+- The helper sits outside core on purpose: it runs against a stable installed Shopware, can be released independently of core, reuses Shopware's DB libraries, and reads the database directly instead of relying on console command output.
 
-## Code check (6.7.13.0)
-- confirmed `system:install` — core install command used for fresh installs — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:27
-- confirmed `skip-first-run-wizard` — system:install option matching the disabled wizard — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:56
-- confirmed `system:update:finish` — core update/migration command — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:29
-- confirmed `theme:refresh` — storefront command for theme refresh — vendor/shopware/storefront/Theme/Command/ThemeRefreshCommand.php:14
-- confirmed `theme:compile` — storefront compile command — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:19
-- confirmed `plugin:refresh` — core command to refresh plugins from the codebase — vendor/shopware/core/Framework/Plugin/Command/PluginRefreshCommand.php:21
-- confirmed `sales-channel:maintenance:enable` — maintenance is a per-sales-channel toggle in core — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelMaintenanceEnableCommand.php:21
-- confirmed `system:setup:staging` — core staging command run by the staging listener — vendor/shopware/core/Maintenance/Staging/Command/SystemSetupStagingCommand.php:24
-- unverified `shopware-deployment-helper` — separate package outside the checked core/storefront/administration roots
-- unverified `shopware-cli project ci` — Shopware CLI, out of scope
+## Code check (6.7.15.1)
+- confirmed `system:install` — core console command — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:31
+- confirmed `system:update:finish` — core console command — vendor/shopware/core/Maintenance/System/Command/SystemUpdateFinishCommand.php:30
+- confirmed `skip-assets-install` — `system:install` option exists in core — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:59
+- confirmed `maintenance` — per-sales-channel boolean field on SalesChannelDefinition — vendor/shopware/core/System/SalesChannel/SalesChannelDefinition.php:138
+- confirmed `theme:compile` — core Storefront command used for theme compilation — vendor/shopware/storefront/Theme/Command/ThemeCompileCommand.php:21
+- unverified `shopware-deployment-helper run` — separate shopware/deployment-helper package, out of scope
+- unverified `MySQLFactory` — retry logic lives in the deployment-helper repo, out of scope
+- unverified `shopware-cli project ci` — Go CLI, outside the vendor code roots

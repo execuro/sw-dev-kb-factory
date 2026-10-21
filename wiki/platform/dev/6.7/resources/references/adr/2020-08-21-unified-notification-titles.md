@@ -3,35 +3,35 @@ id: platform/dev/6.7/resources/references/adr/2020-08-21-unified-notification-ti
 title: Notification titles are pre-defined and make use of the global namespace
 docType: developer
 version: "6.7"
-versions:
-  - "6.7"
+versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2020-08-21-unified-notification-titles.html
 sourceHash: 283254870b47f8e47ee2e9100adbfc1373068d30
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["notification", "notification title", "notification mixin", "createNotificationError", "createNotificationSuccess", "createNotificationInfo", "createNotificationWarning", "global.default.error", "global.default.success", "administration", "snippets", "adr"]
-summary: "ADR: admin notification titles come from the notification mixin (global.default.success/error/info/warning); modules pass only a translated message."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["admin notification", "notification title", "notification.mixin", "createNotificationError", "createNotificationSuccess", "createNotificationInfo", "createNotificationWarning", "useNotification", "global.default.error", "global.default.success", "snippets", "toast message", "administration", "adr"]
+summary: "ADR: admin notification titles default to global snippets (global.default.error etc.) in the notification mixin; callers pass only a message."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2020-08-21): Administration notification titles are pre-defined centrally in the `notification` mixin and use the global snippet namespace, so a module only supplies the notification message.
+Architecture decision record (2020-08-21) for the Shopware administration: notification titles are no longer defined per module. The `notification` mixin sets a global default title per notification type, so a notification only needs a translatable message.
 
 ## When to use
 
-- Showing success, error, info or warning notifications from an Administration component.
-- Deciding which snippets a module needs for its notifications (message only, no title).
+- You create success, error, info or warning notifications in an administration module or plugin.
+- You are deciding whether to add a title snippet for a notification (normally: don't).
 
 ## Key steps / config
 
-The four notification types double as titles: Success (green outline), Error (red outline), Info (blue outline), Warning (orange outline).
+The four notification types double as titles: `Success` (green outline), `Error` (red), `Info` (blue), `Warning` (orange). In 6.7.15.1 the mixin file is `src/app/mixin/notification.mixin.ts` and each helper pre-fills `variant` and `title`, then spreads your config over it:
 
-1. Use the `notification` mixin (`Mixin.getByName('notification')`), registered in `src/app/mixin/notification.mixin.ts` (the ADR names `notification.mixin.js`; the installed file is TypeScript).
-2. Call the method for the type; each sets `variant` and a default `title` snippet key, then spreads your config over it:
-   - `createNotificationSuccess` — `global.default.success`
-   - `createNotificationError` — `global.default.error`
-   - `createNotificationInfo` — `global.default.info`
-   - `createNotificationWarning` — `global.default.warning`
-3. Pass only a translated `message`:
+| Method | Default title snippet |
+|---|---|
+| `createNotificationSuccess` | `global.default.success` |
+| `createNotificationError` | `global.default.error` |
+| `createNotificationInfo` | `global.default.info` |
+| `createNotificationWarning` | `global.default.warning` |
+
+Create an error notification with only a message:
 
 ```js
 this.createNotificationError({
@@ -39,31 +39,41 @@ this.createNotificationError({
 });
 ```
 
-4. Add one message snippet per snippet file (en-GB and de-DE), e.g. `"messageError": "Meaningful error message."`.
+Add one message snippet per snippet file (en-GB and de-DE):
+
+```json
+"messageError": "Meaningful error message.",
+```
+
+Avoid passing a raw error as message (`message: err`).
+
+The same helpers are exposed by the `useNotification()` composable (`src/app/composables/use-notification.ts`), which the mixin's own comment says duplicates it.
 
 ## Essential identifiers
 
-- `notification` mixin, `notification.mixin.ts`
+- `notification` mixin — `src/app/mixin/notification.mixin.ts`
 - `createNotificationSuccess`, `createNotificationError`, `createNotificationInfo`, `createNotificationWarning`
+- `useNotification` composable
 - `global.default.success`, `global.default.error`, `global.default.info`, `global.default.warning`
 
 ## Gotchas
 
-- Avoid passing raw errors as the message (`message: err`); messages should be translatable, precise and not repeat the title ("Error").
-- Success notifications should carry useful information, e.g. counters; use info/warning to flag ongoing work or things needing a closer look.
-- Because the config is spread after the defaults, a custom `title` still overrides the preset. The ADR advises against it except for very good reasons.
-- The `createSystemNotification*` variants set `system: true` but no default title.
+- Messages should be translatable, precise and not redundant — the title already says "Error", so describe what actually went wrong.
+- Use success notifications with useful content (e.g. counters); use info and warning to inform about ongoing things or things needing attention.
+- Because your config is spread after the defaults, passing `title` still overrides the preset. The ADR advises against it except for very good reasons.
+- Superfluous title snippets were removed when this was introduced (listed in CHANGELOG-6.3.md).
 
 ## Version notes
 
-- Introduced in 6.3: superfluous title definitions and snippets were removed (listed in CHANGELOG-6.3.md).
+The ADR names the file `notification.mixin.js`; in 6.7.15.1 it is TypeScript (`notification.mixin.ts`). Mixins are legacy in the 6.7 administration; the `useNotification` composable carries the same defaults.
 
-## Code check (6.7.13.0)
-- confirmed `notification` — mixin registered under this name in notification.mixin.ts (docs say .js) — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:13
-- confirmed `createNotificationSuccess` — default title global.default.success — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:20
-- confirmed `createNotificationInfo` — default title global.default.info — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:30
-- confirmed `createNotificationWarning` — default title global.default.warning — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:40
-- confirmed `createNotificationError` — default title global.default.error, config spread after it — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:50
-- confirmed `global.default.error` — preset title key — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:53
-- confirmed `global.default.success` — preset title key — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:23
-- confirmed `createSystemNotificationError` — sets system true without default title — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:90
+## Code check (6.7.15.1)
+- corrected `notification` — docs: mixin in `notification.mixin.js`; installed mixin is registered in `notification.mixin.ts` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:15
+- confirmed `createNotificationSuccess` — default title `global.default.success` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:22
+- confirmed `createNotificationInfo` — default title `global.default.info` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:32
+- confirmed `createNotificationWarning` — default title `global.default.warning` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:42
+- confirmed `createNotificationError` — default title `global.default.error`, config spread after defaults — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:52
+- confirmed `global.default.error` — set as title before `...config` — vendor/shopware/administration/Resources/app/administration/src/app/mixin/notification.mixin.ts:55
+- confirmed `useNotification` — composable with the same helpers — vendor/shopware/administration/Resources/app/administration/src/app/composables/use-video-cover.ts:55
+- confirmed `createNotificationError` — composable defines the same helper with default title — vendor/shopware/administration/Resources/app/administration/src/app/composables/use-notification.ts:60
+- confirmed `error` — global default snippet "Error" — vendor/shopware/administration/Resources/app/administration/src/app/snippet/en.json:35

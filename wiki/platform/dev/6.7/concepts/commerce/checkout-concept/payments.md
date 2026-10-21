@@ -6,63 +6,50 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/checkout-concept/payments.html
 sourceHash: c4118b807f81869f48316b5af8061ab845f3c87a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["payment", "payment flow", "payment handler", "AbstractPaymentHandler", "PaymentHandlerType", "/store-api/context", "/store-api/checkout/order", "/store-api/handle-payment", "/payment/finalize-transaction", "order transaction", "asynchronous payment", "redirect payment", "headless checkout"]
-summary: "Payment concept: order placement with open transaction, AbstractPaymentHandler pay/finalize, redirect flow via /payment/finalize-transaction."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["payment", "payment handler", "AbstractPaymentHandler", "/store-api/context", "/store-api/checkout/order", "/store-api/handle-payment", "/payment/finalize-transaction", "synchronous payment", "asynchronous payment", "order transaction", "checkout", "headless payment"]
+summary: Shopware 6.7 payment flow concept - select method, place order, handle payment via payment handlers, finalize async redirects.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Concept page for the Shopware payment system: a payment is applied to an order transaction through the state machine and executed by payment handlers (listed in the database per payment method), in a flow of two essential steps — placing the order and handling the payment.
+The concept page for Shopware's payment system in checkout. A payment is applied to a transaction of an order and, like any order change, goes through the state machine. Payment handlers add support for payment types; the list of handlers is stored in the database.
 
 ## When to use
 
-When designing a payment integration or a headless checkout and you need the order of steps, where redirects happen, and which endpoint finalizes a redirect payment.
+Before building a payment extension or a headless checkout that places orders and runs payments through the Store API.
 
 ## Key steps / config
 
-1. Select payment method — stored in the sales channel context; change it via `/store-api/context` (PATCH).
-2. Place order (`/store-api/checkout/order`) — no required parameters; uses current context and cart; optional extras like tracking parameters or comments. Creates the order plus one open transaction (ID, payment method, amount). An order can have multiple transactions.
-   - 2.1 Prepare payment (optional) — integration-specific reservation/authorization; not standardized.
-3. Handle payment (`/store-api/handle-payment`) — only after order placement; resolves the handler for the selected payment method. In the default Storefront, steps 2 and 3 run in one request.
-   - 3.1 Handler: in 6.7.13 every handler extends `Shopware\Core\Checkout\Payment\Cart\PaymentHandler\AbstractPaymentHandler`. `pay()` captures directly and returns `null` (synchronous case) or returns a `RedirectResponse` (asynchronous case). The frontend may pass success and error URLs; headless clients receive the redirect URL in the API response, the Storefront redirects automatically.
-   - 3.2 Gateway execution (async only) — user confirms on the provider UI, then is sent to the callback URL.
-   - 3.3 Finalize (async only) — callback hits `/payment/finalize-transaction`, which leads to the handler's `finalize()`; Shopware updates the transaction state and redirects to the finish page.
+1. **Select payment method** - stored in the user's context, changed via `/store-api/context` (installed code: `PATCH` switches, `GET` reads).
+2. **Place order** - no required parameters; built from the current context and cart, optional extras like tracking parameters or comments (`/store-api/checkout/order`). Shopware creates the order plus one open transaction as a placeholder for the payment (unique ID, payment method, amount). An order can have several transactions; only one is created here.
+   - 2.1 **Prepare payment (optional)** - some integrations reserve or authorise here and store a payment intent or transaction reference; not standardised by Shopware.
+3. **Handle payment** - only after the order exists; Shopware resolves the handler of the selected method (`/store-api/handle-payment`). The default Storefront runs steps 2 and 3 in one request.
+   - 3.1 **Payment handler** - synchronous: the gateway answers immediately with a status. Asynchronous: the integration redirects to the gateway with transaction info and a callback URL; the frontend may pass success and error URLs. The Storefront redirects automatically; headless, the redirect URL is returned in the API response.
+   - 3.2 **Gateway execution (optional, async only)** - user confirms on the gateway UI, which redirects back to the callback URL with an outcome parameter.
+   - 3.3 **Finalize (optional, async only)** - the callback URL points to `/payment/finalize-transaction`; Shopware updates the transaction state and redirects to the finish page.
 
-Handler members:
-
-```php
-class MyPaymentHandler extends AbstractPaymentHandler
-{
-    public function supports(PaymentHandlerType $type, string $paymentMethodId, Context $context): bool { /* ... */ }
-    public function pay(Request $request, PaymentTransactionStruct $transaction, Context $context, ?Struct $validateStruct): ?RedirectResponse { /* ... */ }
-    // optional overrides: validate(), finalize(), refund(), recurring()
-}
-```
+Installed code: a handler extends `Shopware\Core\Checkout\Payment\Cart\PaymentHandler\AbstractPaymentHandler` and must implement `supports()` and `pay()`; `validate()`, `finalize()`, `refund()` and `recurring()` have defaults. `pay()` returning a `RedirectResponse` makes the payment asynchronous; only then is `finalize()` called.
 
 ## Essential identifiers
 
-- `AbstractPaymentHandler::supports()`, `::pay()`, `::validate()`, `::finalize()`, `::refund()`, `::recurring()`
-- `PaymentHandlerType` (`REFUND`, `RECURRING`)
-- `/store-api/context`, `/store-api/checkout/order`, `/store-api/handle-payment`, `/payment/finalize-transaction`
+- `AbstractPaymentHandler`, `PaymentHandlerType` (`REFUND`, `RECURRING`)
+- `/store-api/context`, `/store-api/checkout/order`, `/store-api/handle-payment`
+- `/payment/finalize-transaction` (route `payment.finalize.transaction`, GET and POST)
 
 ## Gotchas
 
+- Implementations differ between providers; Shopware specifies no payment states or API calls. Data sharing between steps or webhooks after payment are outside the standard.
 - Do not use the session in headless payment integrations.
-- Keep logic out of controllers and add Store API routes for your payment so it works headless.
-- Provider implementations differ; Shopware prescribes no payment states or API calls beyond this flow.
-- The docs speak of two handler types (sync/async); the installed code has one abstract base — the distinction is only whether `pay()` returns a redirect. `finalize()` cannot be called unless `pay()` returned a `RedirectResponse`.
-- `validate()` runs before the order is persisted; throwing a `PaymentException` there prevents the order.
-- `refund()` / `recurring()` are only called when `supports()` returns true for `PaymentHandlerType::REFUND` / `::RECURRING`.
+- Keep logic out of controllers and expose payment logic through Store API routes so it works headless.
 
-## Code check (6.7.13.0)
-- corrected `AbstractPaymentHandler` — docs: synchronous and asynchronous handler types; code has one abstract base — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:18
-- confirmed `AbstractPaymentHandler::supports()` — abstract, takes PaymentHandlerType — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:24
-- confirmed `AbstractPaymentHandler::pay()` — abstract, returns ?RedirectResponse — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:34
-- confirmed `AbstractPaymentHandler::validate()` — called before order persist — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:46
-- confirmed `AbstractPaymentHandler::finalize()` — only after a redirect — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:58
+## Code check (6.7.15.1)
+- confirmed `AbstractPaymentHandler` — base class for payment handlers — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:18
+- confirmed `AbstractPaymentHandler::pay()` — abstract, returns ?RedirectResponse to trigger async flow — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:34
+- confirmed `AbstractPaymentHandler::finalize()` — only called after pay() returned a redirect — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:58
+- confirmed `AbstractPaymentHandler::supports()` — abstract capability check per PaymentHandlerType — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:24
 - confirmed `PaymentHandlerType` — enum with RECURRING and REFUND — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/PaymentHandlerType.php:8
-- confirmed `/store-api/context` — PATCH switches context incl. payment method — vendor/shopware/core/System/SalesChannel/SalesChannel/ContextSwitchRoute.php:57
+- confirmed `/store-api/context` — PATCH route switches the context, e.g. payment method — vendor/shopware/core/System/SalesChannel/SalesChannel/ContextSwitchRoute.php:57
 - confirmed `/store-api/checkout/order` — order placement route — vendor/shopware/core/Checkout/Cart/SalesChannel/CartOrderRoute.php:69
-- confirmed `/store-api/handle-payment` — handle payment route — vendor/shopware/core/Checkout/Payment/SalesChannel/HandlePaymentMethodRoute.php:49
-- confirmed `/payment/finalize-transaction` — finalize callback route — vendor/shopware/core/Checkout/Payment/Controller/PaymentController.php:60
+- confirmed `/store-api/handle-payment` — payment handling route — vendor/shopware/core/Checkout/Payment/SalesChannel/HandlePaymentMethodRoute.php:49
+- confirmed `/payment/finalize-transaction` — async callback route, GET and POST — vendor/shopware/core/Checkout/Payment/Controller/PaymentController.php:60

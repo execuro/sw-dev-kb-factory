@@ -1,84 +1,70 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md
-title: Adjusting a Service
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/services/adjusting-service.html
+id: platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
+  - platform/dev/6.7/guides/development/tooling/shopware-toolbox.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/extension/_index.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/extension/extension-vs-events.md
 sourceHash: e5270f74d902a8cc04d0bd4bb85eb1d28d823f2e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["service decoration", "decorator", "decorate", ".inner", "getDecorated()", "DecorationPatternException", "abstract service class", "decoration chain", "override service", "adjusting a service", "addExtension()", "extension points", "debug:container"]
-summary: Decorating a Shopware service from a plugin with decorate() and .inner, the abstract-class getDecorated() pattern, decorator chains and BC-safe new methods.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/framework/extension/extension-vs-events.md", "platform/dev/6.7/guides/plugins/plugins/framework/extension/_index.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/services/adjusting-service.html
+title: Adjusting a Service
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["service decoration", "decorate", ".inner", "getDecorated", "DecorationPatternException", "AbstractExampleService", "decorator", "decorator chain", "override service", "abstract class contract", "debug:container", "addExtension"]
+summary: "Decorate a Shopware service: ->decorate() with service('.inner'), an abstract contract with getDecorated(), DecorationPatternException, chain pitfalls."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a plugin changes the behavior of an existing service through Symfony service decoration, using Shopware's abstract-class contract with a `getDecorated()` chain. Prefer events to react to something Shopware does; prefer decoration to change how a service behaves.
+How to change the behavior of an existing service via Symfony service decoration. Decoratable Shopware services expose an abstract class (not an interface) as their contract; it declares `getDecorated()` so decorators form a chain and new non-abstract methods can be added without breaking decorators.
 
 ## When to use
 
-When no [extension point](platform/dev/6.7/guides/plugins/plugins/framework/extension/_index.md) or [event](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md) covers the need and an existing service's logic must be altered, wrapped or replaced.
+You need to change how an existing service behaves and there is no designed extension point. Prefer events to react to something Shopware does, and prefer [extension points](platform/dev/6.7/guides/plugins/plugins/framework/extension/_index.md) (subscribed as `.pre`, `.post`, `.error` events) where they exist — see [Extension Points vs Events](platform/dev/6.7/guides/plugins/plugins/framework/extension/extension-vs-events.md).
 
 ## Key steps / config
 
-1. Register the decorator in `src/Resources/config/services.php`:
+1. Register the decorator in `src/Resources/config/services.php`, pointing at the decorated service and injecting the original via `.inner`:
+   ```php
+   $services->set(ExampleServiceDecorator::class)
+       ->decorate(ExampleService::class)
+       ->args([service('.inner')]);
+   ```
+2. Contract (usually from core or the plugin you extend):
+   ```php
+   abstract class AbstractExampleService
+   {
+       abstract public function getDecorated(): AbstractExampleService;
+       abstract public function doSomething(): string;
+   }
+   ```
+3. The base implementation's `getDecorated()` throws `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException` (`throw new DecorationPatternException(self::class);`).
+4. The decorator extends the abstract class, takes `AbstractExampleService $exampleService` in its constructor, returns it from `getDecorated()`, and delegates: `return $this->decoratedService->doSomething() . ' Did something additionally.';`
 
-```php
-$services->set(ExampleService::class);
-
-$services->set(ExampleServiceDecorator::class)
-    ->decorate(ExampleService::class)
-    ->args([service('.inner')]);
-```
-
-2. The contract is an abstract class (normally from core or another plugin) declaring `abstract public function getDecorated(): AbstractExampleService;` plus its abstract business methods.
-3. The base implementation's `getDecorated()` throws `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`:
-
-```php
-class ExampleService extends AbstractExampleService
-{
-    public function getDecorated(): AbstractExampleService
-    {
-        throw new DecorationPatternException(self::class);
-    }
-    public function doSomething(): string { /* ... */ }
-}
-```
-
-4. The decorator extends the same abstract class, takes the inner `AbstractExampleService` in its constructor, returns it from `getDecorated()`, and delegates:
-
-```php
-public function doSomething(): string
-{
-    return $this->decoratedService->doSomething() . ' Did something additionally.';
-}
-```
-
-5. Adding a method to the contract: add it as a normal public method that forwards, `return $this->getDecorated()->doSomethingNew();`, implement it in the concrete service and decorators step by step, and only make it abstract in a later release.
+**Adding methods to a contract:** add them as regular public methods that delegate, e.g. `public function doSomethingNew(): string { return $this->getDecorated()->doSomethingNew(); }`, implement them in each service/decorator step by step, and only make them abstract in a later release.
 
 ## Essential identifiers
 
-- `->decorate(ExampleService::class)`, `service('.inner')`
+- `->decorate(<service id>)`, `service('.inner')`
 - `getDecorated()`
 - `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`
 - `bin/console debug:container --show-arguments <service-id>`
 
 ## Gotchas
 
-- Decorators nest: plugin B wraps plugin A wraps core. A decorator that does not call the inner service silently drops the rest of the chain; there is no runtime warning.
-- All implementations must share the abstract method signature; adding even an optional parameter breaks every decorator (in practice a new plugin major per Shopware major). That is why Shopware avoids interfaces for decoratable services.
-- Type hint the abstract class in constructors, never the concrete class, or you bypass the chain; the [Shopware 6 Toolbox](platform/dev/6.7/guides/development/tooling/shopware-toolbox.md) reports this.
-- Extension points dispatch `.pre`, `.post`, `.error` events so multiple extensions participate without a chain; see [Extension Points vs Events](platform/dev/6.7/guides/plugins/plugins/framework/extension/extension-vs-events.md).
-- Data added via `addExtension()` in a decorator is serialized into Store API and Admin API responses; use a vendor-specific key and treat it as public API.
+- Decorators nest: plugin B wraps plugin A, which wraps core. A decorator that does not call the inner service silently drops the rest of the chain, including core logic and other plugins. There is no runtime warning; inspect the chain with `debug:container` or the IDE's implementations view.
+- Every implementation must share the abstract method's signature; adding even an optional parameter breaks all decorators (in practice one plugin major per Shopware major).
+- Type-hint the abstract class, never the concrete implementation, in constructors — otherwise the decoration chain is bypassed. The [Shopware 6 Toolbox](platform/dev/6.7/guides/development/tooling/shopware-toolbox.md) reports this.
+- Data attached via `addExtension()` inside a decorator is serialized into Store API and Admin API responses; use a vendor-specific key and treat it as public API.
 
-## Code check (6.7.13.0)
-- confirmed `DecorationPatternException` — constructor takes the class name — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:15
-- confirmed `AbstractProductDetailRoute::getDecorated()` — core contract uses an abstract getDecorated() returning its own type — vendor/shopware/core/Content/Product/SalesChannel/Detail/AbstractProductDetailRoute.php:13
-- confirmed `DecorationPatternException` — base ProductDetailRoute throws it from getDecorated() — vendor/shopware/core/Content/Product/SalesChannel/Detail/ProductDetailRoute.php:81
-- confirmed `.inner` — core decorators receive the inner service by `.inner` id — vendor/shopware/core/Framework/DependencyInjection/services_test.xml:93
-- confirmed `ExtendableInterface::addExtension()` — attaches a named Struct extension — vendor/shopware/core/Framework/Struct/ExtendableInterface.php:14
-- confirmed `.pre` — extension point pre event suffix — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:25
-- confirmed `.post` — extension point post event suffix — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:34
-- confirmed `.error` — extension point error event suffix — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:43
-- unverified `debug:container` — Symfony command, vendor/symfony out of scope
+## Code check (6.7.15.1)
+- confirmed `DecorationPatternException` — class in `Shopware\Core\Framework\Plugin\Exception` — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:13
+- confirmed `DecorationPatternException::__construct()` — takes the class name, message says `getDecorated()` cannot be used on the base class — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:15
+- confirmed `AbstractSystemConfigLoader::getDecorated()` — core contracts declare abstract `getDecorated()` returning their own type — vendor/shopware/core/System/SystemConfig/AbstractSystemConfigLoader.php:10
+- confirmed `decorate` — core itself chains decorators with `->decorate()` and `.inner` — vendor/shopware/core/System/DependencyInjection/configuration.php:114
+- confirmed `.inner` — inner service passed as constructor argument — vendor/shopware/core/System/DependencyInjection/configuration.php:116
+- confirmed `addExtension()` — `addExtension(string $name, Struct $extension)` on extendable structs — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:21
+- unverified `debug:container` — Symfony console command, out of scope

@@ -6,73 +6,74 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/add-custom-captcha.html
 sourceHash: 1b5f6743949c6997bd8fef14510aa5fc8d8e36a1
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["captcha", "AbstractCaptcha", "isValid", "getName", "supports", "shouldBreak", "getData", "getViolations", "GoogleReCaptchaV3", "shopware.storefront.captcha", "recaptcha", "spam protection", "CAPTCHA_REQUEST_PARAMETER"]
-summary: "Add a custom Storefront captcha by extending AbstractCaptcha (implement isValid() and getName()); GoogleReCaptchaV3 is the core reference implementation."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["AbstractCaptcha", "Shopware\\Storefront\\Framework\\Captcha\\AbstractCaptcha", "getName", "validate", "supports", "shouldBreak", "getData", "GoogleReCaptchaV3", "shopware.storefront.captcha", "CAPTCHA_NAME", "captcha", "custom captcha", "bot protection"]
+summary: Custom Storefront captcha - extend AbstractCaptcha, implement getName() and validate(), tag the service shopware.storefront.captcha
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-How to add a custom captcha type to the Shopware Storefront by extending `Shopware\Storefront\Framework\Captcha\AbstractCaptcha`, the base class of all captcha types. Requires a running plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)).
+How to add a custom captcha type to Shopware 6 from a plugin by extending `Shopware\Storefront\Framework\Captcha\AbstractCaptcha`, the base class of all captcha types (core examples: `HoneypotCaptcha`, `BasicCaptcha`, `GoogleReCaptchaV2`, `GoogleReCaptchaV3`).
 
 ## When to use
 
-You want a captcha provider other than the built-in ones (honeypot, basic captcha, Google reCAPTCHA v2/v3) to protect Storefront forms.
+You need a captcha provider other than the built-in ones to protect Storefront form submissions. A running plugin is required ([plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)).
 
 ## Key steps / config
 
-1. Optionally create `src/Framework/Captcha` in your plugin to keep files organized.
-2. Extend `AbstractCaptcha`. Its members (as declared in 6.7):
-   - `supports(Request $request, array $captchaConfig): bool` — default: true only for POST requests with a non-empty config whose `isActive` is true.
-   - `isValid(Request $request, array $captchaConfig): bool` — **abstract**, must implement.
-   - `getName(): string` — **abstract**, must implement; unique technical name.
-   - `shouldBreak(): bool` — default `true` (throw instead of showing hints on failure).
-   - `getData(): ?array` — default `null`; data for rendering the captcha.
-   - `getViolations(): ConstraintViolationList`.
-3. Skeleton (plugin namespace; import the base class):
+1. Optionally create `src/Framework/Captcha/` in the plugin to keep the files organized.
+2. Extend `AbstractCaptcha`. Its members in 6.7.15.1:
+   - `supports(Request $request, array $captchaConfig): bool` — default: true only for POST requests with a non-empty config whose `isActive` is truthy.
+   - `validate(Request $request, array $captchaConfig): ConstraintViolationList` — empty list means valid; override this to verify the code.
+   - `getName(): string` — **abstract**, must be implemented; unique technical name.
+   - `shouldBreak(): bool` — default `true` (throw on failure instead of showing a message); `GoogleReCaptchaV3` returns `false` to show a violation.
+   - `getData(): ?array` — default `null`; data the template needs to render the captcha.
 
 ```php
-use Shopware\Storefront\Framework\Captcha\AbstractCaptcha;
-
 class YourCaptcha extends AbstractCaptcha
 {
     final public const CAPTCHA_NAME = 'yourCaptchaName';
     final public const CAPTCHA_REQUEST_PARAMETER = '_your_captcha_name';
-    private const YOUR_CAPTCHA_ENDPOINT = 'https://www.yourcaptcha.com/verify';
 
     public function __construct(private readonly ClientInterface $client) {}
 
-    public function isValid(Request $request, array $captchaConfig): bool { /* POST to YOUR_CAPTCHA_ENDPOINT, return success flag; false on ClientExceptionInterface */ }
+    public function validate(Request $request, array $captchaConfig): ConstraintViolationList
+    { /* read CAPTCHA_REQUEST_PARAMETER, verify via $this->client, return violations or empty list */ }
 
     public function getName(): string { return self::CAPTCHA_NAME; }
 }
 ```
 
-4. In `isValid()`, return `false` if the request parameter is missing; otherwise POST `form_params` (`response`, `remoteip`) with the Guzzle `ClientInterface`, decode the JSON body and return its `success` value; catch `Psr\Http\Client\ClientExceptionInterface` and return `false`.
-5. Register the class as a service tagged `shopware.storefront.captcha` (core captchas use this tag with a `priority`; the reCAPTCHA ones receive `service('shopware.captcha.client')` as the HTTP client).
+3. Register the service with the `shopware.storefront.captcha` tag (core captchas use `['priority' => 100..400]`); the core injects `service('shopware.captcha.client')` (a Guzzle `Client`) into the reCAPTCHA classes. The tagged iterator is consumed by `CaptchaRouteListener`.
+4. Use `GoogleReCaptchaV3` as the reference implementation (`CAPTCHA_NAME = 'googleReCaptchaV3'`, `CAPTCHA_REQUEST_PARAMETER = '_grecaptcha_v3'`).
 
 ## Essential identifiers
 
 - `Shopware\Storefront\Framework\Captcha\AbstractCaptcha`
-- `isValid()`, `getName()`, `supports()`, `shouldBreak()`, `getData()`, `getViolations()`
-- `Shopware\Storefront\Framework\Captcha\GoogleReCaptchaV3` (reference implementation)
-- service tag `shopware.storefront.captcha`, client service `shopware.captcha.client`
+- `AbstractCaptcha::getName()` (abstract), `validate()`, `supports()`, `shouldBreak()`, `getData()`
+- service tag `shopware.storefront.captcha`, `shopware.captcha.client`
+- `Shopware\Storefront\Framework\Captcha\GoogleReCaptchaV3`
 
 ## Gotchas
 
-- The source's method list shows `supports(string $type)` and `isValid(string $code)`; the real signatures take `Request $request, array $captchaConfig`, and its own snippet already uses that form.
-- The source's snippet uses the core namespace `Shopware\Storefront\Framework\Captcha` and posts to `self::GOOGLE_CAPTCHA_VERIFY_ENDPOINT`, a constant it never defines; use your plugin namespace and your own endpoint constant.
-- Core `GoogleReCaptchaV3` also sends `secret` from `$captchaConfig['config']['secretKey']` and checks a score threshold (default 0.5).
+- The docs tell you to implement `isValid()` and list `getViolations()`; both are `@deprecated tag:v6.8.0` in 6.7.15.1 — implement `validate()` instead.
+- Docs signatures are outdated: `supports(string $type)`, `isValid(string $code)`, `getData(): array`, `getViolations(): ConstraintViolationListInterface` do not match the installed class.
+- The docs example uses the core namespace `Shopware\Storefront\Framework\Captcha` and posts to an undefined `self::GOOGLE_CAPTCHA_VERIFY_ENDPOINT` while declaring `YOUR_CAPTCHA_ENDPOINT`; use your own namespace and constant.
+- The docs never show service registration; without the `shopware.storefront.captcha` tag the captcha is not picked up.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractCaptcha::isValid()` — abstract, (Request, array) signature — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:37
-- confirmed `AbstractCaptcha::getName()` — abstract — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:42
-- corrected `AbstractCaptcha::supports()` — docs: supports(string $type) — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:19
-- confirmed `AbstractCaptcha::shouldBreak()` — returns true by default — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:48
-- corrected `AbstractCaptcha::getData()` — docs: returns array; code returns ?array, default null — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:60
-- corrected `AbstractCaptcha::getViolations()` — docs: ConstraintViolationListInterface; code returns ConstraintViolationList — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:65
-- confirmed `GoogleReCaptchaV3` — core implementation extending AbstractCaptcha — vendor/shopware/storefront/Framework/Captcha/GoogleReCaptchaV3.php:11
-- confirmed `GoogleReCaptchaV3::GOOGLE_CAPTCHA_VERIFY_ENDPOINT` — private constant of the core class only — vendor/shopware/storefront/Framework/Captcha/GoogleReCaptchaV3.php:15
-- confirmed `shopware.storefront.captcha` — service tag collected by CaptchaRouteListener — vendor/shopware/storefront/DependencyInjection/captcha.php:24
-- confirmed `shopware.captcha.client` — HTTP client service injected into reCAPTCHA captchas — vendor/shopware/storefront/DependencyInjection/captcha.php:45
+## Version notes
+
+- 6.8.0 removes `AbstractCaptcha::isValid()` and `getViolations()`; `validate()` is the replacement.
+
+## Code check (6.7.15.1)
+- confirmed `AbstractCaptcha::getName()` — abstract, must be implemented — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:73
+- corrected `AbstractCaptcha::supports()` — docs: `supports(string $type)`; installed takes `Request $request, array $captchaConfig` — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:21
+- confirmed `AbstractCaptcha::validate()` — returns `ConstraintViolationList`, replaces isValid — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:39
+- deprecated `AbstractCaptcha::isValid()` — tag:v6.8.0, implement validate() instead — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:61
+- deprecated `AbstractCaptcha::getViolations()` — tag:v6.8.0, use validate() — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:99
+- corrected `AbstractCaptcha::getData()` — docs: returns `array`; installed returns `?array`, default null — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:91
+- confirmed `AbstractCaptcha::shouldBreak()` — default true — vendor/shopware/storefront/Framework/Captcha/AbstractCaptcha.php:79
+- confirmed `shopware.storefront.captcha` — tagged iterator passed to CaptchaRouteListener — vendor/shopware/storefront/DependencyInjection/captcha.php:24
+- confirmed `GoogleReCaptchaV3::CAPTCHA_NAME` — value `googleReCaptchaV3` — vendor/shopware/storefront/Framework/Captcha/GoogleReCaptchaV3.php:15
+- confirmed `GoogleReCaptchaV3::validate()` — reference implementation — vendor/shopware/storefront/Framework/Captcha/GoogleReCaptchaV3.php:27

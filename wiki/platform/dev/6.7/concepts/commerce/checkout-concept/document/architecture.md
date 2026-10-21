@@ -6,75 +6,74 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/checkout-concept/document/architecture.html
 sourceHash: 2b0fcb0646442b2a5633a330f7a619133304e9a7
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["document system v2", "DocumentGenerator", "DocumentDependencyResolver", "DocumentPersister", "RenderState", "AbstractDocumentDataProvider", "AbstractDocumentRenderer", "DocumentRendererRegistry", "DocumentConfigLoader", "document_file", "DOCUMENT_GENERATION_REWORK", "zugferd", "invoice pdf", "render plan"]
-summary: "Document System v2 pipeline: DocumentGenerator, render plan, data providers, renderers, RenderState, document_file storage; 6.7.13 ships invoice only."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["document generation architecture", "DocumentGenerator", "DocumentDependencyResolver", "RenderState", "DocumentPersister", "DocumentTypeRegistry", "DocumentRendererRegistry", "DocumentDataProviderRegistry", "shopware.document_v2.renderer", "DocumentConfigLoader", "render plan", "document_file", "zugferd", "storno"]
+summary: "Document System (v2) internals: generation pipeline, render plan, registries and service tags, referenced invoices, templates, storage."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture of the reworked document generation (Document System v2, namespace `Shopware\Core\Checkout\DocumentV2`): how a generation request becomes a render plan, typed render data, per-format render results and persisted `document` + `document_file` + media rows. Experimental, behind the `DOCUMENT_GENERATION_REWORK` feature flag (default off); the API can change until it becomes the default in 6.8.
+Architecture of the experimental Document System (v2) (flag `DOCUMENT_GENERATION_REWORK`, namespace `Shopware\Core\Checkout\DocumentV2`): the generation pipeline, registries, render plans, referenced documents, templates, configuration and storage.
 
 ## When to use
 
-When you need to understand or debug v2 document generation (invoice HTML/PDF/ZUGFeRD), or before writing a data provider or renderer for it.
+To understand how a v2 document is produced, how formats depend on each other, or where a document type, data provider or renderer hooks in.
 
 ## Key steps / config
 
-Pipeline as implemented in `DocumentGenerator::generate()` (6.7.13):
+**Pipeline**
+1. A generation request carries an order ID, a document type and the requested formats (plus `referencedDocumentId` for credit notes and storno).
+2. `DocumentGenerator` loads the order once, merging in the search criteria of every matching data provider.
+3. `DocumentDependencyResolver` expands the requested formats into a render plan that includes every prerequisite format.
+4. Every `AbstractDocumentDataProvider` whose `supports()` matches the type returns typed render data, keyed by its provider key.
+5. Each `AbstractDocumentRenderer` in the plan writes one result into `RenderState`.
+6. `DocumentPersister` stores the `document` with one `document_file` and media entry per requested format.
 
-1. Validate the request: at least one format, and a non-live `orderVersionId` (the caller supplies the order version).
-2. `DocumentDependencyResolver::resolve($documentType, $formats)` expands requested formats via each renderer's `getDependencies()` and topologically sorts them (Kahn's algorithm). Requesting `zugferd_embedded_pdf` yields `html`, `zugferd_xml`, `pdf`, `zugferd_embedded_pdf`.
-3. `DocumentDataProviderRegistry::getByDocumentType()` returns every provider whose `supports()` matches; duplicate `getKey()` values throw. Each provider may add associations via `enrichOrderCriteria()`; the order is loaded once in the order-version context.
-4. Document number: `DocumentGenerationRequest::$documentNumber` if set, otherwise `DocumentNumberGenerator` (number range type prefix `document_`).
-5. Providers' `provideRenderingData()` results are stored in `RenderInput` keyed by provider key.
-6. For each planned format, `DocumentRendererRegistry::getRenderer($format, $documentType)` renders via `renderToString(RenderInput, RenderState, Context)`; the result is added to `RenderState`.
-7. `DocumentPersister::persist()` writes one `document` and one `document_file` per requested format; dependency-only formats are discarded.
+The document number comes from the number range type `document_<technicalName>` unless the caller passes one.
 
-Service tags (`vendor/shopware/core/Checkout/DependencyInjection/documentV2.php`): `shopware.document_v2.provider`, `shopware.document_v2.renderer`.
+| Registry | Service tag | Rule |
+|---|---|---|
+| `DocumentTypeRegistry` | `shopware.document_v2.type` | one type per technical name; validates formats |
+| `DocumentDataProviderRegistry` | `shopware.document_v2.provider` | all matching providers run; duplicate keys throw |
+| `DocumentRendererRegistry` | `shopware.document_v2.renderer` | first renderer per format wins, by tag priority |
 
-Formats (`DocumentFormat` enum): `html` (Twig), `pdf` (Dompdf from the HTML), `zugferd_xml` (EN 16931 CII, XRechnung profile), `zugferd_embedded_pdf` (PDF/A-3 with embedded XML).
+Override a built-in renderer by registering one for the same format with a higher tag priority. Renderers declare prerequisite formats via `getDependencies()`: `pdf` needs `html`; `zugferd_embedded_pdf` needs `pdf` and `zugferd_xml`.
 
-Templates: `@Framework/documents/<technical_name>.html.twig` (partials in `@Framework/documents/includes/`), ZUGFeRD XML at `@Framework/documents/zugferd/<technical_name>.xml.twig`; overridable with `sw_extends`.
+| Type | Formats |
+|---|---|
+| `invoice`, `credit_note`, `storno` (cancellation invoice) | html, pdf, zugferd_xml, zugferd_embedded_pdf |
+| `delivery_note` (needs a delivery date in the request) | html, pdf |
 
-Config: `DocumentConfigLoader::load($documentType, $salesChannelId, $context)` merges the global `document_base_config` row, its sales-channel override and the `core.basicInformation` system config into a `DocumentConfigBundle`, with the legacy JSON `config` as fallback.
+`html` is a Twig template rendered with the document data; `pdf` prints that HTML through Dompdf; `zugferd_xml` is an EN 16931 CII e-invoice (XRechnung profile); `zugferd_embedded_pdf` is a PDF/A-3 with the XML embedded.
 
-Storage skeleton:
+**Order versions:** generating creates a new order version that freezes the order state; a preview renders against the live version. Providers for documents referencing an invoice implement the `ReferencesDocument` marker interface; `RendersReferencedSnapshot` renders against the order version the referenced invoice was generated from.
 
-```
-document:      order_id, order_version_id, document_number
-document_file: document_id, media_id, document_format   (unique per document + format)
-```
+**Templates:** `@Framework/documents/<technical_name>.html.twig` (partials under `@Framework/documents/includes/`) and `@Framework/documents/zugferd/<technical_name>.xml.twig`, both overridable with `sw_extends`.
+
+**Config:** `DocumentConfigLoader` merges the global `document_base_config` row, its sales-channel override and the `core.basicInformation` company data into a typed `DocumentConfigBundle`, reading typed columns first and falling back to the legacy JSON `config`.
 
 ## Essential identifiers
 
-- `DocumentGenerator`, `DocumentDependencyResolver`, `DocumentPersister`, `DocumentGenerationRequest`
-- `DocumentDataProviderRegistry`, `AbstractDocumentDataProvider`, `DocumentMetaProvider` (key `meta`, all types), `InvoiceDataProvider`
-- `DocumentRendererRegistry`, `AbstractDocumentRenderer`, `HtmlRenderer`, `PdfRenderer`, `ZugferdXmlRenderer`, `ZugferdEmbeddedPdfRenderer`
-- `RenderState`, `RenderInput`, `RenderResult`, `DocumentType`, `DocumentFormat`
-- `DocumentConfigLoader`, `DocumentConfigBundle`, `document_file`
+- `DocumentGenerator`, `DocumentDependencyResolver`, `RenderState`, `DocumentPersister`
+- `AbstractDocumentDataProvider`, `AbstractDocumentRenderer`
+- `shopware.document_v2.type`, `shopware.document_v2.provider`, `shopware.document_v2.renderer`
+- `ReferencesDocument`, `RendersReferencedSnapshot`, `DocumentConfigLoader`, `DocumentConfigBundle`
 
 ## Gotchas
 
-- The docs describe a `DocumentTypeRegistry` fed by a `shopware.document_v2.type` tag; neither exists in 6.7.13. Types are the `DocumentType` enum: `invoice`, `delivery_note`, `credit_note`, `cancellation_invoice` (docs call it `storno`, which is the v1 `StornoRenderer::TYPE`).
-- All four built-in renderers return only `invoice` from `getDocumentTypes()`, so delivery notes, credit notes and cancellation invoices cannot be rendered by v2 yet.
-- Docs say the first renderer per format wins by tag priority, allowing overrides. The installed `DocumentRendererRegistry` throws `duplicateRenderer` when two renderers claim the same format and document type — no priority-based override.
-- `ReferencesDocument` / `RendersReferencedSnapshot` and `referencedDocumentId` are not in the installed DocumentV2 code.
-- The generator does not create the order version itself; passing the live version throws `liveVersionNotAllowed`.
-- All v2 classes are marked `@internal`.
+- Experimental until 6.8. The registries and `DocumentDependencyResolver` are `@internal`; extend via the abstract base classes and service tags.
+- The docs say dependency-only intermediates are discarded; in code `html` is the exception — whenever it is rendered along the way it is persisted as the document's accessible version.
+- Only dependency order is guaranteed in the render plan: the resolver's own example yields `html`, `zugferd_xml`, `pdf`, `zugferd_embedded_pdf`.
+- Legacy `Shopware\Core\Checkout\Document` has same-named classes (`DocumentGenerator`, `AbstractDocumentRenderer`, `DocumentRendererRegistry`).
 
-## Version notes
-
-Experimental in 6.7 behind `DOCUMENT_GENERATION_REWORK`; the `documentV2.php` services are loaded unconditionally by `Checkout.php`, the flag gates admin UI. Planned default in 6.8.
-
-## Code check (6.7.13.0)
-- confirmed `DOCUMENT_GENERATION_REWORK` — feature flag, default false, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
-- absent `DocumentTypeRegistry` — no such class; types are the `DocumentType` enum
-- absent `shopware.document_v2.type` — only provider and renderer tags exist
-- absent `ReferencesDocument` — no marker interface in installed code
-- absent `RendersReferencedSnapshot` — no such interface in installed code
-- corrected `DocumentType::CANCELLATION_INVOICE` — docs: technical name `storno`; v2 enum uses `cancellation_invoice` — vendor/shopware/core/Checkout/DocumentV2/DocumentType.php:18
-- corrected `DocumentRendererRegistry` — docs: first renderer per format wins by tag priority; code throws on duplicate format and type — vendor/shopware/core/Checkout/DocumentV2/Renderer/DocumentRendererRegistry.php:12
-- corrected `HtmlRenderer::getDocumentTypes()` — docs: four types supported; built-in renderers return only invoice — vendor/shopware/core/Checkout/DocumentV2/Renderer/HtmlRenderer.php:43
-- corrected `Defaults::LIVE_VERSION` — docs: generation creates a new order version; code requires a non-live version in the request — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:233
-- confirmed `AbstractDocumentRenderer::getDependencies()` — defaults to empty list, drives the render plan — vendor/shopware/core/Checkout/DocumentV2/Renderer/AbstractDocumentRenderer.php:57
+## Code check (6.7.15.1)
+- confirmed `DocumentGenerator` — v2 orchestrator — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:35
+- corrected `DocumentGenerator::generate()` — docs: intermediates discarded; html is persisted whenever rendered — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:66
+- corrected `DocumentDependencyResolver` — docs: plan html, pdf, zugferd_xml, zugferd_embedded_pdf; code example puts zugferd_xml before pdf — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentDependencyResolver.php:25
+- confirmed `DocumentRendererRegistry` — first renderer per format wins — vendor/shopware/core/Checkout/DocumentV2/Renderer/DocumentRendererRegistry.php:12
+- confirmed `DocumentDataProviderRegistry` — duplicate provider key throws — vendor/shopware/core/Checkout/DocumentV2/Provider/DocumentDataProviderRegistry.php:12
+- confirmed `shopware.document_v2.type` — type service tag — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:140
+- confirmed `AbstractDocumentRenderer::getDependencies()` — prerequisite formats — vendor/shopware/core/Checkout/DocumentV2/Renderer/AbstractDocumentRenderer.php:44
+- confirmed `NUMBER_RANGE_DOCUMENT_TYPE_PREFIX` — value document_ — vendor/shopware/core/Checkout/DocumentV2/Config/DocumentNumberGenerator.php:21
+- confirmed `RendersReferencedSnapshot` — extends ReferencesDocument — vendor/shopware/core/Checkout/DocumentV2/Provider/RendersReferencedSnapshot.php:17
+- confirmed `COMPANY_INFO_CONFIG_DOMAIN` — core.basicInformation — vendor/shopware/core/Checkout/DocumentV2/Config/DocumentConfigLoader.php:37

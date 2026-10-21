@@ -5,27 +5,26 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/add-custom-sorting-product-listing.html
-sourceHash: 9c7ce3713e68a195a3aed977e63a9bd6dbafbc65
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["product sorting", "custom sorting", "listing sort order", "product_sorting", "product_sorting_translation", "ProductSortingDefinition", "ProductSortingEntity", "ProductSortingCollection", "ProductListingCriteriaEvent", "MigrationStep", "url_key", "sortings extension", "SortingListingProcessor"]
-summary: Add listing sort options via a migration into product_sorting (admin-manageable) or at runtime via ProductListingCriteriaEvent and the sortings extension.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md", "platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-listing-filters.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
+sourceHash: f8497ff215f204dbc004e2782f267ce8efc22ddd
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ProductSortingDefinition", "ProductSortingEntity", "ProductListingCollectSortingEvent", "product_sorting", "product_sorting_translation", "MigrationStep", "url_key", "naturalSorting", "custom sorting", "listing sort order", "sort options", "product listing"]
+summary: Add product listing sortings via a migration into product_sorting (manageable) or at runtime via ProductListingCollectSortingEvent (6.7.15.0+)
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md", "platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-listing-filters.md"]
 ---
 ## What it is
 
-How to add individual sorting options for Storefront product listings, either persisted in the `product_sorting` table through a plugin migration (manageable in the Administration) or injected at runtime through an event subscriber (not manageable).
+Individual sortings are groups of sorting options for Storefront product listings. They can be added through a migration (stored in the database, manageable in the Administration) or at runtime through an event (not manageable).
 
 ## When to use
 
-You need an extra entry in the Storefront sorting dropdown, e.g. sort by `product.name` descending. Prefer the migration; if the sorting must not be editable, insert it with `locked` set instead of adding it at runtime. Prerequisites: a plugin ([Plugin Base Guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) and familiarity with [database migrations](platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md).
+You want an extra entry in the Storefront listing sort dropdown. Requires a plugin ([plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) and familiarity with [database migrations](platform/dev/6.7/guides/plugins/plugins/database/database-migrations.md).
 
 ## Key steps / config
 
-### Option 1: migration (manageable)
+### Via migration (manageable)
 
-1. Create `<plugin root>/src/Migration/Migration1615470599ExampleSorting.php` extending `Shopware\Core\Framework\Migration\MigrationStep`; it must declare both `getCreationTimestamp()` and `update()`.
-2. In `update()`, insert a row into `ProductSortingDefinition::ENTITY_NAME` (`product_sorting`), then `REPLACE INTO product_sorting_translation` (`language_id`, `product_sorting_id`, `label`, `created_at`) for every language you use (e.g. `Defaults::LANGUAGE_SYSTEM`).
+Create e.g. `<plugin root>/src/Migration/Migration1615470599ExampleSorting.php` extending `Shopware\Core\Framework\Migration\MigrationStep`:
 
 ```php
 class Migration1615470599ExampleSorting extends MigrationStep
@@ -35,45 +34,63 @@ class Migration1615470599ExampleSorting extends MigrationStep
     public function update(Connection $connection): void
     {
         $connection->insert(ProductSortingDefinition::ENTITY_NAME, [
-            'id' => Uuid::randomBytes(), 'url_key' => 'my-custom-sort', 'priority' => 5,
-            'active' => 1, 'locked' => 0,
-            'fields' => json_encode([['field' => 'product.name', 'order' => 'desc', 'priority' => 1, 'naturalSorting' => 0]]),
-            'created_at' => (new \DateTime())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
+            'id' => ..., 'url_key' => 'my-custom-sort', 'priority' => 5,
+            'active' => 1, 'locked' => 0, 'fields' => json_encode([...]), 'created_at' => ...,
         ]);
-        // then REPLACE INTO product_sorting_translation ... label
+        // then REPLACE INTO product_sorting_translation (language_id, product_sorting_id, label, created_at)
     }
 }
 ```
 
-Row columns: `url_key` (shown in the URL as `order`, unique system-wide), `priority` (higher = further up in the dropdown), `active`, `locked` (prevents Administration editing), `fields` (JSON list of `field`, `order` asc/desc, `priority` — higher applied first, `naturalSorting`).
+Row columns:
+- `url_key` — shown in the URL, must be unique system-wide.
+- `priority` — higher shows further up in the Storefront dropdown.
+- `active` — enable/disable; `locked` — prevents editing in the Administration.
+- `fields` — JSON list of `{ "field": "product.name", "order": "asc|desc", "priority": 1, "naturalSorting": 0 }`; higher field priority is applied first.
+- `created_at` formatted with `Defaults::STORAGE_DATE_TIME_FORMAT`.
 
-### Option 2: runtime (non-manageable, not recommended)
+The `label` lives in `product_sorting_translation`; insert it for `Uuid::fromHexToBytes(Defaults::LANGUAGE_SYSTEM)` and every other language you use.
 
-Subscribe to `Shopware\Core\Content\Product\Events\ProductListingCriteriaEvent` (source uses priority 500). Read `$event->getCriteria()->getExtension('sortings') ?? new ProductSortingCollection()`, build a `ProductSortingEntity` with `setId()`, `setActive(true)`, `setTranslated(['label' => ...])`, `setKey('my-custom-runtime-sort')`, `setPriority(5)`, `setFields([...])`, add it to the collection, and write it back with `addExtension('sortings', $availableSortings)`.
+### At runtime (not manageable)
+
+Subscribe to `Shopware\Core\Content\Product\Events\ProductListingCollectSortingEvent` (see [listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md)), build a `ProductSortingEntity` and add it to `$event->getSortings()`:
+
+```php
+$sorting = new ProductSortingEntity();
+$sorting->setId(Uuid::randomHex());
+$sorting->setActive(true);
+$sorting->setTranslated(['label' => 'My Custom Sorting at runtime']);
+$sorting->setKey('my-custom-runtime-sort');
+$sorting->setPriority(5);
+$sorting->setFields([['field' => 'product.name', 'order' => 'desc', 'priority' => 1, 'naturalSorting' => 0]]);
+$event->getSortings()->add($sorting);
+```
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Product\SalesChannel\Sorting\ProductSortingDefinition` (`ENTITY_NAME` = `product_sorting`)
-- `Shopware\Core\Content\Product\SalesChannel\Sorting\ProductSortingEntity`
-- `Shopware\Core\Content\Product\SalesChannel\Sorting\ProductSortingCollection`
-- `Shopware\Core\Content\Product\Events\ProductListingCriteriaEvent`
-- `Shopware\Core\Framework\Migration\MigrationStep`
-- Criteria extension key `sortings`; table `product_sorting_translation`
+- `Shopware\Core\Content\Product\SalesChannel\Sorting\ProductSortingDefinition` (`ENTITY_NAME` = `product_sorting`), table `product_sorting_translation`
+- `Shopware\Core\Content\Product\SalesChannel\Sorting\ProductSortingEntity` — `setKey()`, `setPriority()`, `setActive()`, `setFields()`, `setTranslated()`
+- `Shopware\Core\Content\Product\Events\ProductListingCollectSortingEvent::getSortings()`
+- `Shopware\Core\Framework\Migration\MigrationStep`, `Defaults::LANGUAGE_SYSTEM`, `Defaults::STORAGE_DATE_TIME_FORMAT`
 
 ## Gotchas
 
-- Never change a migration already shipped; add a new one and re-install/update the plugin.
-- The source says subscribing with high priority adds the sorting "before the default shopware logic". In the installed code, `ResolveCriteriaProductListingRoute::load()` runs the listing processor's `prepare()` (which merges DB sortings into the `sortings` extension and applies the current sorting to the criteria) before it dispatches `ProductListingCriteriaEvent`, so subscriber priority does not reorder it relative to that step. A runtime sorting added in the event still lands in the collection that `process()` exposes as available sortings.
-- If the request `order` parameter is not a string, `SortingListingProcessor` throws via `ProductException::sortingNotFoundException`.
+- Never change a migration already in use; create a new one. Adjusting a migration requires re-installing or updating the plugin.
+- Runtime sortings are discouraged. If you only want a sorting users cannot edit, add it via migration with `locked` set to true.
+- The entity property is `key`, mapped to the `url_key` column — use `url_key` in raw SQL inserts, `setKey()` on the entity.
 
-## Code check (6.7.13.0)
-- confirmed `MigrationStep::getCreationTimestamp()` — abstract, must be declared — vendor/shopware/core/Framework/Migration/MigrationStep.php:28
-- confirmed `MigrationStep::update()` — abstract, must be declared — vendor/shopware/core/Framework/Migration/MigrationStep.php:33
-- confirmed `ProductSortingDefinition::ENTITY_NAME` — value `product_sorting` — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:24
-- confirmed `url_key` — StringField mapped to property `key`, required — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:56
-- confirmed `fields` — required JsonField — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:59
-- confirmed `ProductSortingEntity::setKey()` — setter exists — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingEntity.php:82
-- confirmed `ProductSortingEntity::setFields()` — setter exists — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingEntity.php:118
-- confirmed `ProductListingCriteriaEvent::getCriteria()` — returns Criteria — vendor/shopware/core/Content/Product/Events/ProductListingCriteriaEvent.php:28
-- confirmed `sortings` — extension read and merged with DB sortings — vendor/shopware/core/Content/Product/SalesChannel/Listing/Processor/SortingListingProcessor.php:50
-- corrected `ProductListingCriteriaEvent` — docs: high subscriber priority runs before default sorting logic; processor prepare() runs before the event is dispatched — vendor/shopware/core/Content/Product/SalesChannel/Listing/ResolveCriteriaProductListingRoute.php:42
+## Version notes
+
+- `ProductListingCollectSortingEvent` is available since Shopware 6.7.15.0.
+
+## Code check (6.7.15.1)
+- confirmed `MigrationStep::getCreationTimestamp()` — abstract, must be implemented — vendor/shopware/core/Framework/Migration/MigrationStep.php:28
+- confirmed `MigrationStep::update()` — abstract, must be implemented — vendor/shopware/core/Framework/Migration/MigrationStep.php:33
+- confirmed `ProductSortingDefinition::ENTITY_NAME` — value `product_sorting` — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:27
+- confirmed `url_key` — StringField mapped to property `key` — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:59
+- confirmed `fields` — required JsonField — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingDefinition.php:62
+- confirmed `ProductListingCollectSortingEvent::getSortings()` — returns `ProductSortingCollection` — vendor/shopware/core/Content/Product/Events/ProductListingCollectSortingEvent.php:28
+- confirmed `ProductListingCollectSortingEvent` — dispatched in SortingListingProcessor::prepare() — vendor/shopware/core/Content/Product/SalesChannel/Listing/Processor/SortingListingProcessor.php:65
+- confirmed `ProductSortingEntity::setKey()` — setter for the url_key value — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingEntity.php:82
+- confirmed `ProductSortingEntity::setFields()` — takes the sort field array — vendor/shopware/core/Content/Product/SalesChannel/Sorting/ProductSortingEntity.php:118
+- confirmed `Defaults::LANGUAGE_SYSTEM` — system language id constant — vendor/shopware/core/Defaults.php:18

@@ -6,38 +6,40 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/monetization/
 sourceHash: 3e6c48b4bc3f7638eacd9d517fc027262f3cb275
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["monetization", "paid extensions", "in-app purchases", "iap", "subscription", "one-time purchase", "shopware store", "shopware account", "commission", "shopware technology partner", "stp", "extension pricing"]
-summary: "Store extension monetization: paid (one-time/subscription), In-App Purchases (since 6.6.9.0), commission-based integrations (STP agreement)."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["monetization", "paid extensions", "in-app purchases", "IAP", "InAppPurchase", "subscription", "one-time purchase", "Shopware Store", "Shopware Account", "Shopware Technology Partner", "STP", "commission"]
+summary: Ways to monetize a Shopware extension - paid Store extensions, In-App Purchases (since 6.6.9.0), and commission-based integrations under an STP agreement.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/development/monetization/in-app-purchases.md", "platform/dev/6.7/guides/development/testing/store/quality-guidelines.md", "platform/dev/6.7/guides/development/testing/store/store-review-errors.md"]
 ---
 ## What it is
 
-Overview of the ways to monetize an extension distributed through the Shopware Store: paid extensions, In-App Purchases (IAP), and commission-based integrations.
+An overview of the monetization models Shopware offers for extensions sold through the Shopware Store.
 
 ## When to use
 
-When deciding on a business model for an extension before publishing it in the Shopware Store.
+You are choosing a business model for an extension: selling it outright, unlocking features inside it, or earning revenue from an external service it integrates.
 
 ## Key steps / config
 
-- **Paid extensions**: sold as a one-time purchase or as a subscription via the Shopware Store. Pricing and licensing are managed in the Shopware Account, not in extension code.
-- **In-App Purchases (IAP)**: lock specific features behind additional purchases inside the same extension. See [In-App Purchases](platform/dev/6.7/guides/development/monetization/in-app-purchases.md).
-- **Commission-based integrations**: if the extension integrates external services and generates revenue (e.g. transaction-based fees), a Shopware Technology Partner (STP) agreement may be required.
-- Every monetized extension must comply with the [quality guidelines](platform/dev/6.7/guides/development/testing/store/quality-guidelines.md) and avoid the [Common Store Review Errors](platform/dev/6.7/guides/development/testing/store/store-review-errors.md).
+1. **Paid extensions**: sell the extension as a one-time purchase or a subscription via the Shopware Store. Pricing and licensing are managed in your Shopware Account.
+2. **In-App Purchases (IAP)**: lock specific features of the same extension behind extra purchases. Available since Shopware 6.6.9.0. In core, active purchases are exposed through the `Shopware\Core\Framework\Store\InAppPurchase` service (`isActive($extensionName, $identifier)`, `getByExtension()`, `all()`). Details: [In-App Purchases](platform/dev/6.7/guides/development/monetization/in-app-purchases.md).
+3. **Commission-based integrations**: if the extension integrates external services that generate revenue (e.g. transaction-based fees), a Shopware Technology Partner (STP) agreement may be required.
+
+All monetized extensions must comply with the [quality guidelines](platform/dev/6.7/guides/development/testing/store/quality-guidelines.md) and avoid the [Common Store Review Errors](platform/dev/6.7/guides/development/testing/store/store-review-errors.md).
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Store\InAppPurchase` (core service holding active In-App Purchases per extension)
+- `Shopware\Core\Framework\Store\InAppPurchase`
+- `InAppPurchase::isActive()`
 
 ## Version notes
 
-- In-App Purchases are available since Shopware 6.6.9.0.
+- In-App Purchases require Shopware 6.6.9.0 or later.
 
-## Code check (6.7.13.0)
-- confirmed `InAppPurchase` — core service exposing active purchases per extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:10
-- confirmed `InAppPurchase::getByExtension()` — returns purchased IAP identifiers for one extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:53
-- confirmed `ExtensionStruct::$inAppPurchases` — Store extension data carries IAP list — vendor/shopware/core/Framework/Store/Struct/ExtensionStruct.php:163
-- unverified `6.6.9.0` — introduction version not derivable from installed code
-- unverified `STP agreement` — commercial/licensing policy, not in code
+## Code check (6.7.15.1)
+- confirmed `InAppPurchase` — core service holding active purchases per extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:10
+- confirmed `InAppPurchase::isActive()` — checks an identifier for an extension name — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
+- confirmed `InAppPurchase::getByExtension()` — lists active purchase identifiers of one extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:53
+- unverified `6.6.9.0` — introduction version is not recorded in the installed code
+- unverified `STP` — commercial agreement, not represented in code

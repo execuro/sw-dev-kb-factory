@@ -6,57 +6,61 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/storefront/ajax-panel.html
 sourceHash: a3b71530e3f0d60b34731808e1431dad53d75480
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["AjaxPanel", "b2b--ajax-panel", "ajax-panel-link", "ignore--b2b-ajax-panel", "AjaxPanelPluginLoader", "ajaxPanelFormDisable", "b2bAjaxPanelModal", "data-ajax-panel-trigger-reload", "is--b2b-tree-select-container", "TreeSelect", "b2b suite storefront", "xhr panel", "iframe-like ajax container"]
-summary: B2B Suite AjaxPanel storefront mini-framework - b2b--ajax-panel container, data-url/data-id/data-target, panel plugins, modal, trigger reload, TreeSelect.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "AjaxPanel", "ajax panel", "b2b--ajax-panel", "data-url", "data-plugins", "AjaxPanelPluginLoader", "ajaxPanelFormDisable", "b2bAjaxPanelModal", "TreeSelect", "data-ajax-panel-trigger-reload", "xhr", "iframe"]
+summary: B2B Suite AjaxPanel - b2b--ajax-panel containers load controller actions via XHR; data-url, data-id/data-target, plugins (form disable, modal, reload, tree).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-`AjaxPanel` is a B2B Suite mini-framework built on Storefront plugins. It mimics `iFrame` behavior: content from different controller actions is loaded via ajax into a single view, and link clicks and form submits inside the container are intercepted and turned into XHR requests.
+`AjaxPanel` is a B2B Suite mini-framework built on Storefront plugins. It mimics `iFrame` behaviour: content from different controller actions is loaded via ajax into one view, and normally page-changing events (link clicks, form submits) inside a panel are intercepted and turned into XHR requests.
 
 ## When to use
 
-When building or extending B2B Suite storefront views that load controller output into a region of the page (grids, edit forms, modals) without full page reloads, or when one panel must reload or navigate another.
+When building B2B Suite storefront views that combine several controller actions on one page, open content in modals, reload one panel after a change in another, or show a drag-and-drop tree.
 
 ## Key steps / config
 
-1. Mark a container with the trigger class `b2b--ajax-panel` and a `data-url`. The B2B frontend scans the page for this class; after document ready the panel issues an XHR GET to `data-url` and replaces its inner HTML with the response. Clicks on links and submitted forms inside it then become XHR requests.
+**Basic panel** — the plugin scans the page for the trigger class `b2b--ajax-panel`; on document ready it sends an XHR GET to `data-url` and replaces the inner HTML with the response:
 
 ```twig
 <div class="b2b--ajax-panel"
      data-url="{{ path('frontend.b2b.b2bcontact.grid') }}"
-     data-id="grid"
      data-plugins="ajaxPanelFormDisable">
 </div>
 ```
 
-2. Make any element act as a link inside a panel: class `ajax-panel-link` plus `data-href="{{ path('frontend.b2b.b2bcontact.grid') }}"`.
-3. Keep default browser behavior for a link or form: add class `ignore--b2b-ajax-panel`.
-4. Target another panel: give the target `data-id="foreign"` and the link `data-target="foreign"`.
-5. Attach helper plugins via `data-plugins`; `AjaxPanelPluginLoader` initializes and reinitializes plugins inside panels. `ajaxPanelFormDisable` disables all form elements during panel reload.
-6. Modal: the `b2bAjaxPanelModal` plugin opens panel content in a modal dialog; add class `b2b-modal-panel` next to `b2b--ajax-panel`.
-7. Trigger reload of another panel: on the editing panel set `data-ajax-panel-trigger-reload="grid"` (the other panel's `data-id`); every change in that panel reloads the grid.
-8. TreeSelect (drag-and-drop tree): the `div` needs class `is--b2b-tree-select-container` and `data-move-url="{{ path('frontend.b2b.b2brole.move') }}"`. The controller implements a move action accepting `roleId`, `relatedRoleId` and `type`, where `type` is one of `prev-sibling`, `last-child`, `next-sibling`.
+**Panel behaviour attributes/classes**
+
+- Clickable non-link element: class `ajax-panel-link` plus `data-href="{{ path(...) }}"`.
+- Opt out of interception (real navigation/submit): class `ignore--b2b-ajax-panel` on the `a` or `form`.
+- Target another panel: give the panel `data-id="foreign"`, link with `data-target="foreign"`.
+
+**Ajax panel plugins** — `AjaxPanelPluginLoader` initialises and reinitialises plugins inside panels; activate them via `data-plugins`:
+
+- `ajaxPanelFormDisable` — disables all form elements in the panel during reload.
+- Modal (`b2bAjaxPanelModal`) — add class `b2b-modal-panel` to open the panel content in a modal box.
+- TriggerReload — `data-ajax-panel-trigger-reload="grid"` on a panel reloads the panel with `data-id="grid"` on every change (e.g. edit dialog over a grid).
+- `TreeSelect` — tree view with drag and drop: the `div` needs class `is--b2b-tree-select-container` and `data-move-url="{{ path('frontend.b2b.b2brole.move') }}"`. The controller must implement a move action accepting `roleId`, `relatedRoleId` and `type`, where `type` is `prev-sibling`, `last-child` or `next-sibling`.
 
 ## Essential identifiers
 
-- `AjaxPanel`, `AjaxPanelPluginLoader`, `TreeSelect`
+- `AjaxPanel`, `AjaxPanelPluginLoader`
 - Classes: `b2b--ajax-panel`, `ajax-panel-link`, `ignore--b2b-ajax-panel`, `b2b-modal-panel`, `is--b2b-tree-select-container`
 - Attributes: `data-url`, `data-href`, `data-id`, `data-target`, `data-plugins`, `data-ajax-panel-trigger-reload`, `data-move-url`
-- Plugins: `ajaxPanelFormDisable`, `b2bAjaxPanelModal`
-- Routes used in examples: `frontend.b2b.b2bcontact.grid`, `frontend.b2b.b2bcontact.edit`, `frontend.b2b.b2brole.move`
+- Plugins: `ajaxPanelFormDisable`, `b2bAjaxPanelModal`, `TreeSelect`
+- Example routes: `frontend.b2b.b2bcontact.grid`, `frontend.b2b.b2bcontact.edit`, `frontend.b2b.b2brole.move`
 
 ## Gotchas
 
-- Without `ignore--b2b-ajax-panel`, every link and form inside a panel is converted to XHR, including external links.
+- All clicks and form submits inside a panel become XHR requests unless marked `ignore--b2b-ajax-panel`.
+- The ajax panel code ships with the B2B Suite; the installed platform packages only provide the generic Storefront plugin system it is built on.
 
-## Code check (6.7.13.0)
-- unverified `AjaxPanel` — B2B Suite storefront JS; the B2B Suite plugin is not part of the installed core/storefront/administration packages
-- unverified `AjaxPanelPluginLoader` — B2B Suite plugin code, not installed
-- unverified `b2b--ajax-panel` — trigger class handled by B2B Suite JS, not installed
-- unverified `ajaxPanelFormDisable` — B2B Suite panel plugin, not installed
-- unverified `b2bAjaxPanelModal` — B2B Suite panel plugin, not installed
-- unverified `data-ajax-panel-trigger-reload` — B2B Suite attribute, not installed
-- unverified `frontend.b2b.b2bcontact.grid` — B2B Suite route, not installed
-- unverified `frontend.b2b.b2brole.move` — B2B Suite route, not installed
+## Code check (6.7.15.1)
+- confirmed `Plugin` — Storefront JS plugin base class the B2B frontend plugins build on — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:9
+- confirmed `PluginManager.register` — registers a Storefront plugin for a selector — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:26
+- unverified `AjaxPanelPluginLoader` — B2B Suite storefront JS, outside the platform packages
+- unverified `b2b--ajax-panel` — B2B Suite trigger class, outside the platform packages
+- unverified `ajaxPanelFormDisable` — B2B Suite panel plugin, outside the platform packages
+- unverified `b2bAjaxPanelModal` — B2B Suite panel plugin, outside the platform packages
+- unverified `frontend.b2b.b2bcontact.grid` — B2B Suite route, no such route in the platform packages

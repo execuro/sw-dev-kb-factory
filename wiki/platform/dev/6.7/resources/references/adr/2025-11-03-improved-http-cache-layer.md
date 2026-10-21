@@ -6,42 +6,44 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2025-11-03-improved-http-cache-layer.html
 sourceHash: c8d1e85c3fb40fcc7ccd21a3a3e8efbdd9fc6109
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["CACHE_REWORK", "sw-cache-hash", "http_cache.policies", "default_policies", "route_policies", "ResolveCacheRelevantRuleIdsExtension", "RuleAreas::PRODUCT_AREA", "vary header", "http cache", "reverse proxy", "store-api caching", "cache-control", "varnish", "fastly"]
-summary: "ADR (2025-11-03): HTTP cache rework behind CACHE_REWORK - product-area rules in sw-cache-hash, configurable cache-control policies, Store-API caching."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["http cache", "CACHE_REWORK", "sw-cache-hash", "cache policies", "shopware.http_cache.policies", "default_policies", "route_policies", "rule areas", "ResolveCacheRelevantRuleIdsExtension", "vary header", "reverse proxy", "store api cache", "cache-control", "varnish"]
+summary: "ADR: HTTP cache rework behind CACHE_REWORK: product-area rule ids in cache hash, configurable cache-control policies, sw-cache-hash only, Store API caching."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Core ADR reworking the HTTP cache layer. Previously only storefront requests were cached, all matched rule ids went into the cache hash (low hit rate; caching disabled once the cart was filled or a customer logged in), reverse proxy configuration was complex, and `cache-control` values were hard-coded. The rework is opt-in via the `CACHE_REWORK` feature flag.
+An architecture decision record (2025-11-03) reworking Shopware's HTTP cache layer: fewer cache permutations, cache-control policies moved into configuration, a reverse-proxy contract reduced to a single `sw-cache-hash` value, and HTTP caching for the Store API. All changes are opt-in via the `CACHE_REWORK` feature flag.
 
 ## When to use
 
-- Setting up or debugging HTTP caching for storefront or headless (Store-API) projects on 6.7 with `CACHE_REWORK` enabled.
-- Configuring a reverse proxy (Varnish, Fastly or others) for the reworked cache.
+- You configure Varnish/Fastly or another reverse proxy in front of Shopware.
+- You tune `Cache-Control` headers per area or per route.
+- Your customisation depends on caching being off for logged-in customers, filled carts or Store API routes — this rework changes that.
 
 ## Key steps / config
 
-1. Enable the `CACHE_REWORK` feature flag (default `false`, toggleable, experimental).
-2. Only cache-relevant rule ids enter the hash: by default rules used in the `product` rule area (`RuleAreas::PRODUCT_AREA`). Extend the area list via the extension point `ResolveCacheRelevantRuleIdsExtension` (name `cache-response.resolve-rule-areas`, public property `ruleAreas`).
-3. Configure cache policies instead of hard-coded headers:
+1. **Enable**: activate the `CACHE_REWORK` feature flag (toggleable, default `false`; always on with `v6.8.0.0`).
+2. **Cache-relevant rule ids only** — the cache hash includes only rule ids used in specific rule areas; the default is the product area (`RuleAreas::PRODUCT_AREA`). Extend the list through the `ResolveCacheRelevantRuleIdsExtension` extension point (name `cache-response.resolve-rule-areas`, public `$ruleAreas` property).
+3. **Configurable policies** under `shopware.http_cache` — named policies, per-area defaults (`storefront`, `store_api`) for cacheable/uncacheable responses, and route-level overrides:
 
 ```yaml
 shopware:
-    http_cache:
-        policies:
-            storefront.cacheable:
-                headers:
-                    cache_control: { public: true, max_age: 0, must_revalidate: true, s_maxage: 7200 }
-        default_policies:
-            storefront: { cacheable: storefront.cacheable, uncacheable: no_cache_private }
-            store_api: { cacheable: store_api.cacheable, uncacheable: no_cache_private }
-        route_policies:
-            <route.name>: <policy name>
+  http_cache:
+    policies:
+      storefront.cacheable:
+        headers:
+          cache_control: { public: true, max_age: 0, must_revalidate: true, s_maxage: 7200 }
+    default_policies:
+      storefront: { cacheable: storefront.cacheable, uncacheable: no_cache_private }
+      store_api: { cacheable: store_api.cacheable, uncacheable: no_cache_private }
+    route_policies:
+      <route.name>: <policy name>
 ```
 
-   `default_policies` accepts only the areas `storefront` and `store_api`; `route_policies` (route name to policy name) overrides the default per route.
-4. Reverse proxy: the only application state to respect is `sw-cache-hash`, sent as header, cookie and in `Vary`:
+Policy resolution order: route with modifier (`route#modifier`, for script hooks) -> route-level policy -> area default; `_httpCache` attribute values (max-age, s-maxage) override only area defaults.
+
+4. **Reverse proxy contract** — responses carry the hash as header, cookie and `Vary` entry:
 
 ```
 sw-cache-hash: theHash
@@ -49,36 +51,39 @@ vary: sw-cache-hash
 set-cookie: sw-cache-hash=theHash;
 ```
 
-   The only Shopware-specific proxy rule: set the `sw-cache-hash` request header from the `sw-cache-hash` cookie.
-5. Store-API: cached with the same patterns and configuration as the storefront; routes support `GET` where sensible and clients should prefer `GET` and pass the hash as header or cookie.
+The only Shopware-specific proxy rule: copy the `sw-cache-hash` cookie into the `sw-cache-hash` request header.
+
+5. **Store API** — cached with the same patterns and configuration as the Storefront; routes gain `GET` support where it makes sense, and clients should prefer `GET` (see the separate Store API caching ADR).
 
 ## Essential identifiers
 
-- `CACHE_REWORK` (feature flag)
+- `CACHE_REWORK`
 - `sw-cache-hash` (`HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE`)
 - `shopware.http_cache.policies`, `shopware.http_cache.default_policies`, `shopware.http_cache.route_policies`
-- `ResolveCacheRelevantRuleIdsExtension` / `cache-response.resolve-rule-areas`
-- `RuleAreas::PRODUCT_AREA`
+- `storefront.cacheable`, `store_api.cacheable`, `no_cache_private`
+- `ResolveCacheRelevantRuleIdsExtension`, `RuleAreas::PRODUCT_AREA`
+- `CacheResponseSubscriber`, `CachePolicyProvider`
 
 ## Gotchas
 
-- Breaking: storefront pages for logged-in customers and filled carts are cached; load user-specific content asynchronously from uncached routes.
-- Breaking: rules outside the cache-relevant rule areas no longer influence the cache hash.
-- Breaking: Store-API routes are cached by default; clients not sending the hash may get wrong cached data.
-- The ADR speaks of "a new event" for rule areas; the installed code uses an extension point (see Code check).
+- Breaking: removing the state header means Storefront pages for logged-in customers and filled carts are cached by default. Customer-specific template content must move to async calls to uncached routes.
+- Breaking: rules outside the configured rule areas no longer influence the cache hash.
+- Breaking: Store API routes are cached by default; clients must pass the cache hash header or cookie, otherwise wrong cached data can be returned. The installed code bypasses the cache when the client hash does not match the expected one.
+- The ADR announces "a new event" for modifying rule areas; in 6.7.15.1 it is the extension point `ResolveCacheRelevantRuleIdsExtension`.
+- Previous limitations: only Storefront cached, all rule ids in the hash, complex proxy configs (only Fastly and Varnish supported), hard-coded cache-control values.
 
 ## Version notes
 
-- 6.7: opt-in via `CACHE_REWORK`; in code the new paths also activate with the `v6.8.0.0` flag.
+- 6.7: opt in with `CACHE_REWORK`. The checks treat `v6.8.0.0` as enabling the same behaviour.
 
-## Code check (6.7.13.0)
-- confirmed `CACHE_REWORK` — feature flag, default false, toggleable, read via Feature::isActive — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:64
-- confirmed `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE` — value `sw-cache-hash` — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheKeyGenerator.php:27
-- confirmed `CacheHeadersService::applyCacheHash()` — sets sw-cache-hash cookie and response header — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:54
-- confirmed `CONTEXT_CACHE_COOKIE` — added to the response Vary list — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:47
-- corrected `ResolveCacheRelevantRuleIdsExtension` — docs: a new event modifies relevant rule areas — vendor/shopware/core/Framework/Adapter/Cache/Http/Extension/ResolveCacheRelevantRuleIdsExtension.php:16
+## Code check (6.7.15.1)
+- confirmed `CACHE_REWORK` — read via `Feature::isActive('CACHE_REWORK')` to enable Store API caching — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheResponseSubscriber.php:125
+- confirmed `sw-cache-hash` — variant header, cookie/header transport — vendor/shopware/core/Framework/Adapter/Cache/Http/HttpCacheVariantHeaders.php:23
+- confirmed `HttpCacheKeyGenerator::CONTEXT_CACHE_COOKIE` — set as response header — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:76
+- confirmed `HttpCacheVariantHeaders::HEADERS` — merged into `Vary` — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:43
+- corrected `ResolveCacheRelevantRuleIdsExtension` — docs: new event; code: extension `cache-response.resolve-rule-areas` — vendor/shopware/core/Framework/Adapter/Cache/Http/Extension/ResolveCacheRelevantRuleIdsExtension.php:18
 - confirmed `RuleAreas::PRODUCT_AREA` — default cache-relevant rule area — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheRelevantRulesResolver.php:31
-- confirmed `policies` — http_cache policies with cache_control options — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1309
-- confirmed `default_policies` — only storefront and store_api areas allowed — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1338
-- confirmed `route_policies` — route name to policy name map — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1363
-- confirmed `store_api.cacheable` — shipped default policy, s_maxage 1800 — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:149
+- confirmed `shopware.http_cache.policies` — policy definitions — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:141
+- confirmed `default_policies` — per-area defaults, only storefront/store_api — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1383
+- confirmed `route_policies` — route-level overrides — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1408
+- confirmed `CachePolicyProvider::getPolicy()` — route#modifier, route, area-default priority — vendor/shopware/core/Framework/Adapter/Cache/Http/CachePolicyProvider.php:42

@@ -6,27 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/themes/inheritance/add-theme-inheritance.html
 sourceHash: ec9ef93df73a84d224e192d135229a1a1f3258ae
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["theme inheritance", "theme.json", "configInheritance", "views", "style", "script", "asset", "@Storefront", "@Plugins", "extend theme", "parent theme", "child theme", "base theme"]
-summary: Extend an existing Shopware theme by adding its @ThemeName placeholder to the views, style, script, asset and configInheritance arrays in theme.json.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/themes/create-a-theme.md", "platform/dev/6.7/guides/plugins/themes/configuration/theme-inheritance-configuration.md", "platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md", "platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["theme inheritance", "theme.json", "configInheritance", "views", "style", "script", "asset", "@Storefront", "@Plugins", "parent theme", "extend theme", "child theme", "SwagBasicExampleTheme"]
+summary: Extend an existing theme by adding its @ThemeName placeholder to the views, style, script, asset and configInheritance sections of theme.json.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/themes/create-a-theme.md", "platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md", "platform/dev/6.7/guides/plugins/themes/configuration/theme-inheritance-configuration.md", "platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md"]
 ---
 ## What it is
 
-How a theme extends another installed theme. Inheritance is declared in the extending theme's `theme.json` (`<plugin root>/src/Resources/theme.json`): each section lists placeholders (`@Storefront`, `@Plugins`, `@<ThemeName>`) and own files in the order they are applied.
+How one theme extends another installed theme by placing the parent's `@<TechnicalName>` placeholder in the inheritance chain of its `theme.json`. Every theme already inherits the default Storefront theme via `@Storefront`.
 
 ## When to use
 
-- Reuse a theme already used in one sales channel for another sales channel with slight changes (e.g. a dark variant).
-- Change the look of a store-bought theme without editing its code.
-- Build a base theme and customize it per client.
+- Reusing a theme from one sales channel in another with slight changes (e.g. a dark variant).
+- Customising a store-bought theme without editing its code.
+- Building a base theme and deriving client-specific themes from it.
 
-Prerequisite: the base theme (example `SwagBasicExampleTheme`) is installed, activated and assigned to a sales channel; the extending theme (example `SwagBasicExampleThemeExtend`) is created as described in [Create a first theme](platform/dev/6.7/guides/plugins/themes/create-a-theme.md).
+Prerequisite: the parent theme (here `SwagBasicExampleTheme`) is installed, activated and assigned to a sales channel; the extending theme (`SwagBasicExampleThemeExtend`) is created like any theme (see [Create a first theme](platform/dev/6.7/guides/plugins/themes/create-a-theme.md)).
 
 ## Key steps / config
 
-Add the base theme placeholder to each section of the extending theme's `theme.json`:
+Edit `<plugin root>/src/Resources/theme.json` of the extending theme:
 
 ```json
 {
@@ -40,30 +40,32 @@ Add the base theme placeholder to each section of the extending theme's `theme.j
 }
 ```
 
-- `views`: templates render from Storefront, then installed plugin extensions (`@Plugins`), then `@SwagBasicExampleTheme`, then the current theme.
-- `script`: Storefront JS is the base, then the base theme's JS, then the current theme's JS.
-- `style`: same layering; `overrides.scss` comes first because it may set SCSS variables such as `$border-radius` (see [Override Bootstrap variables in a theme](platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md)).
-- `asset`: add `@SwagBasicExampleTheme` to use its assets.
-- `configInheritance`: uses the field configuration of the listed themes; the last listed theme that differs from the current theme becomes the parent theme, and config values are inherited from the listed themes. Details: [Theme inheritance configuration](platform/dev/6.7/guides/plugins/themes/configuration/theme-inheritance-configuration.md).
+Section by section:
+
+- `views` — rendering starts from the Storefront templates, then plugin extensions, then `@SwagBasicExampleTheme`, then the current theme. Put the parent right before the current theme.
+- `script` — Storefront JS as base, then the parent theme's JS, then the current theme's.
+- `style` — same order idea; `overrides.scss` is first because it may set SCSS variables like `$border-radius` before they are defined (see [Override Bootstrap variables in a theme](platform/dev/6.7/guides/plugins/themes/styling/override-bootstrap-variables-in-a-theme.md)). A `@ThemeName` include is resolved recursively into that theme's own `style` list.
+- `asset` — add the parent here to use its assets.
+- `configInheritance` — the field configuration of the listed themes is inherited. The list is ordered from least to most specific; the last entry that is neither `@Storefront` nor the current theme becomes the parent theme (`parentThemeId`). Details: [Theme inheritance configuration](platform/dev/6.7/guides/plugins/themes/configuration/theme-inheritance-configuration.md).
 
 ## Essential identifiers
 
-- `theme.json` sections `views`, `style`, `script`, `asset`, `configInheritance`
-- `@Storefront` — the default Shopware theme every theme inherits
-- `@Plugins` — installed non-theme plugin extensions
-- `@SwagBasicExampleTheme` — placeholder form `@<ThemeTechnicalName>`
+- `theme.json` keys: `views`, `style`, `script`, `asset`, `configInheritance`
+- `@Storefront`, `@Plugins`, `@<ThemeTechnicalName>` placeholders
 
 ## Gotchas
 
-- The Storefront theme configuration is always inherited, even without `configInheritance`: when the list is empty the code falls back to `@Storefront` for every theme except the Storefront base theme itself.
-- A theme without the `@Storefront` placeholder in a section does not get the default theme's files for that section.
+- Storefront theme configuration is always inherited, even without `configInheritance`: the installed code falls back to the Storefront theme for every theme except the base one.
+- Duplicate namespace includes are skipped and circular references between themes are cut off by the file resolver.
+- The source calls the file `override.css` in prose, but the entry in the example is `app/storefront/src/scss/overrides.scss`.
 
-## Code check (6.7.13.0)
-- confirmed `configInheritance` — read from theme.json and stored into the theme base config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
-- confirmed `views` — theme.json views becomes the view inheritance — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:102
-- confirmed `script` — theme.json script array read as script files — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:85
-- confirmed `asset` — theme.json asset array read as asset paths — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:90
-- confirmed `style` — theme.json style array resolved as style files — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:81
-- confirmed `@Plugins` — placeholder expanding to non-theme plugin files — vendor/shopware/storefront/Theme/ThemeFileResolver.php:296
-- confirmed `ThemeMergedConfigBuilder::getConfigInheritance()` — falls back to @Storefront when configInheritance is empty (fallback at line 318) — vendor/shopware/storefront/Theme/ThemeMergedConfigBuilder.php:291
-- confirmed `StorefrontPluginRegistry::BASE_THEME_NAME` — value 'Storefront' — vendor/shopware/storefront/Theme/StorefrontPluginRegistry.php:20
+## Code check (6.7.15.1)
+- confirmed `views` — stored as view inheritance from theme.json — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:102
+- confirmed `script` — read into the theme's script file collection — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:85
+- confirmed `asset` — read into the theme's asset paths — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:90
+- confirmed `configInheritance` — read from theme.json and copied into the base config — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:106
+- confirmed `ThemeLifecycleService::addParentTheme()` — last entry other than `@Storefront`/current theme becomes `parentThemeId` — vendor/shopware/storefront/Theme/ThemeLifecycleService.php:563
+- confirmed `StorefrontPluginRegistry::BASE_THEME_NAME` — base theme technical name is `Storefront` — vendor/shopware/storefront/Theme/StorefrontPluginRegistry.php:20
+- confirmed `ThemeMergedConfigBuilder::getConfigInheritance()` — falls back to Storefront inheritance when none is given — vendor/shopware/storefront/Theme/ThemeMergedConfigBuilder.php:291
+- confirmed `@Plugins` — resolves files of all non-theme plugins — vendor/shopware/storefront/Theme/ThemeFileResolver.php:296
+- confirmed `ThemeFileResolver::resolve()` — tracks processed configs to prevent circular references — vendor/shopware/storefront/Theme/ThemeFileResolver.php:130

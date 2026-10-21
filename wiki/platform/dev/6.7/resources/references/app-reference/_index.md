@@ -6,21 +6,18 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/
 sourceHash: ce4c1e98355cb08c2cd9afee31fc6f6ec62892aa
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app reference", "app system", "apps", "manifest.xml", "cms.xml", "entities.xml", "flow.xml", "xml schema", "xsd", "app structure", "reference index"]
-summary: Index of the Shopware app reference section covering app structure, functions, events, variables and examples for building apps.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["app reference", "app system", "shopware app", "app structure", "app events", "app variables", "app responses", "app examples", "app development", "reference"]
+summary: Entry page of the Shopware app reference section - covers app structure, functions, methods, events, variables, responses and examples for apps.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page of the App Reference section. It states that the app reference documents the app structure, functions, methods, events, variables, responses and examples used when building Shopware apps. The section's child pages cover the XML files an app ships: the manifest, CMS blocks, custom entities and flow actions.
+The landing page of the App Reference section of the Shopware developer documentation. It describes the section's scope: the structure of an app plus its functions, methods, events, variables, responses and examples, as reference material for building apps that integrate with the Shopware platform.
 
 ## When to use
 
-Start here when you need the exact XML shape of an app configuration file rather than a step-by-step guide. In the installed core, each of these files is validated against an XSD that ships with `vendor/shopware/core` (see Code check), so the reference pages and those schema files are the authority on allowed elements.
+When building a Shopware app and looking for the reference material (rather than the step-by-step guides) on how an app is structured and which events, variables and responses it works with. The individual reference pages under this section hold the actual schemas and examples; this page only introduces them.
 
-## Code check (6.7.13.0)
-- confirmed `manifest-3.0.xsd` — app manifests are validated against this schema — vendor/shopware/core/Framework/App/Manifest/Manifest.php:33
-- confirmed `cms-1.0.xsd` — app CMS block files are validated against this schema — vendor/shopware/core/Framework/App/Cms/CmsExtensions.php:16
-- confirmed `entity-1.0.xsd` — custom entity files are validated against this schema — vendor/shopware/core/System/CustomEntity/Xml/CustomEntityXmlSchema.php:17
-- confirmed `flow-1.0.xsd` — app flow actions/events are validated against this schema — vendor/shopware/core/Framework/App/Flow/Action/Action.php:13
+## Code check (6.7.15.1)
+- unverified `app reference` — overview page names no concrete identifier, schema or config key to check against the installed code

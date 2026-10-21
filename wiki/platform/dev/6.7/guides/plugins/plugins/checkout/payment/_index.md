@@ -6,28 +6,20 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/checkout/payment/
 sourceHash: d9f6d445abc682f076df171543378096854deb4c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["payment", "payments", "payment method", "payment provider", "psp", "refund", "payment status", "checkout", "AbstractPaymentHandler", "shopware.payment.method", "payment plugin", "cancellation"]
-summary: Section index for Shopware 6.7 payment plugin guides - payment method integration, payment status, refunds, cancellations and notifications.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["payment", "payment method", "payment provider", "payment status", "refund", "cancellation", "payment notification", "AbstractPaymentHandler", "shopware.payment.method", "payment plugin", "psp"]
+summary: Overview of the plugin guides for payments in Shopware 6.7 - payment methods, payment status, refunds, cancellations and payment provider integration.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section landing page for the plugin guides about payments in Shopware 6.7. The payment feature covers processing and managing payments: integrating payment methods, tracking payment status, handling refunds and cancellations, and sending payment notifications.
+Section overview for payment-related plugin guides. Payment in Shopware covers processing and managing payments: integrating payment methods, tracking payment status, handling refunds and cancellations, and sending payment notifications. These functions exist in the core; plugins extend or customize them for business requirements, compliance needs, or integration with a preferred payment provider.
 
 ## When to use
 
-Start here when a plugin must extend or customize payment handling beyond the core — for specific business requirements, compliance needs, or integration with a preferred payment provider. The how-to page in this section covers writing a payment plugin with a custom payment handler.
+Start here when a plugin has to add a payment method, integrate a payment service provider, or change how an existing payment method behaves. In the installed 6.7 code, a plugin payment handler extends `Shopware\Core\Checkout\Payment\Cart\PaymentHandler\AbstractPaymentHandler` and is registered with the `shopware.payment.method` service tag; refunds and recurring payments are opt-in via its `supports()` method.
 
-## Essential identifiers
-
-Core entry points in the installed code that the section's guides build on (confirmed in vendor, not named on this index page itself):
-
-- `Shopware\Core\Checkout\Payment\Cart\PaymentHandler\AbstractPaymentHandler` — base class for payment handlers
-- `shopware.payment.method` — service tag for payment handlers
-- `Shopware\Core\Checkout\Payment\Cart\PaymentHandler\PaymentHandlerType` — `RECURRING`, `REFUND`
-
-## Code check (6.7.13.0)
-- confirmed `AbstractPaymentHandler` — abstract base class with abstract `supports` and `pay` — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:18
-- confirmed `shopware.payment.method` — autoconfigured tag for `AbstractPaymentHandler` subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:130
-- confirmed `PaymentHandlerType::REFUND` — enum case — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/PaymentHandlerType.php:11
+## Code check (6.7.15.1)
+- confirmed `AbstractPaymentHandler` — abstract base for payment handlers — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:18
+- confirmed `AbstractPaymentHandler::supports()` — abstract, decides refund/recurring support — vendor/shopware/core/Checkout/Payment/Cart/PaymentHandler/AbstractPaymentHandler.php:24
+- confirmed `shopware.payment.method` — autoconfigured tag for AbstractPaymentHandler subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:131

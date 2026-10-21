@@ -1,48 +1,43 @@
 ---
-id: platform/dev/6.7/products/tools/cli/extension-commands/extract-meta-data.md
-title: Extracting Meta Data
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/products/tools/cli/extension-commands/extract-meta-data.md
+sourceHash: f8c0ef9d3f32d8de5d0ceb0ad5f18bff19c6bf68
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/extension-commands/extract-meta-data.html
-sourceHash: 09d78966e4af302eef8964f10d01a189505b6248
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli", "shopware-cli extension get-version", "shopware-cli extension get-name", "shopware-cli extension get-changelog", "shopware-cli extension config-schema", ".shopware-extension.yml", "extension version", "extension name", "changelog", "json schema", "ci/cd", "release automation"]
-summary: shopware-cli helpers get-version, get-name, get-changelog and config-schema that read extension metadata for CI/CD release pipelines.
-lastBuilt: 2026-09-15
+title: Extracting Meta Data
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["shopware-cli", "shopware-cli extension get-version", "shopware-cli extension get-name", "shopware-cli extension get-changelog", "shopware-cli extension config-schema", ".config/shopware-extension.yml", "extension version", "extension name", "changelog", "json schema", "ci/cd", "release automation"]
+summary: "Shopware CLI helpers that print an extension's version, name, English changelog, or the JSON schema of .config/shopware-extension.yml"
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware CLI (`shopware-cli`) ships helper subcommands under `shopware-cli extension` that read metadata from an extension (plugin or app) and print it to stdout: its version, its name, its changelog, and the JSON schema of the `.shopware-extension.yml` configuration file.
+Shopware CLI (`shopware-cli`) ships helper commands under `shopware-cli extension` that read metadata out of an extension directory: its version, its name, its changelog, and the JSON schema of the extension configuration file `.config/shopware-extension.yml`. They are intended for scripted use, typically in CI/CD pipelines that build and publish an extension release automatically.
 
 ## When to use
 
-- In a CI/CD pipeline that needs the extension version, name or changelog for an automated release (for example tagging a release or filling release notes).
-- When a script has to determine the extension identifier programmatically instead of hard-coding it.
-- When an AI agent or automation tool needs to know which options `.shopware-extension.yml` accepts.
+- A release pipeline needs the extension version for the automated release.
+- A pipeline needs to determine the extension identifier (name) programmatically.
+- Release notes for an automated release should be taken from the extension's changelog.
+- An AI agent or another automation tool needs to understand the configuration structure of `.config/shopware-extension.yml`, i.e. which options it accepts.
 
 ## Key steps / config
 
-All three extraction commands take a `<path>` to the extension; the path can be absolute or relative to the current working directory.
+Each extraction command takes the extension path as its argument. The path can be absolute or relative to the current working directory.
 
-1. Print the extension version:
-   ```bash
-   shopware-cli extension get-version <path>
-   ```
-2. Print the extension name (the extension identifier):
-   ```bash
-   shopware-cli extension get-name <path>
-   ```
-3. Print the extension changelog:
-   ```bash
-   shopware-cli extension get-changelog <path>
-   ```
-4. Print the JSON schema describing all available configuration options of `.shopware-extension.yml` (no path argument):
-   ```bash
-   shopware-cli extension config-schema
-   ```
+```bash
+shopware-cli extension get-version <path>
+shopware-cli extension get-name <path>
+shopware-cli extension get-changelog <path>
+shopware-cli extension config-schema
+```
 
-Because each command writes only the requested value, its output can be captured directly into a pipeline variable.
+1. `get-version` outputs the version of the extension.
+2. `get-name` outputs the name of the extension (its identifier).
+3. `get-changelog` outputs the changelog of the extension.
+4. `config-schema` takes no path and outputs the JSON schema that describes all available configuration options in `.config/shopware-extension.yml`.
 
 ## Essential identifiers
 
@@ -50,15 +45,16 @@ Because each command writes only the requested value, its output can be captured
 - `shopware-cli extension get-name <path>`
 - `shopware-cli extension get-changelog <path>`
 - `shopware-cli extension config-schema`
-- `.shopware-extension.yml`
+- `.config/shopware-extension.yml`
 
 ## Gotchas
 
-- `get-changelog` always outputs the English changelog; there is no option described for other languages.
+- `get-changelog` always outputs the English changelog; the page names no option for selecting another language.
+- These are `shopware-cli` commands, not shop `bin/console` commands; they operate on the extension path you pass.
 
-## Code check (6.7.13.0)
-- unverified `shopware-cli extension get-version` — Shopware CLI is a separate tool, outside vendor/shopware core, storefront and administration
-- unverified `shopware-cli extension get-name` — Shopware CLI command, out of scope of the installed code index
-- unverified `shopware-cli extension get-changelog` — Shopware CLI command, out of scope of the installed code index
-- unverified `shopware-cli extension config-schema` — Shopware CLI command, out of scope of the installed code index
-- unverified `.shopware-extension.yml` — read by Shopware CLI, not by vendor/shopware code
+## Code check (6.7.15.1)
+- unverified `shopware-cli extension get-version` — shopware-cli is a separate tool, not part of vendor/shopware core, storefront or administration
+- unverified `shopware-cli extension get-name` — shopware-cli command, out of scope of the installed Shopware packages
+- unverified `shopware-cli extension get-changelog` — shopware-cli command, out of scope of the installed Shopware packages
+- unverified `shopware-cli extension config-schema` — shopware-cli command, out of scope of the installed Shopware packages
+- unverified `.config/shopware-extension.yml` — not referenced in the installed Shopware packages; read by shopware-cli only

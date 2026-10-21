@@ -6,69 +6,74 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/commerce/catalog/categories.html
 sourceHash: 6b962fabcadc6578ccf7df73d5f652b739a908ee
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["CategoryDefinition", "productAssignmentType", "cmsPageId", "/store-api/navigation/{activeId}/{rootId}", "/store-api/category/{navigationId}", "NavigationLoadedEvent", "ProductListingCriteriaEvent", "SeoUrlUpdateEvent", "CategoryIndexerEvent", "category tree", "navigation menu", "dynamic product groups", "product stream"]
-summary: Category entity tree, types page/folder/link, sales channel entry points, Store API navigation/category routes, listing assignment, CMS and SEO events.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
 relatedPages: ["platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md"]
+keywords: ["category", "category tree", "navigation", "CategoryDefinition", "productAssignmentType", "cmsPageId", "product_category", "product_category_tree", "/store-api/navigation/{activeId}/{rootId}", "NavigationLoadedEvent", "ProductListingCriteriaEvent", "SeoUrlUpdateEvent", "dynamic product groups", "product stream"]
+summary: "Category tree model: page/folder/link types, product vs stream assignment, CMS layout inheritance, Store API routes, SEO, events."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Developer view of Shopware categories: one category tree that organizes products, drives storefront navigation and produces SEO URLs. Each sales channel picks entry points inside that tree.
+Developer view of categories in Shopware 6.7. A single category tree holds the whole catalog, organises products, drives storefront navigation and defines SEO-relevant URLs. Each sales channel picks entry categories (`navigation`, `footer`, `service`) inside that tree, and the storefront builds its menus from the children of those entry points.
 
 ## When to use
 
-When reading or extending category data, building headless navigation via the Store API, changing how category listings are filtered, or reacting to category indexing and SEO URL regeneration.
+When building navigation, category listings, category-bound CMS layouts or SEO URLs, or when hooking into navigation or listing loading via events.
 
 ## Key steps / config
 
-**Model (`category` entity, `CategoryDefinition`)**
-- Tree fields: parent id (`ParentFkField`), `path`, `level`, plus a write-protected translated `breadcrumb`.
-- Flags: `active` (participates in navigation/listings), `visible`.
-- `type`: `page` (listing/landing page), `folder` (structuring element), `link`. Link targets use `linkType` = `external`, `category`, `product` or `landing_page` (with `externalLink` for external).
-- `productAssignmentType` (required): `product` (explicit assignment) or `product_stream` (Dynamic Product Group via `productStreamId`).
-- `cmsPageId` → CMS layout; category-specific slot overrides are stored as translated `slotConfig`.
-- Translated SEO fields: `metaTitle`, `metaDescription`, `keywords`; `seoUrls` association.
+**Tree fields** on the `category` entity: `parentId`, `path` and `level` build breadcrumbs, infer inheritance and allow efficient traversal.
 
-**Sales channel entry points**: `navigationCategoryId` (required), `footerCategoryId`, `serviceCategoryId`.
+**Flags:** `active` decides whether the category takes part in navigation and listings; `visible` controls menu rendering without disabling the category.
 
-**Store API routes**
-- `/store-api/navigation/{activeId}/{rootId}` — hierarchical menu.
-- `/store-api/category/{navigationId}` — category plus resolved CMS page; `navigationId` may be `home` (resolves to the sales channel navigation category).
-- `/store-api/product-listing/{categoryId}` — `ProductListingRoute`.
+**`type`** (default `page`):
+- `page` — regular category (listing or landing page).
+- `folder` — structuring element, not rendered as a page, ignores layouts.
+- `link` — redirects immediately; `linkType` is `external`, `category`, `product` or `landing_page`.
 
-**Listing**: `ProductListingRoute` uses either the product stream (when `productAssignmentType` is `product_stream` and a `productStreamId` is set) or a filter on `product.categoriesRo.id` (read-only category tree, `product_category_tree`) — one or the other, not both. Alter the listing criteria with `ProductListingCriteriaEvent`.
+**Product assignment** via `productAssignmentType` (default `product`):
+- `product` — explicit links stored in `product_category`; inherited links live in `product_category_tree`.
+- `product_stream` — a Dynamic Product Group (product stream) evaluates saved filters at runtime (brand filters, price ranges).
 
-**CMS**: CMS page load in `CategoryRoute` uses the category's own `cmsPageId` (or the sales channel `homeCmsPageId` for the navigation root) with merged slot config. `folder` categories that are not the navigation root return "category not found"; `link` categories return the category without a page.
+Both assignment types are merged for a category listing. `ProductListingRoute` builds the listing criteria from the category configuration, sales channel and request filters; alter the query with `ProductListingCriteriaEvent`.
+
+**CMS layout:** `cmsPageId` references a CMS layout ([Shopping Experiences](platform/dev/6.7/concepts/commerce/content/shopping-experiences-cms.md)); when missing, the parent layout is used. Category-specific slot configuration (`slotConfig`, translated) is stored on the category and merged at runtime, so one layout can serve many categories with different media and copy.
+
+**Store API:**
+- `/store-api/navigation/{activeId}/{rootId}` — hierarchical menus; responses are cached. Use `NavigationLoadedEvent` to enrich or modify the tree before it is returned.
+- `/store-api/category/{navigationId}` — category details including assigned CMS layout data.
+
+**SEO:** translated `metaTitle`, `metaDescription`, `keywords`; SEO URLs (`seo_url`) are generated per category and sales channel domain from templates under *Settings → SEO*, and are rebuilt when categories change or the SEO indexer runs. URL templates (e.g. including the breadcrumb) and priorities are configurable per sales channel domain. Emit canonical links when rendering custom category pages.
+
+**Related tables:** `category_translation` (localized names, breadcrumbs, links, SEO text), `product_stream`, `cms_page`, `sales_channel` (entry categories), `seo_url`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Category\CategoryDefinition` (`TYPE_PAGE`, `TYPE_FOLDER`, `TYPE_LINK`, `PRODUCT_ASSIGNMENT_TYPE_PRODUCT`, `PRODUCT_ASSIGNMENT_TYPE_PRODUCT_STREAM`)
-- `NavigationLoadedEvent` — dispatched by `NavigationLoader` after loading the tree; enrich or adjust nodes.
-- `SalesChannelCategoryIdsFetchedEvent` — category IDs resolved for a sales channel (dispatched by the sitemap `CategoryUrlProvider`).
-- `CategoryIndexerEvent` — after category indexing; sync de-normalized data or external indices.
-- `ProductListingCriteriaEvent` — customize listing filters, sorting, aggregations.
-- `SeoUrlUpdateEvent` — dispatched by `SeoUrlPersister` when SEO URLs are written.
+- `CategoryDefinition` (`category`), types `page`/`folder`/`link`
+- `productAssignmentType`: `product` / `product_stream`
+- `product_category`, `product_category_tree`, `product_stream`, `cms_page`, `seo_url`
+- `NavigationLoadedEvent` — navigation tree loaded; enrich or adjust nodes
+- `SalesChannelCategoryIdsFetchedEvent` — category IDs resolved for a sales channel
+- `CategoryIndexerEvent` — keep de-normalised data or external search indices in sync
+- `ProductListingCriteriaEvent` — listing filters, sorting, aggregations
+- `SeoUrlUpdateEvent` — observe or react to SEO URL regeneration
+- `ProductListingRoute`
 
 ## Gotchas
 
-- The docs mention `hideInNavigation` and robot flags `noIndex`/`noFollow`; none of these strings exist in the installed Shopware code — do not rely on them as field names.
-- The docs say explicit and stream assignments are merged for a listing and that a missing `cmsPageId` inherits the parent layout; the installed `ProductListingRoute`/`CategoryRoute` do neither (see Code check).
-- `NavigationRouteCacheKeyEvent` and `NavigationRouteCacheTagsEvent`, which the docs recommend for navigation cache identity/tags, are deprecated ("not used anymore") and removed in 6.8.0.
-- Categories are extensible via custom fields or entity extensions; expose custom data to storefronts via Store API response extensions.
+- The docs mention a hide-in-navigation flag (`hideInNavigation`); the installed code has no such field — only `visible` and `active`. An `active` category stays reachable by direct URL even when not shown in menus.
+- The docs list robot flags `noIndex`/`noFollow` as per-category SEO fields; the installed code has no such identifiers.
+- The docs suggest adjusting navigation cache identity or tags via `NavigationRouteCacheKeyEvent` and `NavigationRouteCacheTagsEvent`; both are deprecated in 6.7 ("not used anymore") and removed in 6.8.0.
+- Categories are extensible via custom fields or entity extensions; expose custom data through Store API response extensions when storefronts or external channels need it.
 
-## Version notes
-
-- 6.8.0: `NavigationRouteCacheKeyEvent` and `NavigationRouteCacheTagsEvent` removed.
-
-## Code check (6.7.13.0)
-- confirmed `CategoryDefinition::TYPE_FOLDER` — types page/link/folder — vendor/shopware/core/Content/Category/CategoryDefinition.php:61
-- confirmed `productAssignmentType` — required field, values product/product_stream — vendor/shopware/core/Content/Category/CategoryDefinition.php:138
-- confirmed `/store-api/navigation/{activeId}/{rootId}` — NavigationRoute path — vendor/shopware/core/Content/Category/SalesChannel/NavigationRoute.php:69
-- confirmed `/store-api/category/{navigationId}` — CategoryRoute path — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:56
-- corrected `PRODUCT_ASSIGNMENT_TYPE_PRODUCT_STREAM` — docs: both assignment types merged; code uses stream or categoriesRo filter — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingRoute.php:108
-- corrected `getCmsPageId()` — docs: parent layout inherited when missing; route returns category without page — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:85
+## Code check (6.7.15.1)
+- confirmed `CategoryDefinition::TYPE_FOLDER` — types `page`/`link`/`folder` — vendor/shopware/core/Content/Category/CategoryDefinition.php:61
+- confirmed `CategoryDefinition::PRODUCT_ASSIGNMENT_TYPE_PRODUCT_STREAM` — values `product`/`product_stream`, default `product` — vendor/shopware/core/Content/Category/CategoryDefinition.php:73
+- confirmed `cmsPageId` — FK to `cms_page` — vendor/shopware/core/Content/Category/CategoryDefinition.php:165
+- absent `hideInNavigation` — no such field in the installed code; only `visible`/`active`
+- absent `noIndex` — no category robots fields in the installed code
+- confirmed `/store-api/category/{navigationId}` — route path — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:56
+- confirmed `product_category_tree` — inherited category links entity — vendor/shopware/core/Content/Product/Aggregate/ProductCategoryTree/ProductCategoryTreeDefinition.php:22
 - deprecated `NavigationRouteCacheKeyEvent` — removed in 6.8.0, not used anymore — vendor/shopware/core/Content/Category/Event/NavigationRouteCacheKeyEvent.php:16
 - deprecated `NavigationRouteCacheTagsEvent` — removed in 6.8.0, not used anymore — vendor/shopware/core/Content/Category/Event/NavigationRouteCacheTagsEvent.php:17
-- confirmed `ProductListingCriteriaEvent` — dispatched when resolving listing criteria — vendor/shopware/core/Content/Product/SalesChannel/Listing/ResolveCriteriaProductListingRoute.php:42
-- absent `hideInNavigation` — not found in installed code, nor `noIndex`/`noFollow`
+- confirmed `ProductListingCriteriaEvent` — listing criteria event — vendor/shopware/core/Content/Product/Events/ProductListingCriteriaEvent.php:17

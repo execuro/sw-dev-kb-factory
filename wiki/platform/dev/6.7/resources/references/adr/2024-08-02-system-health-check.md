@@ -1,70 +1,73 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2024-08-02-system-health-check.md
-title: System Health Checks in Shopware
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-08-02-system-health-check.html
+id: platform/dev/6.7/resources/references/adr/2024-08-02-system-health-check.md
 sourceHash: 6d6188995ae7d7ee97318b27e4282c572ebc4850
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Shopware\\Core\\Framework\\SystemCheck\\BaseCheck", "Shopware\\Core\\Framework\\SystemCheck\\Check\\Category", "Shopware\\Core\\Framework\\SystemCheck\\Check\\Result", "Shopware\\Core\\Framework\\SystemCheck\\Check\\Status", "SystemCheckExecutionContext", "allowedSystemCheckExecutionContexts", "shopware.system_check", "system:check", "health check", "readiness check", "monitoring", "pre rollout"]
-summary: "System health checks: extend BaseCheck (run, category, name, allowed contexts), tag shopware.system_check, run via system:check."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-08-02-system-health-check.html
+title: System Health Checks in Shopware
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["BaseCheck", "SystemCheckExecutionContext", "allowedSystemCheckExecutionContexts", "Result", "Status", "SystemChecker", "system:check", "shopware.system_check", "health check", "readiness check", "monitoring", "pre-rollout check", "long running check"]
+summary: "ADR on Shopware system health checks: BaseCheck, categories, Status values, execution contexts and readiness/long-running presets."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2024-08-02, area core) introducing extensible system health checks, so failures in parts of a Shopware system (database, payment, SMTP, background tasks) are detected early — including before a rollout goes live. A system can be healthy overall even if some components are not.
+An architecture decision record (2024-08-02, area core) introducing an extensible system health check framework. Its motivation: rollouts went live with broken functionality that was not detected beforehand. A system can be healthy overall while some components are degraded, so checks are categorised, report a graded status, and declare in which execution contexts they may run.
 
 ## When to use
 
-- You want to add a custom check (e.g. for an external service your plugin depends on).
-- You run readiness checks before rollout or health checks from monitoring and need to know which checks run in which context.
+You want to add a custom health/readiness check (database, payment, SMTP, background tasks, log files, ...) that infrastructure or monitoring can run, or you need to know which context a check runs in before a rollout, from CLI, or recurrently.
 
 ## Key steps / config
 
-1. Extend `Shopware\Core\Framework\SystemCheck\BaseCheck` and implement all its abstract members:
+1. Extend `Shopware\Core\Framework\SystemCheck\BaseCheck`. The installed class declares four abstract methods, all of which a check must implement:
 
 ```php
 class MyCheck extends BaseCheck
 {
     public function run(): Result { /* ... */ }
-    public function category(): Category { /* ... */ }
+    public function category(): /* enum from Shopware\Core\Framework\SystemCheck\Check */ { /* ... */ }
     public function name(): string { /* ... */ }
     protected function allowedSystemCheckExecutionContexts(): array { /* ... */ }
 }
 ```
 
-2. Tag the service `shopware.system_check` (core injects that tagged iterator into `SystemChecker`); run checks with `bin/console system:check`.
-3. `Shopware\Core\Framework\SystemCheck\Check\Category` (int enum): `SYSTEM` (backbone, e.g. DB), `FEATURE` (e.g. payment), `EXTERNAL` (e.g. SMTP), `AUXILIARY` (e.g. background tasks).
-4. `Shopware\Core\Framework\SystemCheck\Check\Result` carries `name`, `status`, `message`, `healthy`, `extra`; `Shopware\Core\Framework\SystemCheck\Check\Status` cases: `OK`, `UNKNOWN`, `SKIPPED`, `WARNING`, `ERROR`, `FAILURE`.
-5. `Shopware\Core\Framework\SystemCheck\Check\SystemCheckExecutionContext` cases: `WEB`, `CLI`, `PRE_ROLLOUT`, `RECURRENT`. Pick the return value of `allowedSystemCheckExecutionContexts()` by check type:
-   - Readiness (critical paths, no speed requirement): `SystemCheckExecutionContext::readiness()` → `[PRE_ROLLOUT]`.
-   - Health (fast, cheap, non-blocking): `SystemCheckExecutionContext::cases()` → all contexts.
-   - Long running (e.g. scanning log files, CLI only per ADR): `SystemCheckExecutionContext::longRunning()` → `[CLI, RECURRENT, PRE_ROLLOUT]`.
-   - Other: any custom list, e.g. `[SystemCheckExecutionContext::RECURRENT, SystemCheckExecutionContext::WEB]`.
+2. Pick the check's category from the category enum in `Shopware\Core\Framework\SystemCheck\Check`: `SYSTEM` (backbone, e.g. database connection), `FEATURE` (a specific feature, e.g. payment), `EXTERNAL` (external services, e.g. SMTP server online), `AUXILIARY` (auxiliary services, e.g. background tasks running).
+3. Return a `Shopware\Core\Framework\SystemCheck\Check\Result` (constructor: `name`, `status`, `message`, optional `healthy`, `extra`) with a `Shopware\Core\Framework\SystemCheck\Check\Status`: `OK`, `UNKNOWN`, `SKIPPED`, `WARNING`, `ERROR`, `FAILURE`.
+4. Choose the allowed contexts from `Shopware\Core\Framework\SystemCheck\Check\SystemCheckExecutionContext` (`WEB`, `CLI`, `PRE_ROLLOUT`, `RECURRENT`):
+   - Readiness checks (critical paths, config, storefront indices; need not be fast): `SystemCheckExecutionContext::readiness()` — returns `[PRE_ROLLOUT]`.
+   - Health checks (fast, inexpensive, non-blocking; e.g. database connectivity, cache): `SystemCheckExecutionContext::cases()` — all contexts.
+   - Long-running checks (e.g. scanning log files): `SystemCheckExecutionContext::longRunning()` — returns `[CLI, RECURRENT, PRE_ROLLOUT]`.
+   - Other: return any explicit list, e.g. `[SystemCheckExecutionContext::RECURRENT, SystemCheckExecutionContext::WEB]`.
+5. Register the check as a service tagged `shopware.system_check`; `Shopware\Core\Framework\SystemCheck\SystemChecker` receives all tagged checks.
+6. Run checks with `bin/console system:check` — options `--context`/`-c` (default `cli`; allowed values `cli`, `recurrent`, `pre_rollout`) and `--format` (`table` or `json`). The command exits with failure if any result's `healthy` is not `true`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\SystemCheck\BaseCheck` (`run()`, `category()`, `name()`, `allowedSystemCheckExecutionContexts()`, `allowedToRunIn()`)
-- `Shopware\Core\Framework\SystemCheck\Check\Category`, `...\Check\Result`, `...\Check\Status`, `...\Check\SystemCheckExecutionContext`
-- `shopware.system_check`, `system:check`
+- `Shopware\Core\Framework\SystemCheck\BaseCheck`, `BaseCheck::allowedToRunIn()`
+- `Shopware\Core\Framework\SystemCheck\Check\Result`
+- `Shopware\Core\Framework\SystemCheck\Check\Status`
+- `Shopware\Core\Framework\SystemCheck\Check\SystemCheckExecutionContext` — `readiness()`, `longRunning()`, `cases()`
+- `Shopware\Core\Framework\SystemCheck\SystemChecker`
+- service tag `shopware.system_check`; CLI `system:check`
 
 ## Gotchas
 
-- The ADR names the category enum `Shopware\Core\Framework\Health\Check\Category`; the installed class is `Shopware\Core\Framework\SystemCheck\Check\Category`.
-- The ADR's "Other" example uses `SystemCheckExecutionContext::CRON`, which does not exist; the scheduled-task context is `RECURRENT`.
-- Checks not allowed in the current context are returned as `SKIPPED`; a check that throws becomes `FAILURE`.
-- Checks run grouped by category in ascending order; an unhealthy result in `SYSTEM` skips all later categories.
-- `longRunning()` includes `RECURRENT` and `PRE_ROLLOUT`, not only CLI as the ADR's prose suggests.
+- The ADR places the category enum at `Shopware\Core\Framework\Health\Check\Category`; that namespace does not exist — the enum lives in `Shopware\Core\Framework\SystemCheck\Check`.
+- The ADR's "Other" example uses `SystemCheckExecutionContext::CRON`, which is not a case of the enum; the scheduled-task context is `RECURRENT`.
+- The ADR says long-running checks may only run on CLI, but `longRunning()` also includes `RECURRENT` and `PRE_ROLLOUT`.
+- The ADR lists statuses "in order of severity" with `SKIPPED` before `UNKNOWN`; the enum declares `UNKNOWN` before `SKIPPED`.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\Health\Check\Category` — real enum is Shopware\Core\Framework\SystemCheck\Check\Category
-- absent `CRON` — no such SystemCheckExecutionContext case; use RECURRENT
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Framework\Health\Check\Category` — wrong namespace in the ADR; real enum is in SystemCheck\Check
+- absent `CRON` — not a case of SystemCheckExecutionContext; use RECURRENT
+- confirmed `BaseCheck` — abstract base with run(), category(), name(), allowedSystemCheckExecutionContexts() — vendor/shopware/core/Framework/SystemCheck/BaseCheck.php:11
 - confirmed `BaseCheck::allowedSystemCheckExecutionContexts()` — abstract protected, returns array of contexts — vendor/shopware/core/Framework/SystemCheck/BaseCheck.php:27
-- confirmed `BaseCheck::run()` — abstract, plus category() and name() — vendor/shopware/core/Framework/SystemCheck/BaseCheck.php:13
-- confirmed `Category` — int enum SYSTEM, FEATURE, EXTERNAL, AUXILIARY — vendor/shopware/core/Framework/SystemCheck/Check/Category.php:11
-- corrected `Status` — docs: order OK, SKIPPED, UNKNOWN; code declares OK, UNKNOWN, SKIPPED — vendor/shopware/core/Framework/SystemCheck/Check/Status.php:11
+- confirmed `SYSTEM` — first case of the category enum (also FEATURE, EXTERNAL, AUXILIARY) — vendor/shopware/core/Framework/SystemCheck/Check/Category.php:13
 - confirmed `SystemCheckExecutionContext::readiness()` — returns PRE_ROLLOUT only — vendor/shopware/core/Framework/SystemCheck/Check/SystemCheckExecutionContext.php:24
-- corrected `SystemCheckExecutionContext::longRunning()` — docs: CLI only; returns CLI, RECURRENT, PRE_ROLLOUT — vendor/shopware/core/Framework/SystemCheck/Check/SystemCheckExecutionContext.php:32
-- confirmed `shopware.system_check` — tagged iterator injected into SystemChecker — vendor/shopware/core/Framework/DependencyInjection/health.xml:14
-- confirmed `system:check` — console command name — vendor/shopware/core/Framework/SystemCheck/Command/SystemCheckCommand.php:20
+- corrected `SystemCheckExecutionContext::longRunning()` — docs: CLI only; code returns CLI, RECURRENT, PRE_ROLLOUT — vendor/shopware/core/Framework/SystemCheck/Check/SystemCheckExecutionContext.php:32
+- corrected `UNKNOWN` — docs: listed after SKIPPED; declared before SKIPPED in Status — vendor/shopware/core/Framework/SystemCheck/Check/Status.php:14
+- confirmed `shopware.system_check` — tag collected by SystemChecker — vendor/shopware/core/Framework/DependencyInjection/health.php:23
+- confirmed `system:check` — console command with --context and --format options — vendor/shopware/core/Framework/SystemCheck/Command/SystemCheckCommand.php:21

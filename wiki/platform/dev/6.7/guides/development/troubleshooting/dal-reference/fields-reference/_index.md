@@ -1,69 +1,60 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/development/troubleshooting/dal-reference/fields-reference/_index.md
-sourceHash: 717d3d6af49c87657a6d1c128ae10fef71e18608
-sourceUrl: https://developer.shopware.com/docs/guides/development/troubleshooting/dal-reference/fields-reference/
 title: Fields Reference
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["dal fields", "field types", "entity definition fields", "StorageAware", "Field", "JsonField", "FkField", "AssociationField", "StringField", "IntField", "EnumField", "TranslatedField", "OneToManyAssociationField", "column types"]
-summary: "All DAL field classes with their parent class and whether they implement StorageAware directly (JsonField, FkField, AssociationField families, etc.)."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/development/troubleshooting/dal-reference/fields-reference/
+sourceHash: 717d3d6af49c87657a6d1c128ae10fef71e18608
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["dal fields", "field types", "StorageAware", "JsonField", "FkField", "AssociationField", "StringField", "IntField", "TranslatedField", "EnumField", "entity definition columns", "field inheritance"]
+summary: Table of DAL field classes grouped by parent class (Field, JsonField, FkField, AssociationField...) and whether each directly implements StorageAware.
+lastBuilt: 2026-10-21
 relatedPages:
   - platform/dev/6.7/guides/development/troubleshooting/dal-reference/fields-reference/enum-field.md
 ---
 ## What it is
 
-Lookup table of the Data Abstraction Layer field classes used in entity definitions: what each stores, which class it extends, and whether it implements `StorageAware` itself (i.e. maps directly to a storage column). All live in `Shopware\Core\Framework\DataAbstractionLayer\Field`.
+A lookup table of the field classes in `Shopware\Core\Framework\DataAbstractionLayer\Field` that an `EntityDefinition` uses to declare its columns and associations: what each stores, which class it extends, and whether it implements `StorageAware` (maps to a real storage column) itself.
 
 ## When to use
 
-When choosing a field type for an `EntityDefinition`, or when you need to know which base class a field inherits behaviour (serializer, storage) from.
+When choosing the field class for a new entity property, or when working out which serializer/storage behaviour a subclass inherits from its parent.
 
 ## Key steps / config
 
-Base: `Field` (abstract, extends `Struct`). `AssociationField` (abstract) extends `Field`.
+Base class: abstract `Field` (extends `Struct`). Grouped by parent; `(SA)` = directly implements `StorageAware`.
 
-Extend `Field` and implement `StorageAware` directly (store a column value):
-
-`BlobField`, `BoolField`, `CronIntervalField`, `DateField`, `DateIntervalField`, `DateTimeField`, `EnumField` (see [EnumField](platform/dev/6.7/guides/development/troubleshooting/dal-reference/fields-reference/enum-field.md)), `FkField`, `FloatField`, `IdField`, `IntField`, `JsonField`, `LongTextField`, `PasswordField`, `RemoteAddressField`, `SerializedField`, `StringField`.
-
-Extend `Field` without implementing `StorageAware` directly: `TranslatedField`, `AssociationField`.
-
-Subclasses (inherit storage from their parent where it has it):
-
-| Parent | Subclasses |
-|---|---|
-| `JsonField` (JSON value) | `BreadcrumbField`, `CalculatedPriceField`, `CartPriceField`, `CashRoundingConfigField`, `ConfigJsonField`, `ListField`, `ObjectField`, `PriceDefinitionField`, `PriceField`, `TaxFreeConfigField`, `TreeBreadcrumbField`, `VariantListingConfigField`, `VersionDataPayloadField` |
-| `ListField` | `ManyToManyIdField` |
-| `FkField` (foreign key) | `CreatedByField`, `UpdatedByField`, `ParentFkField`, `ReferenceVersionField`, `StateMachineStateField`, `VersionField` |
-| `IntField` | `AutoIncrementField`, `ChildCountField`, `TreeLevelField` |
-| `DateTimeField` | `CreatedAtField`, `UpdatedAtField` |
-| `StringField` | `EmailField`, `TimeZoneField` |
-| `BoolField` | `LockedField` |
-| `LongTextField` | `TreePathField` |
-| `AssociationField` | `ManyToManyAssociationField`, `ManyToOneAssociationField`, `OneToManyAssociationField`, `OneToOneAssociationField` |
-| `OneToManyAssociationField` | `ChildrenAssociationField`, `TranslationsAssociationField` |
-| `ManyToOneAssociationField` | `ParentAssociationField` |
+- **Extend `Field`, StorageAware (SA):** `BlobField` (blob), `BoolField`, `CronIntervalField`, `DateField`, `DateIntervalField`, `DateTimeField`, [`EnumField`](platform/dev/6.7/guides/development/troubleshooting/dal-reference/fields-reference/enum-field.md), `FkField`, `FloatField`, `IdField`, `IntField`, `JsonField`, `LongTextField`, `PasswordField`, `RemoteAddressField`, `SerializedField`, `StringField`.
+- **Extend `Field`, not StorageAware:** abstract `AssociationField`, `TranslatedField`.
+- **Extend `JsonField` (store JSON):** `BreadcrumbField`, `CalculatedPriceField`, `CartPriceField`, `CashRoundingConfigField`, `ConfigJsonField`, `ListField`, `ObjectField`, `PriceDefinitionField`, `PriceField`, `TaxFreeConfigField`, `TreeBreadcrumbField`, `VariantListingConfigField`, `VersionDataPayloadField`.
+- **Extend `ListField`:** `ManyToManyIdField`.
+- **Extend `FkField` (foreign keys):** `CreatedByField`, `ParentFkField`, `ReferenceVersionField`, `StateMachineStateField`, `UpdatedByField`, `VersionField`.
+- **Extend `IntField`:** `AutoIncrementField`, `ChildCountField`, `TreeLevelField`.
+- **Extend `DateTimeField`:** `CreatedAtField`, `UpdatedAtField`.
+- **Extend `StringField`:** `EmailField`, `TimeZoneField`.
+- **Extend `BoolField`:** `LockedField` (boolean lock flag).
+- **Extend `LongTextField`:** `TreePathField`.
+- **Extend `AssociationField`:** `ManyToManyAssociationField`, `ManyToOneAssociationField`, `OneToManyAssociationField`, `OneToOneAssociationField`.
+- **Extend `OneToManyAssociationField`:** `ChildrenAssociationField`, `TranslationsAssociationField`.
+- **Extend `ManyToOneAssociationField`:** `ParentAssociationField`.
 
 ## Essential identifiers
 
-- `Field`, `StorageAware`, `AssociationField`, `JsonField`, `FkField`, `IntField`, `StringField`, `BoolField`, `DateTimeField`, `LongTextField`, `EnumField`, `TranslatedField`
-- Association fields: `ManyToOneAssociationField`, `OneToManyAssociationField`, `ManyToManyAssociationField`, `OneToOneAssociationField`
+- `Field`, `StorageAware`, `AssociationField`, `JsonField`, `FkField`, `IntField`, `StringField`, `TranslatedField`, `EnumField`
+- `OneToManyAssociationField`, `ManyToOneAssociationField`, `ManyToManyAssociationField`, `OneToOneAssociationField`
 
 ## Gotchas
 
-- The installed 6.7.13.0 code also has `WasModifiedByUserField` (extends `BoolField`), which the docs table does not list.
-- `Field` and `AssociationField` are abstract; use a concrete subclass in definitions.
+- The source's empty StorageAware column means "not declared on the class itself": subclasses of `JsonField`, `FkField`, `IntField` etc. are still `StorageAware` through their parent.
+- The installed core has field classes the table omits: `CustomFields` and `WasModifiedByUserField`.
 
-## Code check (6.7.13.0)
-- confirmed `Field` — abstract class extending Struct — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Field.php:17
-- confirmed `AssociationField` — abstract, extends Field — vendor/shopware/core/Framework/DataAbstractionLayer/Field/AssociationField.php:10
-- confirmed `JsonField` — extends Field implements StorageAware — vendor/shopware/core/Framework/DataAbstractionLayer/Field/JsonField.php:10
+## Code check (6.7.15.1)
+- confirmed `Field` — abstract base extends Struct — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Field.php:18
+- confirmed `AssociationField` — abstract, extends Field, no StorageAware — vendor/shopware/core/Framework/DataAbstractionLayer/Field/AssociationField.php:10
+- confirmed `JsonField` — extends Field implements StorageAware — vendor/shopware/core/Framework/DataAbstractionLayer/Field/JsonField.php:13
+- confirmed `FkField` — extends Field implements StorageAware — vendor/shopware/core/Framework/DataAbstractionLayer/Field/FkField.php:11
 - confirmed `EnumField` — extends Field implements StorageAware — vendor/shopware/core/Framework/DataAbstractionLayer/Field/EnumField.php:14
-- confirmed `ListField` — extends JsonField — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ListField.php:28
 - confirmed `ManyToManyIdField` — extends ListField — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ManyToManyIdField.php:9
 - confirmed `TreePathField` — extends LongTextField — vendor/shopware/core/Framework/DataAbstractionLayer/Field/TreePathField.php:10
 - confirmed `ParentAssociationField` — extends ManyToOneAssociationField — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ParentAssociationField.php:8

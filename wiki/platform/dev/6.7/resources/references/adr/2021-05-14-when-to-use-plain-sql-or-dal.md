@@ -6,51 +6,51 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-05-14-when-to-use-plain-sql-or-dal.html
 sourceHash: c582fa2161f08bbf3f8d69327478de9ee2dbf8ba
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["dal", "data abstraction layer", "plain sql", "EntityRepository", "EntityIndexer", "dbal connection", "store api", "admin api", "storefront page loader", "entity indexer", "ThemeCompiler", "RequestTransformer", "acl", "adr"]
-summary: "ADR: use the DAL for Store API, Admin API, storefront loaders and all writes; plain SQL only in entity indexers and core components (theme compiler)."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["plain sql", "dal", "data abstraction layer", "EntityRepository", "EntityIndexer", "entity indexer", "doctrine connection", "store api", "admin api", "storefront page loader", "acl", "adr"]
+summary: "ADR: use the DAL in Store API, Admin API, storefront loaders and all writes; use plain SQL in entity indexers and core components."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (core area) that defines in which application layers Shopware code uses the Data Abstraction Layer (DAL, entity repositories) and where it works with plain SQL on the database connection.
+Architecture decision record (2021-05-14, area core) on when Shopware code reads/writes through the Data Abstraction Layer (repositories) and when it uses plain SQL on the database connection directly.
 
 ## When to use
 
-- Deciding whether a new service, controller, page loader or indexer should read/write through a repository or through the database connection.
-- Reviewing code that bypasses the DAL for writes or returns hand-queried data to an API or template.
+- When deciding whether a plugin service, route or indexer should use an entity repository or a raw database query.
+- When reviewing code that bypasses the DAL.
 
 ## Key steps / config
 
-Use the DAL (`Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`) in:
+Use the **DAL** in these layers:
 
-- **Store API** — returned data must be extensible by third-party developers, requests must always allow additional data to be loaded, and data retrieval/encoding must be secured by ACL.
-- **Storefront page loaders and controllers** — data passed to Twig templates must be extensible; templates are customised by many developers, so a minimal subset of data is not enough.
+- **Store API** — returned data must be extensible by third-party developers, requests must allow loading additional data, and data retrieval and encoding must be secured by ACL.
+- **Storefront page loaders and controllers** — data handed to Twig templates must be extensible; templates are customised by many developers, so only providing a minimal subset of the data is not an option.
 - **Admin API** — same reasons as the Store API: extensibility, loading additional data, ACL.
-- **All writes** — the DAL write process runs validation, events and indexing, so writes must go exclusively through the DAL (repository `create`, `update`, `upsert`, `delete`) to ensure data integrity. Entity indexers are the exception.
+- **Writing data** — the DAL's validation, event and indexing system runs on writes, so all writes must go through the DAL to keep data integrity. Entity indexers are the exception.
 
-Use plain SQL (database connection) in:
+Use **plain SQL** (the database connection) in these layers:
 
-- **Entity indexers** (subclasses of `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`) — they sit behind the repository layer, must re-index all data after a version update with as little hydration and event overhead as possible, and are not an extension point; their queries are internal and should never be rewritten.
-- **Core components** such as the theme compiler and request transformer — they load data for pure processing, not for third-party extension. Deep processes like theme compiling must not be affected by plugin entity schemas, because plugins are optional and may be in an unstable state during an update.
+- **Entity indexers** — they sit behind the repository layer, must be able to re-index all data after an update with as little hydration and event overhead as possible, and are not an extension point; their queries are internal and should never be rewritten.
+- **Core components** such as the theme compiler or request transformer — the loaded data is for processing only, not for third parties to extend. Deep processes like theme compiling must not be affected by plugin entity schemas, since plugins may be in an unstable state during an update.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`
-- `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`
-- `Shopware\Storefront\Theme\ThemeCompiler`
-- `Shopware\Core\Framework\Routing\RequestTransformer`, `Shopware\Storefront\Framework\Routing\RequestTransformer`
+- `EntityRepository` (`Shopware\Core\Framework\DataAbstractionLayer`) — DAL access
+- `EntityIndexer` (`Shopware\Core\Framework\DataAbstractionLayer\Indexing`) — base class for indexers that work on the connection
+- Doctrine DBAL `Connection` — plain SQL access, as injected into indexers such as `ProductIndexer`
+- `ThemeCompiler`, `RequestTransformer` — examples of core components
 
 ## Gotchas
 
-- Writing via plain SQL outside indexers skips the DAL validation, event and indexing system the ADR relies on for data integrity.
-- Indexers work with the connection directly; going through repositories there adds the hydration and event overhead the ADR wants to avoid.
+- The ADR's Admin API bullet mentions "requests against the Store API"; in context it means Admin API requests.
+- Writing with plain SQL outside indexers skips DAL validation, events and indexing.
 
-## Code check (6.7.13.0)
-- confirmed `EntityRepository` — DAL repository class — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:36
-- confirmed `EntityRepository::upsert()` — DAL write entry point returning EntityWrittenContainerEvent — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:113
+## Code check (6.7.15.1)
+- confirmed `EntityRepository` — DAL repository class — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:37
 - confirmed `EntityIndexer` — abstract indexer base class — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:9
-- confirmed `EntityIndexer::update()` — reacts to DAL written events, handle() processes the messages — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:29
-- confirmed `ProductIndexer::$connection` — core indexer injects the DBAL connection directly — vendor/shopware/core/Content/Product/DataAbstractionLayer/ProductIndexer.php:61
-- confirmed `ThemeCompiler` — core theme compiler component — vendor/shopware/storefront/Theme/ThemeCompiler.php:33
-- confirmed `RequestTransformer` — storefront request transformer (core one also exists) — vendor/shopware/storefront/Framework/Routing/RequestTransformer.php:17
+- confirmed `EntityIndexer::update()` — reacts to DAL written events — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:29
+- confirmed `ProductIndexer` — extends EntityIndexer — vendor/shopware/core/Content/Product/DataAbstractionLayer/ProductIndexer.php:34
+- confirmed `Connection` — ProductIndexer injects the DBAL connection directly — vendor/shopware/core/Content/Product/DataAbstractionLayer/ProductIndexer.php:61
+- confirmed `ThemeCompiler` — storefront theme compiler class — vendor/shopware/storefront/Theme/ThemeCompiler.php:33
+- confirmed `RequestTransformer` — core request transformer class — vendor/shopware/core/Framework/Routing/RequestTransformer.php:9

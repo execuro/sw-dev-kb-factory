@@ -5,34 +5,24 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/guides/opensearch.html
-sourceHash: 10f1fd5abe0ec7e4e24e4bd4693702e30c086922
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["services.opensearch.enabled", "application.yaml", "opensearch", "elasticsearch", "dal:refresh:index", "--use-queue", "sw-paas exec --new", "Shopware\\Elasticsearch\\Profiler\\DataCollector", "web_profiler.yaml", "APP_ENV=dev", "search index", "paas native"]
-summary: "Enable OpenSearch on Shopware PaaS Native via services.opensearch.enabled, then reindex with bin/console dal:refresh:index --use-queue."
-lastBuilt: 2026-09-15
+sourceHash: fb05e3ae8bc1200fb71c99e1b4c6734eb21b7c0c
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["services.opensearch.enabled", "application.yaml", "Shopware\\Elasticsearch\\Profiler\\DataCollector", "web_profiler.yaml", "APP_ENV", "dal:refresh:index", "--use-queue", "sw-paas exec --new", "opensearch", "elasticsearch", "search index", "paas native"]
+summary: Enable OpenSearch on PaaS Native via services.opensearch.enabled, fix the dev profiler, then run dal:refresh:index --use-queue.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md", "platform/dev/6.7/products/paas/shopware/fundamentals/applications.md"]
 ---
 ## What it is
 
-How to turn on the OpenSearch service for a Shopware PaaS Native application and build the search index afterwards.
+The steps to turn on OpenSearch for a Shopware PaaS Native application: a dev-environment profiler fix, the `application.yaml` switch, and the initial indexing run.
 
 ## When to use
 
-When a PaaS Native shop should use OpenSearch for search, or when a deployment with `APP_ENV=dev` fails after OpenSearch was enabled.
+You want product search backed by OpenSearch in a PaaS Native shop.
 
 ## Key steps / config
 
-1. In [`application.yaml`](platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md) set `services.opensearch.enabled` to `true`:
-
-```yaml
-services:
-  opensearch:
-    enabled: true
-```
-
-2. Commit and push the change, then update the application (see [Applications](platform/dev/6.7/products/paas/shopware/fundamentals/applications.md)).
-3. Index the shop: open an interactive session with `sw-paas exec --new`, then run `bin/console dal:refresh:index --use-queue` (the option hands indexing to the message queue instead of running it inline).
-4. If `APP_ENV=dev`, add under `when@dev:` in `config/packages/web_profiler.yaml`:
+1. If the application runs with `APP_ENV=dev`, add this under `when@dev:` in `config/packages/web_profiler.yaml` **before** deploying, otherwise the deployment fails:
 
 ```yaml
 services:
@@ -42,21 +32,30 @@ services:
             $adminEnabled: false
 ```
 
+2. Set `services.opensearch.enabled` to `true` in [`application.yaml`](platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md):
+
+```yaml
+services:
+  opensearch:
+    enabled: true
+```
+
+3. Commit, push, and update the application (see [Applications](platform/dev/6.7/products/paas/shopware/fundamentals/applications.md)).
+4. Index: open `sw-paas exec --new`, then run `bin/console dal:refresh:index --use-queue`.
+
 ## Essential identifiers
 
 - `services.opensearch.enabled`
-- `sw-paas exec --new`
-- `bin/console dal:refresh:index --use-queue`
 - `Shopware\Elasticsearch\Profiler\DataCollector` (`$enabled`, `$adminEnabled`)
+- `config/packages/web_profiler.yaml`, `when@dev`
+- `sw-paas exec --new`, `bin/console dal:refresh:index --use-queue`
 
 ## Gotchas
 
-- Without the `web_profiler.yaml` override in `APP_ENV=dev`, the next deployment fails.
-- Enabling the service alone does not populate the index; the reindex step is required.
+- The deployment reports success before the index exists. `--use-queue` only queues the indexing work and returns immediately; workers process it in the background, and search returns no results until the queue is drained — slow on large catalogs.
 
-## Code check (6.7.13.0)
-- confirmed `dal:refresh:index` — console command in core — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:22
-- confirmed `use-queue` — VALUE_NONE option passed to EntityIndexerRegistry::index() — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:45
-- unverified `Shopware\Elasticsearch\Profiler\DataCollector` — shopware/elasticsearch package not installed; outside scanned roots
-- unverified `services.opensearch.enabled` — PaaS application.yaml schema, outside vendor/shopware
-- unverified `sw-paas exec --new` — PaaS CLI, outside vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `dal:refresh:index` — console command name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:23
+- confirmed `use-queue` — option queues indexing via the indexer registry instead of running it inline — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:45
+- unverified `Shopware\Elasticsearch\Profiler\DataCollector` — Elasticsearch bundle, outside the checked code roots
+- unverified `services.opensearch.enabled` — PaaS application.yaml key, outside the Shopware code roots

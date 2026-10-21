@@ -2,38 +2,42 @@
 id: platform/func/catalogues/product-overview.md
 title: Product Overview
 docType: functional
-version: "6.5"
-versions: ["6.5", "6.6", "6.7"]
+version: "6.7"
+versions: ["6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview
-sourceHash: 907fb1891def147c165ec9ff0ac5a66bd21d46e76a402661300f5a088d020b5a
+sourceHash: a5179b53b36bc16c02e53fd844b88acd304b3ee6f90a0ffc7a570c81f853a5a7
 revision:
   current: true
-  range: "6.4.8.0 - 6.4.9.0"
-  swMin: "6.4.8.0"
-  swMax: "6.4.9.0"
-keywords: ["product overview", "Catalogues > Products", "product list", "list settings", "compact mode", "product context menu", "bulk edit products", "advanced pricing", "product variants list", "duplicate product", "deactivate product"]
-summary: "The Catalogues > Products list view: columns, compact mode, per-product context menu, and bulk edit for changing multiple products at once."
-lastBuilt: "2026-09-15"
+  range: "6.7.0.0 - 6.7.14.2"
+  swMax: "6.7.14.2"
+  swMin: "6.7.0.0"
+keywords: ["product overview", "products list", "bulk edit", "context menu", "duplicate product", "list settings", "compact mode", "variants", "advanced pricing", "Products > Overview", "mass edit", "produktübersicht", "price", "stock"]
+summary: "Products > Overview in the Administration: list columns, variant modal, list settings, context menu, and bulk edit of up to 1000 products incl. prices."
+lastBuilt: 2026-10-20
 ---
 ## What it is
-Describes the product list view under **Catalogues > Products**, showing created products with key columns, and the tools available from it.
+
+The product list in the Administration under **Products > Overview**. It shows products with key data, lets you sort, filter, duplicate and delete them, and provides bulk editing of many products at once.
 
 ## When to use
-When browsing, filtering, editing multiple products at once, or managing product variants from the list rather than the single-product edit screen.
+
+When finding or sorting products, checking stock and price at a glance, opening variants, or changing the same fields on many products.
 
 ## Key steps / config
-Overview columns: Active, Name, Product number, Price (default customer group), In stock (color-coded: 0 red, 1-25 yellow, >25 green), Manufacturer. Columns can be hidden via a button next to each header. List settings (top-right) toggle compact mode and column visibility/order.
 
-Products with variants show an extra icon before the name; clicking it opens a modal listing the variants (name, price, stock, active, product number); double-click a variant row to edit inline, or use the "..." menu for extended editing.
+Default columns: Active, Name, Product number, Price (default customer group), In stock (0 = red, 1-25 = yellow, over 25 = green), Manufacturer. Columns can be hidden, and sorted by clicking the header.
 
-Context menu ("..." per row): Edit, Duplicate (copies the product, assigning the next product number and appending "copy" to the name), Delete.
-
-Bulk edit: select individual products or all products on the page (max 1000 selectable); click **bulk edit** to open a pop-up showing the selection, then **start bulk edit**. Each editable block offers a dropdown: Overwrite, Clear, Add, Remove, controlling how the change is applied. Only checked fields are changed. Confirm with **apply changes**.
-
-Prices & Advanced Prices block fields: Tax rate, Price (gross/net), List price (gross/net), Purchase price (gross/net), Cheapest price last 30 days (gross/net). Advanced Pricing supports scaled/deviating prices per condition rule, editable via a modal with drop-down, delete and duplicate pricing-rule controls.
-
-## Essential identifiers
-- `Catalogues > Products`
+- **Variants**: a symbol before the name marks products with variants; clicking it opens a modal listing variants (generating properties, price, stock, active, product number). Double-click a variant row to edit inline; the "..." menu opens extended editing; a link opens the main product.
+- **List settings** (header button): toggle compact mode, show/hide columns, reorder columns.
+- **Context menu ("...")**: Edit, Duplicate (copy gets the next product number and "copy" after the name), Delete. For variant products, variant settings are reachable here.
+- **Bulk edit**: select individual products, all on the page, or across pages (maximum 1000). Use **bulk edit** or **delete** on the selection, review it, click **start bulk edit**, tick the checkbox of each field to change, set values, **save**, then **apply changes**. Only ticked fields change.
+- Block handling dropdown: Overwrite (replace), Clear (remove all in block), Add (keep existing), Remove (remove selected only).
+- **Prices block**: tax rate, price gross/net, list price gross/net, purchase price gross/net, cheapest price (last 30 days) gross/net.
+- **Advanced Pricing block**: choose a handling option, then **Create new advanced prices**, pick a condition rule, and set scales, list prices and currency-dependent prices; rules can be changed, deleted, duplicated or added.
 
 ## Gotchas
-Products already referenced in existing orders remain listed in those orders after deletion but point to a non-existent dataset — deactivating rather than deleting such products is recommended. The cover image cannot be set via bulk edit, and updating the gross price via bulk edit does not change the net price.
+
+- Products already in orders stay in those orders as references to a non-existent record after deletion; deactivating is recommended instead.
+- Bulk edit cannot set the cover image.
+- Updating the gross price in bulk edit does not change the net price.
+- List price is only shown in the frontend when it is higher than the product price.

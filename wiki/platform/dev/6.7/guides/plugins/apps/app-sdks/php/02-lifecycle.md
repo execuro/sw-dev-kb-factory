@@ -6,22 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/php/02-lifecycle.html
 sourceHash: fa6cd2f5c63bb4b883dcd87299017c5817758065
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["AppLifecycle", "app lifecycle", "app.activated", "app.deactivated", "app.deleted", "ShopResolver", "RegistrationService", "webhook", "manifest.xml", "app-php-sdk", "uninstall app", "activate deactivate"]
-summary: "PHP app SDK: register app.activated/app.deactivated/app.deleted webhooks in manifest.xml and route them through AppLifecycle to track shop state."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["AppLifecycle", "RegistrationService", "ShopResolver", "ShopRepositoryInterface", "app.activated", "app.deactivated", "app.deleted", "webhooks", "manifest.xml", "app lifecycle", "activate deactivate uninstall", "app php sdk"]
+summary: PHP App SDK AppLifecycle routes register/confirm/activate/deactivate/delete; manifest webhooks on app.activated, app.deactivated, app.deleted.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The PHP App Server SDK page on handling app lifecycle events (activate, deactivate, uninstall/delete) via `\Shopware\App\SDK\AppLifecycle`, which wraps `RegistrationService` so one controller serves registration and all lifecycle calls.
+How the PHP App SDK tracks an app's state per shop: Shopware sends lifecycle webhooks (activate, deactivate, uninstall) to the app backend, and the SDK's `AppLifecycle` class handles them together with registration in one controller.
 
 ## When to use
 
-When your app backend stores shops in a database and must track whether the app is active or removed in each shop.
+Your PHP app backend stores shops in a database and must know when the app is activated, deactivated or removed in a shop.
 
 ## Key steps / config
 
-1. Register lifecycle webhooks in `manifest.xml` (each `<webhook>` requires `name`, `url`, `event`; optional `onlyLiveVersion`):
+1. Register lifecycle webhooks in `manifest.xml`:
 
 ```xml
 <webhooks>
@@ -31,45 +31,35 @@ When your app backend stores shops in a database and must track whether the app 
 </webhooks>
 ```
 
-2. Build the lifecycle object and route requests:
+2. Build the services (same `AppConfiguration`, repository and PSR-7 request as for registration):
 
 ```php
 $registrationService = new \Shopware\App\SDK\Registration\RegistrationService($app, $repository);
 $shopResolver = new \Shopware\App\SDK\Shop\ShopResolver($repository);
 $lifecycle = new \Shopware\App\SDK\AppLifecycle($registrationService, $shopResolver, $repository);
-
-$response = match ($_SERVER['REQUEST_URI']) {
-    '/app/register' => $lifecycle->register($psrRequest),
-    '/app/register/confirm' => $lifecycle->registerConfirm($psrRequest),
-    '/app/activate' => $lifecycle->activate($psrRequest),
-    '/app/deactivate' => $lifecycle->deactivate($psrRequest),
-    '/app/delete' => $lifecycle->delete($psrRequest),
-    default => throw new \RuntimeException('Unknown route')
-};
 ```
 
-`$app` is an `AppConfiguration`, `$repository` implements `\Shopware\App\SDK\Shop\ShopRepositoryInterface`, `$psrRequest` is a PSR-7 request.
+3. Route all endpoints through `$lifecycle`: `/app/register` → `register()`, `/app/register/confirm` → `registerConfirm()`, `/app/activate` → `activate()`, `/app/deactivate` → `deactivate()`, `/app/delete` → `delete()`; any other URI throws `\RuntimeException('Unknown route')`. Return the resulting response.
 
 ## Essential identifiers
 
 - `\Shopware\App\SDK\AppLifecycle` — `register()`, `registerConfirm()`, `activate()`, `deactivate()`, `delete()`
-- `\Shopware\App\SDK\Shop\ShopResolver`
-- `\Shopware\App\SDK\Registration\RegistrationService`
+- `\Shopware\App\SDK\Registration\RegistrationService`, `\Shopware\App\SDK\Shop\ShopResolver`
 - Webhook events `app.activated`, `app.deactivated`, `app.deleted`
+- Manifest `<webhook>` attributes `name`, `url`, `event` (all required)
 
 ## Gotchas
 
-- The source's manifest URLs (`/app/deactivated`) do not match its router (`/app/deactivate`); the webhook `url` must hit the route you actually map.
-- Uninstalling an active app makes the core notify the app server with both `app.deactivated` and `app.deleted`.
-- Core also defines `app.installed` and `app.updated` events; this example handles only the three above.
+- The source's manifest example points the deactivate webhook at `/app/deactivated`, while its routing example matches `/app/deactivate` — the webhook `url` must match the route you actually serve.
+- The manifest `<webhook>` element also accepts an optional `onlyLiveVersion` boolean (default `false`).
 
-## Code check (6.7.13.0)
-- unverified `\Shopware\App\SDK\AppLifecycle` — external package shopware/app-php-sdk, not in vendor/shopware
-- unverified `\Shopware\App\SDK\Shop\ShopResolver` — external SDK class, out of scope
+## Code check (6.7.15.1)
 - confirmed `app.activated` — AppActivatedEvent::NAME — vendor/shopware/core/Framework/App/Event/AppActivatedEvent.php:13
 - confirmed `app.deactivated` — AppDeactivatedEvent::NAME — vendor/shopware/core/Framework/App/Event/AppDeactivatedEvent.php:13
 - confirmed `app.deleted` — AppDeletedEvent::NAME — vendor/shopware/core/Framework/App/Event/AppDeletedEvent.php:16
-- confirmed `app.installed` — AppInstalledEvent::NAME — vendor/shopware/core/Framework/App/Event/AppInstalledEvent.php:13
-- confirmed `webhook` — manifest type with required name/url/event attributes — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:265
-- confirmed `onlyLiveVersion` — optional webhook attribute, default false — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:269
-- confirmed `AppManager::uninstall()` — notifies app.deactivated and app.deleted webhooks — vendor/shopware/core/Framework/App/Lifecycle/AppManager.php:210
+- confirmed `webhooks` — manifest element of type webhooks — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:81
+- confirmed `webhook.name` — name, url and event attributes are required — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:277
+- confirmed `webhook.onlyLiveVersion` — optional, default false — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:280
+- unverified `\Shopware\App\SDK\AppLifecycle` — shopware/app-php-sdk package, outside the checked roots
+- unverified `\Shopware\App\SDK\Shop\ShopResolver` — app-php-sdk package, out of scope
+- unverified `\Shopware\App\SDK\Registration\RegistrationService` — app-php-sdk package, out of scope

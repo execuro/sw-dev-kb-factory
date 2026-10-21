@@ -6,65 +6,71 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/message-queue/add-middleware.html
 sourceHash: 860a78bbd5b6e26b1a3697fb3ee34685c5e42d4c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["message queue", "messenger middleware", "Symfony\\Component\\Messenger\\Middleware\\MiddlewareInterface", "StackInterface", "Envelope", "messenger.bus.default", "framework.yaml", "framework.messenger.buses", "send_message", "handle_message", "message bus", "symfony messenger"]
-summary: "Custom Symfony Messenger middleware: handle(Envelope, StackInterface) calling the next middleware, registered under messenger.bus.default in framework.yaml."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-to-queue.md", "platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-handler.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["MiddlewareInterface", "StackInterface", "Envelope", "messenger.bus.default", "framework.yaml", "QueuedTimeMiddleware", "send_message", "handle_message", "messenger middleware", "message bus", "message queue", "symfony messenger"]
+summary: Add a custom Symfony Messenger middleware in a Shopware 6.7 plugin by implementing MiddlewareInterface and listing it under messenger.bus.default.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-to-queue.md", "platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-handler.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-A middleware is called when the Symfony Messenger message bus dispatches a message and defines what happens during dispatch. Built-in examples: the `send_message` middleware sends the message to the configured transport, and `handle_message` calls the handlers for the message. This page covers writing a custom middleware and adding it to a bus.
+How to add a custom middleware to Shopware's message bus. A middleware is called when the message bus dispatches a message and defines what happens on dispatch: for example the Symfony `send_message` middleware sends the message to its configured transport, and `handle_message` calls the handlers for the message.
 
 ## When to use
 
-You need logic around every dispatched or consumed message (e.g. adding stamps, logging, conditional handling) on Shopware's message bus. For queue messages and handlers themselves see [Message Queue](platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-to-queue.md) and [Message Handler](platform/dev/6.7/guides/plugins/plugins/framework/message-queue/add-message-handler.md).
+You need logic that runs around every message on the bus (adding stamps, logging, timing) rather than in a single handler. Builds on the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md); service registration is covered in [Dependency injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md).
 
 ## Key steps / config
 
-1. Create a service class, e.g. `Swag\BasicExample\MessageQueue\Middleware\ExampleMiddleware`, implementing Symfony's `Symfony\Component\Messenger\Middleware\MiddlewareInterface`. Its one method is `handle`, which must pass the envelope on to the next middleware (imports `Symfony\Component\Messenger\Envelope`, `Symfony\Component\Messenger\Middleware\StackInterface`):
+1. Create a service implementing `Symfony\Component\Messenger\Middleware\MiddlewareInterface`. Its only method is `handle(Envelope $envelope, StackInterface $stack): Envelope`, which must always pass on to the next middleware.
 
 ```php
-public function handle(Envelope $envelope, StackInterface $stack): Envelope
-{
-    // do something here
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
+use Symfony\Component\Messenger\Middleware\StackInterface;
 
-    return $stack->next()->handle($envelope, $stack);
+class ExampleMiddleware implements MiddlewareInterface
+{
+    public function handle(Envelope $envelope, StackInterface $stack): Envelope
+    {
+        // do something here
+        return $stack->next()->handle($envelope, $stack);
+    }
 }
 ```
 
-Shopware's own `QueuedTimeMiddleware` uses exactly this signature and call.
-
-2. Register the class in the DI container (see [Dependency injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md)).
-3. Add it to the bus's `middleware` list in `framework.yaml` (per bus under `framework.messenger.buses`):
+2. Add the middleware to the bus in `framework.yaml`, under the bus it should run on:
 
 ```yaml
 framework:
     messenger:
         buses:
-            messenger.bus.default:
-                middleware:
-                    - 'Swag\BasicExample\MessageQueue\Middleware\ExampleMiddleware'
-                    - 'Swag\BasicExample\MessageQueue\Middleware\AnotherExampleMiddleware'
+          messenger.bus.default:
+            middleware:
+              - 'Swag\BasicExample\MessageQueue\Middleware\ExampleMiddleware'
+              - 'Swag\BasicExample\MessageQueue\Middleware\AnotherExampleMiddleware'
 ```
+
+In 6.7.15.1 the core `framework.yaml` already lists `Shopware\Core\Framework\Adapter\Messenger\Middleware\QueuedTimeMiddleware` under `messenger.bus.default.middleware`; that class is a working reference implementation of the same pattern (it adds a `SentAtStamp` and then calls the next middleware on the stack).
 
 ## Essential identifiers
 
-- `Symfony\Component\Messenger\Middleware\MiddlewareInterface` (`handle(Envelope $envelope, StackInterface $stack): Envelope`)
+- `Symfony\Component\Messenger\Middleware\MiddlewareInterface`
 - `Symfony\Component\Messenger\Middleware\StackInterface`, `Symfony\Component\Messenger\Envelope`
-- Bus id `messenger.bus.default`; config path `framework.messenger.buses.<bus>.middleware`
+- `framework.messenger.buses.messenger.bus.default.middleware`
+- `Shopware\Core\Framework\Adapter\Messenger\Middleware\QueuedTimeMiddleware`
 
 ## Gotchas
 
-- Always return `$stack->next()->handle($envelope, $stack)`; otherwise later middleware (including `send_message`/`handle_message`) never runs.
-- Do not import the similarly named `Shopware\Core\Framework\Store\Services\MiddlewareInterface` — that one is for Store HTTP requests and requires `__invoke(callable $handler): callable`, not `handle`.
-- The source's YAML comment points at the core file `src/Core/Framework/Resources/config/packages/framework.yaml`; in the installed core that file already lists `Shopware\Core\Framework\Adapter\Messenger\Middleware\QueuedTimeMiddleware` for `messenger.bus.default`. Add your entries in your own project/bundle config rather than editing core.
-- A compiler pass in core always prepends `RoutingOverwriteMiddleware` to `messenger.bus.default`, so custom middleware runs after it.
+- Forgetting `return $stack->next()->handle($envelope, $stack);` stops the chain: later middleware (including sending and handling) never runs.
+- The source labels the YAML with the core path `<platform root>/src/Core/Framework/Resources/config/packages/framework.yaml`; the snippet shows the bus/middleware structure to add to.
 
-## Code check (6.7.13.0)
-- unverified `Symfony\Component\Messenger\Middleware\MiddlewareInterface` — vendor/symfony, out of scope
-- confirmed `QueuedTimeMiddleware::handle()` — core middleware with handle(Envelope, StackInterface): Envelope calling the next stack item — vendor/shopware/core/Framework/Adapter/Messenger/Middleware/QueuedTimeMiddleware.php:18
-- confirmed `messenger.bus.default` — bus defined in core framework.yaml — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:88
-- confirmed `middleware` — per-bus middleware list, core registers QueuedTimeMiddleware — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:89
-- confirmed `RoutingOverwriteMiddleware` — prepended to the default bus by compiler pass — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/MessengerMiddlewareCompilerPass.php:27
-- confirmed `MiddlewareInterface::__invoke()` — the unrelated Store Services interface requires __invoke — vendor/shopware/core/Framework/Store/Services/MiddlewareInterface.php:13
+## Code check (6.7.15.1)
+- confirmed `messenger.bus.default` — default bus defined in core messenger config — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:90
+- confirmed `messenger.bus.default.middleware` — middleware list key on the bus — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:91
+- confirmed `QueuedTimeMiddleware` — core middleware registered on the default bus — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:92
+- confirmed `MiddlewareInterface` — implemented by core middleware — vendor/shopware/core/Framework/Adapter/Messenger/Middleware/QueuedTimeMiddleware.php:14
+- confirmed `QueuedTimeMiddleware::handle()` — signature handle(Envelope, StackInterface): Envelope — vendor/shopware/core/Framework/Adapter/Messenger/Middleware/QueuedTimeMiddleware.php:18
+- confirmed `StackInterface` — Symfony stack type used by core middleware — vendor/shopware/core/Framework/Adapter/Messenger/Middleware/QueuedTimeMiddleware.php:10
+- unverified `send_message` — Symfony Messenger built-in middleware, vendor/symfony out of scope
+- unverified `handle_message` — Symfony Messenger built-in middleware, vendor/symfony out of scope

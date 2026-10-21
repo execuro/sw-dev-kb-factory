@@ -5,31 +5,33 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/infrastructure/redis.html
-sourceHash: 3b1e7f4ac802f06a547c40ec214d321e66e5e2b8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware.redis.connections", "dsn", "shopware.redis.connection", "RedisConnectionProvider", "volatile-lru", "allkeys-lru", "persistent=1", "redis", "eviction policy", "cache", "sessions", "cart storage", "number ranges", "connection pooling"]
-summary: How to split Shopware Redis usage into ephemeral, aging and critical instances with eviction policies, and define named shopware.redis.connections (6.6.8.0+).
-lastBuilt: 2026-09-15
+sourceHash: 7f21b6751a4b9261833339f7ed51cef697147911
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["redis", "shopware.redis.connections", "dsn", "volatile-lru", "allkeys-lru", "eviction policy", "persistent connection", "connection pooling", "ephemeral data", "session storage", "cache", "RDB", "AOF", "REDIS_EPHEMERAL"]
+summary: Splitting Shopware Redis usage into ephemeral, aging and critical instances with eviction policies, and defining shopware.redis.connections DSNs.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Guidance on running Redis for Shopware: which data goes into which Redis instance, which eviction and persistence settings to use, and how to declare reusable named Redis connections under `shopware.redis.connections` that subsystems reference by name.
+Guidance on using Redis with Shopware: which data classes to put on separate Redis instances, which eviction and persistence settings each needs, and how to declare reusable named Redis connections in `config/packages/shopware.yaml`.
 
 ## When to use
 
-Planning Redis for a production or high-throughput shop — caches, sessions, cart, number ranges, lock store, increment storage — or wiring a subsystem to a specific Redis connection.
+- Offloading caches, sessions, carts, number ranges, locks or increments from the database to Redis.
+- Planning Redis topology for a high-traffic shop.
+- Wiring Shopware subsystems to a named Redis connection.
 
 ## Key steps / config
 
-1. Classify data and use separate Redis instances (one instance cannot use different eviction policies per database):
+Use separate Redis instances per data class, because Redis cannot apply different eviction policies to different databases of one instance:
 
-| Category | Examples | Persistence | Eviction policy |
+| Data class | Examples | Persistence | Eviction |
 |---|---|---|---|
 | Ephemeral | HTTP cache, object cache | memory only | `volatile-lru` |
-| Durable, aging | sessions | RDB snapshots and/or AOF | `allkeys-lru` |
-| Durable, critical | cart, number range, lock store, increment | persisted | `volatile-lru` |
+| Durable, "aging" | sessions | RDB snapshots and/or AOF | `allkeys-lru` |
+| Durable, critical | cart, number range, lock store, increment | RDB and/or AOF | `volatile-lru` (never evicts keys without TTL) |
 
-2. Define named connections in `config/packages/shopware.yaml` (since 6.6.8.0); `dsn` is the only (required) key per connection:
+Declare named connections under `shopware.redis.connections`; each entry needs a `dsn`:
 
 ```yaml
 shopware:
@@ -39,39 +41,34 @@ shopware:
                 dsn: 'redis://host1:port/dbindex'
             persistent:
                 dsn: 'redis://host2:port/dbindex?persistent=1'
-            ephemeral_2:
-                dsn: '%env(REDIS_EPHEMERAL)%/2'
 ```
 
-   Each connection becomes a container service `shopware.redis.connection.<name>`, so names must be unique and follow service-naming conventions. Env vars can be used inside the DSN.
-
-3. Reference connections by name from subsystem config — e.g. the number range section accepts `increment_storage: redis` plus `config.connection: <name>` (a connection is mandatory when storage is `redis`).
-
-4. For high load, add `?persistent=1` to the DSN to reuse connections (connection pooling — not data persistence).
+- Env vars are allowed in the DSN, e.g. `dsn: '%env(REDIS_EPHEMERAL)%/1'` for database 1.
+- `?persistent=1` enables persistent connections (connection pooling) to avoid per-request connect overhead; it does not affect data persistence.
+- Subsystems then reference a connection by its name. Names become part of container service ids (`shopware.redis.connection.<name>`), so they must be unique and follow service naming conventions.
 
 ## Essential identifiers
 
-- `shopware.redis.connections.<name>.dsn`
-- service id `shopware.redis.connection.<name>`
-- `Shopware\Core\Framework\Adapter\Redis\RedisConnectionProvider`
-- `volatile-lru`, `allkeys-lru`, `persistent=1`
+- `shopware.redis.connections` (`<name>.dsn`)
+- `shopware.redis.connection.<name>` (generated service id)
+- `volatile-lru`, `allkeys-lru`
+- `persistent=1` DSN flag
 
 ## Gotchas
 
-- A cache Redis hitting its memory limit is normal; the real problem is keys without TTL. `volatile-lru` only evicts keys with a TTL, and Symfony's tag-aware cache adapter stores tag-index sets without a TTL that accumulate orphaned entries — prune them or Redis runs out of memory.
-- A non-string `dsn` fails container compilation.
+- A cache Redis hitting its memory limit is normal; the risk is too many keys without a TTL, which `volatile-lru` cannot evict. Symfony's tag-aware cache adapter stores tag-index sets without TTL that accumulate orphans; prune them or Redis runs out of memory.
+- On the critical-data instance `volatile-lru` still evicts least-recently-used keys that have a TTL.
+- Referencing a connection name that is not configured raises an error pointing to `shopware.redis.connections`.
 
 ## Version notes
 
-- Named reusable connections under `shopware.redis.connections` are available from 6.6.8.0.
+- Named `shopware.redis.connections` exist since 6.6.8.0.
 
-## Code check (6.7.13.0)
-- confirmed `connections` — config node under redis, keyed by name — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1588
-- confirmed `dsn` — required scalar per connection — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1592
-- confirmed `shopware.redis.connection.` — service id prefix per connection — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:50
-- confirmed `shopware.redis.connections` — parameter read; non-string dsn throws — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:40
-- confirmed `RedisConnectionProvider::getConnection()` — resolves a connection by name — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionProvider.php:28
-- confirmed `increment_storage` — number range mysql or redis, default mysql — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:937
-- confirmed `connection` — number range config.connection, required when increment_storage is redis — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:944
-- unverified `volatile-lru` — Redis server setting, outside the installed Shopware code
-- unverified `persistent=1` — DSN flag parsed by Symfony cache adapter, vendor/symfony out of scope
+## Code check (6.7.15.1)
+- confirmed `redis.connections` — named map of connections — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1633
+- confirmed `redis.connections.dsn` — required scalar per connection — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1637
+- confirmed `shopware.redis.connection.` — service id prefix per connection name — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionsCompilerPass.php:50
+- confirmed `shopware.redis.connection.` — provider resolves connection service by name — vendor/shopware/core/Framework/Adapter/Redis/RedisConnectionProvider.php:44
+- confirmed `shopware.redis.connections` — error for unknown connection name — vendor/shopware/core/Framework/Adapter/AdapterException.php:146
+- unverified `volatile-lru` — Redis server setting, outside the code roots
+- unverified `persistent=1` — DSN option interpreted by the Redis client, outside the code roots

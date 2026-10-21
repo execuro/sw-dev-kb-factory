@@ -1,34 +1,34 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2020-07-02-implement-sales-channel-context-token-requirement.md
-title: Implement sales channel context token requirement for store-api and sales-channel-api
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2020-07-02-implement-sales-channel-context-token-requirement.html
+id: platform/dev/6.7/resources/references/adr/2020-07-02-implement-sales-channel-context-token-requirement.md
 sourceHash: 94d5f00b521580f5eb03a34b3e678bed08ff94eb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ContextTokenRequired", "_contextTokenRequired", "ATTRIBUTE_CONTEXT_TOKEN_REQUIRED", "PlatformRequest", "sw-context-token", "SalesChannelRequestContextResolver", "context token", "store-api", "sales-channel-api", "route defaults", "sales channel context", "adr"]
-summary: "ADR: store-api routes needing a sales channel context token must require it; in 6.7 via route default PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2020-07-02-implement-sales-channel-context-token-requirement.html
+title: Implement sales channel context token requirement for store-api and sales-channel-api
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["adr", "context token", "sw-context-token", "sales channel context", "store-api", "sales-channel-api", "PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED", "SalesChannelRequestContextResolver", "route defaults", "token required", "cart", "missing request parameter"]
+summary: "ADR 2020-07-02: Store API routes that depend on a sales channel context token must reject calls without one instead of generating a token"
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2020-07-02): routes of the store-api (and the former sales-channel-api) that depend on a sales channel context token must only be callable when the token is provided, instead of silently getting a freshly generated token with the default sales channel context. Routes declare this requirement explicitly.
+An architecture decision record (2020-07-02, area core) about routes of the sales-channel-api and the Store API that depend on a sales channel context token to identify the correct context. It decides that such routes must be marked so they can only be called with a token, distinguishing them from open routes, so they cannot be called accidentally or intentionally without one.
 
 ## When to use
 
-- You add a Store API route and must decide whether it may run without a context token.
-- You are debugging a "missing request parameter" error for the context token header on a Store API call.
-
-Questions from the ADR to decide whether a route requires a token:
-
-- Would automatic generation of the token be a security issue?
-- Would automatic generation lead to an abandoned entity (e.g. a cart)?
-- Can every possible caller create or know the token beforehand? (An asynchronous payment provider cannot.)
+When adding or reviewing a Store API route and deciding whether a caller must send an existing context token, or whether Shopware may silently create one for the default sales channel context.
 
 ## Key steps / config
 
-In the installed code the requirement is a route default, not an annotation class:
+The decision: every route that depends on a sales channel context token is only callable with such a token provided. To decide whether a route depends on a token, ask:
+
+- Will the automatic generation of the token be a security issue?
+- Will the automatic generation lead to an abandoned entity (e.g. the cart)?
+- Can every possible caller create or know the needed token beforehand? (The asynchronous payment provider, for example, cannot.)
+
+Every Store API route has to be checked against these questions. In the installed code the requirement is a route default, not an annotation class. A route that needs the token sets the `PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED` default in its `#[Route]` attribute:
 
 ```php
 #[Route(
@@ -37,37 +37,31 @@ In the installed code the requirement is a route default, not an annotation clas
         PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED => true,
     ]
 )]
+class ChangePasswordRoute extends AbstractChangePasswordRoute
 ```
 
-Behavior in `SalesChannelRequestContextResolver::resolve()` for routes in a sales-channel-context-dependent scope:
-
-1. If the `sw-context-token` header (`PlatformRequest::HEADER_CONTEXT_TOKEN`) is missing and the route default is `true`, a `RoutingException::missingRequestParameter` is thrown for that header.
-2. If the header is missing and the default is absent or `false`, a random 32-character token is generated and set on the request.
-3. The context is then loaded for that token.
-
-Core examples setting the default to `true`: `ChangePasswordRoute`, `ChangeEmailRoute`, `ChangeCustomerProfileRoute`, `ConvertGuestRoute`, `ChangeLanguageRoute`.
+`SalesChannelRequestContextResolver::resolve()` checks each sales channel request: if the `sw-context-token` header is missing and the route requires it, it throws `RoutingException::missingRequestParameter()` for that header; otherwise it generates a random 32-character token and continues with a fresh context.
 
 ## Essential identifiers
 
-- `Shopware\Core\PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED`
-- `Shopware\Core\PlatformRequest::HEADER_CONTEXT_TOKEN` (`sw-context-token`)
-- `Shopware\Core\Framework\Routing\SalesChannelRequestContextResolver`
-- `Shopware\Core\Framework\Routing\StoreApiRouteScope` (`store-api`)
+- `PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED`
+- `PlatformRequest::HEADER_CONTEXT_TOKEN` (`sw-context-token`)
+- `SalesChannelRequestContextResolver`
+- `RoutingException::missingRequestParameter()`
+- Example routes: `ChangePasswordRoute`, `ChangeEmailRoute`, `ChangeCustomerProfileRoute`, `ConvertGuestRoute`
 
 ## Gotchas
 
-- The annotation class `Shopware\Core\Framework\Routing\Annotation\ContextTokenRequired` named by the ADR no longer exists; use the route default `_contextTokenRequired` instead.
-- Without the requirement, a call without a token works but may attach entities (cart, customer) to a new default context rather than the intended one — the risk the ADR's counter-decision accepted.
+- The ADR tells developers to set the `ContextTokenRequired` annotation (`Shopware\Core\Framework\Routing\Annotation\ContextTokenRequired`). That class does not exist in the installed code; the route default with value `_contextTokenRequired` is what the resolver reads.
+- Counter decision considered: leave the routes open. Without a token Shopware generates one with the default sales channel context; no security issue was associated with context-less calls, but an entity such as a cart or customer could accidentally be added to the default context instead of the intended custom one.
+- A route can also set the default explicitly to `false` (e.g. `ImitateCustomerRoute`).
 
-## Version notes
-
-- The ADR predates the switch from annotations to route attribute defaults. The installed routing code has no `sales-channel-api` scope; only the `store-api` scope applies.
-
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\Routing\Annotation\ContextTokenRequired` — replaced by the route default `_contextTokenRequired` in `PlatformRequest`
-- corrected `ATTRIBUTE_CONTEXT_TOKEN_REQUIRED` — docs: annotation class; code: route default `_contextTokenRequired` — vendor/shopware/core/PlatformRequest.php:81
-- confirmed `HEADER_CONTEXT_TOKEN` — header name `sw-context-token` — vendor/shopware/core/PlatformRequest.php:18
-- confirmed `contextTokenRequired` — throws missing header when required, else generates a token — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:45
-- confirmed `ATTRIBUTE_CONTEXT_TOKEN_REQUIRED` — read with default `false` — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:92
-- confirmed `ATTRIBUTE_CONTEXT_TOKEN_REQUIRED` — example route default `true` on `ChangePasswordRoute` — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangePasswordRoute.php:36
-- confirmed `StoreApiRouteScope::ID` — value `store-api` — vendor/shopware/core/Framework/Routing/StoreApiRouteScope.php:15
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Framework\Routing\Annotation\ContextTokenRequired` — annotation class not found anywhere in the installed code
+- confirmed `PlatformRequest::ATTRIBUTE_CONTEXT_TOKEN_REQUIRED` — route attribute key _contextTokenRequired — vendor/shopware/core/PlatformRequest.php:83
+- confirmed `PlatformRequest::HEADER_CONTEXT_TOKEN` — header name sw-context-token — vendor/shopware/core/PlatformRequest.php:18
+- confirmed `SalesChannelRequestContextResolver::contextTokenRequired()` — reads the route attribute, default false — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:90
+- confirmed `RoutingException::missingRequestParameter()` — thrown when token required but header missing — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:46
+- confirmed `Random::getAlphanumericString()` — 32-char token generated when not required — vendor/shopware/core/Framework/Routing/SalesChannelRequestContextResolver.php:49
+- confirmed `ChangePasswordRoute` — sets the token-required route default to true — vendor/shopware/core/Checkout/Customer/SalesChannel/ChangePasswordRoute.php:37
+- confirmed `ImitateCustomerRoute` — sets the token-required route default to false — vendor/shopware/core/Checkout/Customer/SalesChannel/ImitateCustomerRoute.php:35

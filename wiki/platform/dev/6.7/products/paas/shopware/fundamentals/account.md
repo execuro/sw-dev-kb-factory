@@ -1,47 +1,49 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/paas/shopware/fundamentals/account.md
-sourceHash: 8b991e4f61858a3cb68412f48b2c4d4db54bbd33
-sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/fundamentals/account.html
 title: Account
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["sw-paas account", "sw-paas account whoami", "sw-paas account context set", "sw-paas account user", "sw-paas account service-account", "sw-paas account token create", "SW_PAAS_TOKEN", "service account", "personal access token", "account-admin", "organization:viewer", "project:viewer", "context-production.yaml"]
-summary: "sw-paas account CLI: whoami, context set/show/delete, user memberships and access requests, service accounts with grants, and personal/service tokens."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/fundamentals/account.html
+sourceHash: 8b991e4f61858a3cb68412f48b2c4d4db54bbd33
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-paas account", "sw-paas account whoami", "sw-paas account context set", "context-production.yaml", "sw-paas account user", "service account", "sw-paas account service-account grant", "sw-paas account token create", "SW_PAAS_TOKEN", "personal access token", "account-admin", "ci/cd authentication"]
+summary: "sw-paas account commands: whoami, context, user access requests, service accounts, grants and access tokens."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/paas/shopware/fundamentals/organization.md"]
 ---
 ## What it is
 
-Reference for the `sw-paas account` command group of the Shopware PaaS Native CLI: identity inspection, context management, human user memberships, service accounts and access tokens.
+An account is your access to resources in the Shopware PaaS Native backend. The `sw-paas account` commands cover identity inspection, context management, human user memberships, service accounts and access tokens.
 
 ## When to use
 
-When checking which resources and roles the current CLI user has, avoiding repeated `organization-id`/`project-id` prompts, granting people or CI/CD pipelines access, or creating and revoking tokens.
+When checking your roles, avoiding repeated organization/project prompts, managing who has access at organization/project/application level, or setting up machine authentication for CI/CD.
 
 ## Key steps / config
 
-**Identity**: `sw-paas account whoami` shows the authenticated user and attached roles. Organization-level roles: see [organization guide](platform/dev/6.7/products/paas/shopware/fundamentals/organization.md).
+Identity: `sw-paas account whoami` shows the authenticated user and its roles (organization roles: [organization guide](platform/dev/6.7/products/paas/shopware/fundamentals/organization.md)).
 
-**Context** (default `organization-id`/`project-id`):
+Context (saves `organization-id` and `project-id` so the CLI stops asking):
 
-- `sw-paas account context set` / `sw-paas account context show` / `sw-paas account context delete`
-- Stored as `context-production.yaml` next to the main config file: Unix `~/.config/sw-paas` (`XDG_CONFIG_HOME`) or `~/.local/state/sw-paas` (`XDG_STATE_HOME`); macOS `~/Library/Application Support/sw-paas`; Windows `%LOCALAPPDATA%`.
+```sh
+sw-paas account context set
+sw-paas account context show
+sw-paas account context delete
+```
 
-**Human users** (memberships at organization, project, application level):
+Stored as `context-production.yaml` next to the main config: Unix `~/.config/sw-paas` (XDG_CONFIG_HOME) / `~/.local/state/sw-paas` (XDG_STATE_HOME), macOS `~/Library/Application Support/sw-paas`, Windows `%LOCALAPPDATA%`.
 
+Human users (memberships at organization, project, application level):
 - `sw-paas account user list` / `add` / `remove`
-- Self-service: `sw-paas account user request`, `sw-paas account user requests list`
-- Users with the `account-admin` role resolve requests: `sw-paas account user requests resolve`
+- self-service: `sw-paas account user request`, `sw-paas account user requests list`
+- users with role `account-admin` resolve requests: `sw-paas account user requests resolve`
 
-**Service accounts** (machine identities for CI/CD and automation; also usable for temporary external developer access):
-
+Service accounts (machine identities for CI/CD, or temporary access for an external developer):
 - `sw-paas account service-account create` / `list` / `update` / `delete`
-- Grants: `sw-paas account service-account grant list` / `add` / `policies` / `revoke`
+- grants: `sw-paas account service-account grant list` / `add` / `policies` / `revoke`
 
-**Tokens**:
+Tokens:
 
 ```sh
 sw-paas account token create
@@ -55,20 +57,18 @@ sw-paas account token revoke --service-account-id <service-account-id>
 
 ## Essential identifiers
 
-- `sw-paas account whoami`, `sw-paas account context set|show|delete`
-- `sw-paas account user`, `sw-paas account user requests resolve`
-- `sw-paas account service-account`, `sw-paas account service-account grant`
-- `sw-paas account token create|list|revoke`, `--token`, `--token-id`, `--service-account-id`
-- `SW_PAAS_TOKEN`, `context-production.yaml`
-- Roles/policies: `account-admin`, `organization:viewer`, `project:viewer`
+- `sw-paas account whoami`, `sw-paas account context set|show|delete`, `context-production.yaml`
+- `sw-paas account user`, `sw-paas account service-account`, `sw-paas account token`
+- `--token`, `SW_PAAS_TOKEN`, `--service-account-id`, `--token-id`
+- roles/policies: `account-admin`, `organization:viewer`, `project:viewer`
 
 ## Gotchas
 
-- Strictly scoped service-account tokens may lack permission for name lookups. Use `--organization-id`, `--project-id`, `--application-id`; the name-based `--organization`, `--project`, `--application` options call internal list APIs. To use names, grant the service account the `organization:viewer` and `project:viewer` policies.
-- Personal access tokens inherit all permissions of their creator (except creating new tokens) — anyone holding one acts as that user. Use service accounts for CI/CD.
-- Service account tokens are limited to the permissions granted to the service account, not those of the creating user.
+- Strictly scoped service account tokens should address resources with `--organization-id`, `--project-id`, `--application-id`. The name options `--organization`, `--project`, `--application` resolve names via internal list API calls that need extra permissions; to use names, grant the `organization:viewer` and `project:viewer` policies.
+- Personal access tokens inherit all permissions of the creating user (except creating new tokens) — anyone holding one acts as that user. Use them for personal scripts only; use service accounts for CI/CD.
+- Service account tokens authenticate as the service account and are limited to its grants.
 
-## Code check (6.7.13.0)
-- unverified `sw-paas account` — PaaS CLI command group, not part of vendor/shopware
-- unverified `SW_PAAS_TOKEN` — CLI environment variable, not read by the installed Shopware code
-- unverified `organization:viewer` — PaaS backend policy name, out of scope of vendor/shopware
+## Code check (6.7.15.1)
+- unverified `sw-paas account` — sw-paas CLI, outside vendor/shopware
+- unverified `SW_PAAS_TOKEN` — CLI environment variable, not part of the Shopware code roots
+- unverified `context-production.yaml` — CLI config file, out of scope of vendor/shopware

@@ -6,75 +6,66 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-04-11-new-language-inheritance-mechanism-for-opensearch.html
 sourceHash: e8bc2d5252fee12b76b605716efa5b7eb209cce8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ES_MULTILINGUAL_INDEX", "es:index", "translated_field_sorting", "numeric_translated_field_sorting", "sw_product", "sw_ngram_analyzer", "multi_match", "painless script", "elasticsearch", "opensearch", "multilingual index", "language fallback", "translated fields"]
-summary: "ADR 2023: one OpenSearch index per entity with per-language object fields, fallback multi_match and painless sorting, behind ES_MULTILINGUAL_INDEX."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["elasticsearch", "opensearch", "multilingual index", "language fallback", "ES_MULTILINGUAL_INDEX", "es:index", "sw_product", "translated_field_sorting", "numeric_translated_field_sorting", "painless script", "multi_match", "sw_ngram_analyzer", "object field mapping"]
+summary: "ADR 2023-04-11: one OpenSearch index per entity for all languages; translated fields map as per-language objects, with fallback search and sorting."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2023-04-11, area: Core, Elasticsearch) replacing one Elasticsearch/OpenSearch index per language with a single index per searchable entity, where translated fields hold one sub-field per language and searches fall back across languages.
+An architecture decision record (2023-04-11, area Core/Elasticsearch) that replaces "one Elasticsearch/OpenSearch index per language" with a single index per searchable entity (e.g. `sw_product`) covering all languages. Each translated field is mapped as an object whose keys are language IDs, and queries fall back across languages at search time instead of duplicating default-language data into every index.
 
 ## When to use
 
-When working on multilingual Storefront search with Elasticsearch/OpenSearch, custom ES field mappings for translated fields, or sorting on translated fields.
+- Understanding the mapping shape of translated fields in the Shopware product search index.
+- Writing custom queries or sorting against translated fields in the index.
+- Planning a reindex after enabling or upgrading to the multilingual index.
 
 ## Key steps / config
 
-Problems with per-language indexes: many indexes/shards to manage (costly on cloud), every update written to every language index, no search fallback so default-language data is duplicated into each index.
+Problems with the per-language approach, as stated by the ADR: many indices/shards (each has cluster overhead, especially on cloud); every record update had to be written to every language index; no fallback, so non-translatable data was duplicated in every index.
 
-Decision:
-1. Opt in via feature flag `ES_MULTILINGUAL_INDEX`.
-2. One index per searchable entity for all languages (e.g. `sw_product`).
-3. Each translated field is mapped as an object field keyed by language ID.
-4. Search uses `multi_match` over `<translated_field>.<context_lang_id>`, `<translated_field>.<parent_current_lang_id>` and `<translated_field>.<default_lang_id>` as fallback.
-5. Sorting uses painless scripts `Framework/Indexing/Scripts/translated_field_sorting.groovy` and `Framework/Indexing/Scripts/numeric_translated_field_sorting.groovy`.
-6. New languages or record updates use partial updates instead of replacing whole documents.
-7. After activating the feature, reindex with `bin/console es:index`.
+New mapping criteria:
 
-New mapping shape (`PUT /sw_product/_mapping`):
+1. One index per searchable entity for all languages (e.g. `sw_product`).
+2. Each translated field is an `object field`; each language ID is a key.
+3. Search uses `multi_match` over `<field>.<context_lang_id>`, `<field>.<parent_current_lang_id>` and `<field>.<default_lang_id>` as fallback.
+4. Sorting applies the same fallback via painless scripts (`Framework/Indexing/Scripts/translated_field_sorting.groovy`, `numeric_translated_field_sorting.groovy`).
+5. Adding a language or updating a record is a partial update rather than a full document replace.
+
+Mapping shape (`PUT /sw_product/_mapping`):
 
 ```json
 { "mappings": { "properties": {
-  "productNumber": { "type": "keyword" },
-  "name": { "properties": {
-    "en": { "type": "keyword", "fields": {
-      "text":  { "type": "text", "analyzer": "sw_english_analyzer" },
-      "ngram": { "type": "text", "analyzer": "sw_ngram_analyzer" } } },
-    "de": { "...": "same shape, sw_german_analyzer" } } } } } }
+    "productNumber": { "type": "keyword" },
+    "name": { "properties": {
+        "<language_id>": { "type": "keyword", "fields": {
+            "text":  { "type": "text", "analyzer": "<language analyzer>" },
+            "ngram": { "type": "text", "analyzer": "sw_ngram_analyzer" } } } } } } } }
 ```
 
-Sort request shape (`GET /sw_product/_search`):
+Sorting shape: a `sort` entry with `_script` → `type: "string"`, `script.id: "translated_field_sorting"`, `script.params.field` and `script.params.languages` (context language ID first, then fallback), plus `order`.
 
-```json
-{ "sort": [ { "_script": { "type": "string",
-  "script": { "id": "translated_field_sorting",
-    "params": { "field": "name", "languages": ["<context_lang_id>", "<fallback_lang_id>"] } },
-  "order": "DESC" } } ] }
-```
-
-Adding a language sends `PUT /sw_product/_mapping` adding `name.properties.<new_language_id>` with a `text` sub-field using `<new_language_stop_words_analyzer>` and an `ngram` sub-field using `sw_ngram_analyzer`.
+When a new language is created, a `PUT /sw_product/_mapping` adds a `<new_language_id>` sub-property to each translated field with that language's stop-words analyzer.
 
 ## Essential identifiers
 
-- `ES_MULTILINGUAL_INDEX`
-- `sw_product`, `sw_ngram_analyzer`, `sw_english_analyzer`, `sw_german_analyzer`
-- `translated_field_sorting`, `numeric_translated_field_sorting`
+- `sw_product` (index), `sw_ngram_analyzer`
+- `translated_field_sorting`, `numeric_translated_field_sorting` (painless sort scripts)
 - `bin/console es:index`
 
 ## Gotchas
 
-- The old structure mapped `name` directly as `keyword` with `text`/`ngram` sub-fields in a per-language index; the new structure nests those per language ID.
-- The ADR's search example uses `title.de.search`/`title.en.search` field names, which do not match the `text`/`ngram` sub-fields of its own mapping example.
-- The Elasticsearch/OpenSearch integration lives in the separate `shopware/elasticsearch` package, which is not installed here, so none of these identifiers could be verified against code.
+- After the feature is activated, the shop must reindex with `bin/console es:index`.
+- Old language-based indices are no longer used from the next major version and can be removed from the cluster.
 
 ## Version notes
 
-- From the next major after the ADR, old language-based indexes are no longer used and can be removed from the cluster.
+- The ADR introduced the opt-in feature flag `ES_MULTILINGUAL_INDEX`; per the ADR, from the next major the multilingual index replaces the per-language indices. In 6.7.15.1 no such flag is registered in core.
 
-## Code check (6.7.13.0)
-- unverified `ES_MULTILINGUAL_INDEX` — shopware/elasticsearch not installed; no match in core, storefront or administration
-- unverified `translated_field_sorting` — painless script lives in shopware/elasticsearch, not installed
-- unverified `numeric_translated_field_sorting` — painless script lives in shopware/elasticsearch, not installed
-- unverified `es:index` — console command in shopware/elasticsearch, not installed
-- unverified `sw_ngram_analyzer` — ES analyzer config in shopware/elasticsearch, not installed
+## Code check (6.7.15.1)
+- unverified `ES_MULTILINGUAL_INDEX` — not present in core/storefront/administration; the Elasticsearch package is outside the checked roots
+- unverified `translated_field_sorting` — painless script lives in the Elasticsearch package, outside the checked roots
+- unverified `numeric_translated_field_sorting` — Elasticsearch package, outside the checked roots
+- unverified `es:index` — command defined in the Elasticsearch package, outside the checked roots
+- unverified `sw_ngram_analyzer` — Elasticsearch package, outside the checked roots

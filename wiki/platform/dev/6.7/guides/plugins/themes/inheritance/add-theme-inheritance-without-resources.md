@@ -6,25 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/themes/inheritance/add-theme-inheritance-without-resources.html
 sourceHash: cbd4694ec7ef5bd2c57d4a530a178669dac9a170
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["@StorefrontBootstrap", "@Storefront", "@Plugins", "theme.json", "style", "bootstrap", "bootstrap only theme", "without shopware skin", "scss skin", "$sw-color-brand-primary", "theme variables", "storefront theme"]
-summary: Use @StorefrontBootstrap instead of @Storefront in theme.json style to build a theme on Bootstrap SCSS without the Shopware skin; add @Plugins yourself.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["@StorefrontBootstrap", "@Storefront", "@Plugins", "theme.json", "style", "bootstrap only theme", "without default styling", "storefront skin", "scss", "$sw-color-brand-primary", "ThemeFileResolver", "theme inheritance"]
+summary: Build a theme on plain Bootstrap SCSS by using @StorefrontBootstrap instead of @Storefront in the theme.json style section, without the Shopware skin.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md", "platform/dev/6.7/guides/plugins/themes/styling/add-css-js-to-theme.md", "platform/dev/6.7/guides/plugins/themes/assets/add-assets-to-theme.md"]
 ---
 ## What it is
 
-The Shopware default theme is Bootstrap plus custom Shopware styling (the "skin"). A theme can build only on the Bootstrap SCSS by referencing the `@StorefrontBootstrap` placeholder instead of the `@Storefront` bundle in the `style` section of its `theme.json`. The Storefront skin SCSS is then not part of the theme's compiled styles.
+The Shopware default theme is Bootstrap plus a custom Shopware "skin". The `@StorefrontBootstrap` placeholder lets a theme pull in the Storefront's Bootstrap-based SCSS without that skin, so the theme starts from Bootstrap styling instead of the Shopware look.
 
 ## When to use
 
-When developing a theme that should not carry the Shopware default look but still wants Bootstrap SCSS and the theme variables.
+When you build a theme that should not inherit the Shopware default styling (the SCSS under the Storefront bundle's `Resources/app/storefront/src/scss/skin` directory) but still wants Bootstrap and the Storefront theme variables.
 
 ## Key steps / config
 
-1. In `<plugin root>/src/Resources/theme.json`, replace `@Storefront` in `style` with `@StorefrontBootstrap`.
-2. Add `@Plugins` yourself if plugin styles should be compiled — `@StorefrontBootstrap` does not include it.
-3. Append your own SCSS entry files.
+In `<plugin root>/src/Resources/theme.json`, replace `@Storefront` with `@StorefrontBootstrap` in the `style` section and add `@Plugins` yourself:
 
 ```json
 {
@@ -36,28 +34,35 @@ When developing a theme that should not carry the Shopware default look but stil
 }
 ```
 
-What the code does: `@StorefrontBootstrap` adds only the Storefront bundle's `Resources/app/storefront/src/scss/base.scss` (with its `vendor` resolve mapping). `@Storefront` resolves the Storefront `theme.json` `style` list, which additionally contains `app/storefront/src/scss/skin/shopware/_base.scss` and `@Plugins`.
+What the installed code does with each entry:
+
+- `@StorefrontBootstrap` resolves to the single file `Resources/app/storefront/src/scss/base.scss` of the Storefront bundle (imports `vendor/bootstrap` plus the Storefront base, component, layout and page styles), with the `vendor` import mapping. It does not add `skin/shopware/_base.scss`.
+- `@Storefront` resolves to the Storefront theme's own `style` list: `base.scss`, `skin/shopware/_base.scss` and `@Plugins`.
+- `@Plugins` adds the style files of all non-theme plugins.
+
+Then compile the theme (`bin/console theme:compile`).
 
 ## Essential identifiers
 
 - `@StorefrontBootstrap` — Bootstrap-only style placeholder
-- `@Storefront` — full default theme bundle (includes Bootstrap SCSS already)
-- `@Plugins` — styles of installed non-theme plugins
+- `@Storefront` — full default theme including the skin
+- `@Plugins` — styles of installed plugins
 - `theme.json` `style` section
-- `$sw-color-brand-primary` — example theme variable still available
+- `$sw-color-brand-primary` — example theme variable, still available
 
 ## Gotchas
 
-- `@StorefrontBootstrap` is only for the `style` section; do not use it in `views` or `script`.
-- Use either `@StorefrontBootstrap` or `@Storefront`, never both — `@Storefront` already includes the Bootstrap SCSS.
-- `@StorefrontBootstrap` does not include `@Plugins`; omit it and plugin SCSS is missing.
-- All theme variables such as `$sw-color-brand-primary` remain available with the Bootstrap option.
-- Everything from the Storefront skin directory (`src/scss/skin`) is not available to the theme.
+- `@StorefrontBootstrap` is meant for the `style` section only; do not use it in `views` or `script` (it always resolves to an SCSS file).
+- Use either `@StorefrontBootstrap` or `@Storefront`, never both: `@Storefront` already includes the Bootstrap SCSS.
+- `@StorefrontBootstrap` does not include `@Plugins`; add it explicitly or plugin styles are missing.
+- Theme variables such as `$sw-color-brand-primary` stay available, because the compiler prepends the dumped theme config variables to all style files regardless of the placeholder.
+- Variables declared only in the Shopware skin (for example `$font-weight-semibold`, `$disabled-btn-bg`) are not defined without the skin.
 
-## Code check (6.7.13.0)
-- confirmed `@StorefrontBootstrap` — special-cased placeholder in the file resolver — vendor/shopware/storefront/Theme/ThemeFileResolver.php:302
-- confirmed `ThemeFileResolver::addStorefrontBootstrapFile()` — adds only Storefront scss/base.scss with vendor mapping — vendor/shopware/storefront/Theme/ThemeFileResolver.php:339
-- confirmed `@Plugins` — separate placeholder resolving non-theme plugin files, not added by @StorefrontBootstrap — vendor/shopware/storefront/Theme/ThemeFileResolver.php:296
-- confirmed `app/storefront/src/scss/skin/shopware/_base.scss` — skin entry only in the @Storefront style list — vendor/shopware/storefront/Resources/theme.json:16
-- confirmed `style` — theme.json style array read by the configuration factory — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:81
-- confirmed `sw-color-brand-primary` — theme config field defined in the Storefront theme.json — vendor/shopware/storefront/Resources/theme.json:33
+## Code check (6.7.15.1)
+- confirmed `@StorefrontBootstrap` — handled as a namespace include in the file resolver — vendor/shopware/storefront/Theme/ThemeFileResolver.php:302
+- confirmed `ThemeFileResolver::addStorefrontBootstrapFile()` — adds only `Resources/app/storefront/src/scss/base.scss` with vendor mapping, no skin, no plugins — vendor/shopware/storefront/Theme/ThemeFileResolver.php:339
+- confirmed `@Plugins` — resolves style files of all non-theme plugins — vendor/shopware/storefront/Theme/ThemeFileResolver.php:296
+- confirmed `style` — `@Storefront` style list is `base.scss`, `skin/shopware/_base.scss` and `@Plugins` — vendor/shopware/storefront/Resources/theme.json:9
+- confirmed `sw-color-brand-primary` — defined as a theme config field of the default theme — vendor/shopware/storefront/Resources/theme.json:33
+- confirmed `ThemeCompiler::dumpVariables()` — theme variables are prepended before the concatenated styles — vendor/shopware/storefront/Theme/ThemeCompiler.php:598
+- confirmed `$font-weight-semibold` — declared only in the Shopware skin variables — vendor/shopware/storefront/Resources/app/storefront/src/scss/skin/shopware/abstract/variables/_custom.scss:21

@@ -1,49 +1,47 @@
 ---
-id: platform/dev/6.7/guides/plugins/apps/app-sdks/_index.md
-title: App SDKs
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/
+id: platform/dev/6.7/guides/plugins/apps/app-sdks/_index.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md
+  - platform/dev/6.7/guides/plugins/apps/app-sdks/php/_index.md
+  - platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/_index.md
 sourceHash: 26ed6cf8fc056537ede399278793ad183aa01ff8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app sdk", "app sdks", "Meteor Admin SDK", "App SDK for PHP", "App Server SDK in TypeScript", "app backend", "registration flow", "webhook handling", "lifecycle handling", "symfony bundle", "sdk comparison"]
-summary: "Comparison of Shopware app SDKs: Meteor Admin SDK (admin UI), App SDK for PHP and App Server SDK in TypeScript (backends) by capability."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md", "platform/dev/6.7/guides/plugins/apps/app-sdks/php/_index.md", "platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/_index.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/app-sdks/
+title: App SDKs
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["app sdk", "app sdks", "meteor admin sdk", "app sdk for php", "app server sdk", "typescript sdk", "app backend", "app registration", "webhook handling", "lifecycle handling", "symfony bundle", "sdk comparison"]
+summary: Comparison of Shopware app SDKs - Meteor Admin SDK (admin UI), App SDK for PHP and TypeScript App Server SDK (backends) - by capabilities.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview page comparing the three SDKs Shopware offers for building apps: one frontend SDK for Administration UI extensions and two backend SDKs that implement the app server side (registration, signing, lifecycle, shop persistence).
+Overview and comparison of the three SDKs Shopware offers for building apps: one frontend SDK for Administration UI extensions and two backend SDKs that implement the app-server side (registration, signing, lifecycle, API access).
 
 ## When to use
 
-Choosing which SDK to build an app with: Administration UI extension vs. an app backend in PHP/Symfony vs. TypeScript/JavaScript runtimes (Node, Deno, Cloudflare Workers, serverless/edge).
+Choosing which SDK to build an app with, or checking whether an SDK covers a backend concern (registration flow, lifecycle, webhooks, storage) before relying on it.
 
 ## Key steps / config
 
-| SDK | Type | Strengths | Gaps (per docs) |
-|---|---|---|---|
-| [Meteor Admin SDK](platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md) | Frontend | Admin UI extensions for apps and plugins; notifications, context/location access, UI/data integration; TypeScript, dependency-free, tree-shakable | No backend features: no registration, webhook verification, lifecycle handling or shop persistence |
-| [App SDK for PHP](platform/dev/6.7/guides/plugins/apps/app-sdks/php/_index.md) | Backend | Registration, lifecycle, action parsing into structs, events, signing, context handling, HTTP client; PSR-based; Symfony Bundle available | Less explicit replay protection, storage backends, response builders, structured errors, middleware |
-| [App Server SDK in TypeScript](platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/_index.md) | Backend | Runtime portability; registration handshake, signing/verification, preconfigured API client | Less explicit lifecycle handling, webhook ergonomics, storage/persistence, structured errors, response helpers |
+| SDK | Type | Strengths | Gaps (per source) | Lifecycle / webhooks / HTTP client / storage |
+|---|---|---|---|---|
+| Meteor Admin SDK (`platform/dev/6.7/guides/plugins/apps/administration/meteor-admin-sdk.md`) | Frontend | Admin UI extensions for apps and plugins: notifications, context/location access, UI/data integration; TypeScript, dependency-free, tree-shakable | No backend capabilities: no registration, webhook verification, lifecycle handling or shop persistence | No / No / No / No |
+| App SDK for PHP (`platform/dev/6.7/guides/plugins/apps/app-sdks/php/_index.md`) | Backend | PHP / Symfony-style backends: registration, lifecycle, action parsing into structs, events, signing, context handling, HTTP client; PSR-based; Symfony Bundle | Less explicit support for replay protection, storage backends, response builders, structured errors, middleware/extensibility | Yes / Yes / Yes / Yes |
+| App Server SDK in TypeScript (`platform/dev/6.7/guides/plugins/apps/app-sdks/javascript/_index.md`) | Backend | TS/JS on Node, Deno, Cloudflare Workers, serverless/edge; registration, signing/verification, preconfigured API client, complete registration handshake | Less explicit coverage for lifecycle handling, webhook ergonomics, storage/persistence, structured errors, response helpers | Yes / not strongly surfaced / not strongly surfaced / Yes |
 
-Capability matrix from the source:
+Framework integration: PHP SDK ships a Symfony Bundle; the TypeScript SDK is example-led and framework-agnostic. Storage backends: PHP has some abstraction; TypeScript not clearly surfaced.
 
-- Registration flow / lifecycle handling: PHP yes, TypeScript yes, Meteor no.
-- Webhook handling and authenticated HTTP client: PHP yes; TypeScript "not strongly surfaced"; Meteor no.
-- Storage / persistence: PHP yes, TypeScript yes; storage backends: PHP "some abstraction", TypeScript "not clearly surfaced".
-- Framework integration: PHP via Symfony Bundle; TypeScript example-led, less framework-focused.
+## Gotchas
 
-## Essential identifiers
+- The Meteor Admin SDK is not a backend SDK; an app needing registration or webhook handling still needs a PHP or TypeScript backend SDK (or its own implementation).
 
-- Meteor Admin SDK (frontend, Administration)
-- App SDK for PHP (backend, Symfony Bundle)
-- App Server SDK in TypeScript (backend, JS runtimes)
-
-## Code check (6.7.13.0)
-- confirmed `@shopware-ag/meteor-admin-sdk` — imported by the Administration extension API — vendor/shopware/administration/Resources/app/administration/src/core/extension-api.ts:8
-- confirmed `registrationUrl` — manifest setup element the SDK registration flow serves — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:188
-- confirmed `RequestSigner::SHOPWARE_SHOP_SIGNATURE` — signature header the backend SDKs verify — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
-- unverified `App SDK for PHP` — separate Composer package, not in the three vendor roots
-- unverified `App Server SDK in TypeScript` — separate npm package, not in the three vendor roots
+## Code check (6.7.15.1)
+- confirmed `@shopware-ag/meteor-admin-sdk` — imported by the Administration itself — vendor/shopware/administration/Resources/app/administration/src/app/store/extension-sdk-module.store.ts:5
+- confirmed `shopware-app-signature` — header the backend SDKs must produce/verify — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:13
+- confirmed `shopware-shop-signature` — header the shop signs requests with — vendor/shopware/core/Framework/App/Hmac/RequestSigner.php:15
+- confirmed `AppRegistrationService::confirmRegistration()` — shop side of the registration handshake the SDKs implement — vendor/shopware/core/Framework/App/Lifecycle/Registration/AppRegistrationService.php:231
+- unverified `App SDK for PHP` — separate package, not part of the installed core
+- unverified `App Server SDK in TypeScript` — separate npm package, not part of the installed core

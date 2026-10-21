@@ -5,23 +5,24 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/performance/cart-storage.html
-sourceHash: 7e43d2961d774af582371ac2a1d3c98a3d5358c6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cart:migrate", "shopware.cart.storage.type", "shopware.cart.storage.config.connection", "shopware.redis.connections", "dsn", "cart storage", "redis", "mysql", "persistent connection", "volatile-lru", "cart migration", "high throughput"]
-summary: "Store Shopware carts in Redis via shopware.cart.storage (type redis + named redis connection) and migrate existing carts with bin/console cart:migrate."
-lastBuilt: 2026-09-15
+sourceHash: 167c9c71ee8f80bfcf2966474b316881bb16bea4
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cart storage", "redis cart", "shopware.cart.storage", "shopware.redis.connections", "cart:migrate", "CartMigrateCommand", "RedisCartPersister", "persistent=1", "volatile-lru", "binlog", "cart persister", "high throughput"]
+summary: Store Shopware carts in Redis instead of MySQL via shopware.cart.storage and a named Redis connection; migrate existing carts with cart:migrate.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to move Shopware's cart persistence from the default database table to Redis, migrate existing carts between the two storages, and configure the Redis instance for durable cart data.
+Shopware stores carts in the database (`cart` table) by default. For high-throughput shops (thousands of orders per minute, DB clusters with read/write split) this can be a bottleneck and inflate the database `binlog`, so carts can be stored in Redis instead.
 
 ## When to use
 
-High-throughput shops (e.g. thousands of orders per minute), especially with a DB cluster using read/write split, or when the rapidly changing cart table inflates the database `binlog`.
+- High order throughput or a read/write-split DB cluster.
+- Moving existing carts between MySQL and Redis without affecting customers.
 
 ## Key steps / config
 
-1. Define a named Redis connection and point the cart storage at it in `config/packages/shopware.yml`:
+1. Define a Redis connection and point the cart storage at it in `config/packages/shopware.yml`:
 
 ```yaml
 shopware:
@@ -31,49 +32,47 @@ shopware:
                 dsn: 'redis://host:port/dbindex?persistent=1'
     cart:
         storage:
-            type: 'redis'
+            type: 'redis'          # allowed: mysql (default), redis
             config:
                 connection: 'persistent'
 ```
 
-   - `shopware.cart.storage.type` accepts `mysql` (default) or `redis`.
-   - With `type: 'redis'`, `shopware.cart.storage.config.connection` is required; each entry under `shopware.redis.connections` requires `dsn`.
-   - `?persistent=1` enables connection pooling (persistent connection), not data persistence; recommended to avoid connection issues under high load.
+`?persistent=1` enables connection pooling (persistent connection, recommended under high load), not data persistence. `dsn` is required for every connection under `shopware.redis.connections`.
 
-2. Migrate existing carts so switching storage does not affect customers:
+2. Migrate existing carts:
 
 ```shell
-bin/console cart:migrate sql          # DB -> Redis
-bin/console cart:migrate redis        # Redis -> DB
-bin/console cart:migrate sql <url>    # optional explicit Redis URL
+bin/console cart:migrate {fromStorage} {redisUrl?}
+bin/console cart:migrate sql
 ```
 
-   The first argument (`from`) is the source storage and must be `redis` or `sql`. The optional second argument (`url`) is a Redis connection URL; without it the configured Redis connection is used, and if none is configured the URL must be passed.
+`fromStorage` is `sql` or `redis` (the source storage). The Redis URL argument is optional; without it the configured connection is used, and if none is configured you must pass the URL.
 
-3. Configure the Redis instance for durability: cart data must survive restarts, so enable RDB snapshots and/or AOF. Use eviction policy `volatile-lru` so only expired carts are evicted.
+3. Configure the Redis instance for durability: enable RDB snapshots and/or AOF so carts survive a restart, and use eviction policy `volatile-lru` (only evicts keys with a TTL) to avoid losing data.
 
 ## Essential identifiers
 
-- `bin/console cart:migrate <from> [url]`
-- `shopware.cart.storage.type` (`mysql` | `redis`)
-- `shopware.cart.storage.config.connection`
+- `shopware.cart.storage.type`, `shopware.cart.storage.config.connection`
 - `shopware.redis.connections.<name>.dsn`
+- `bin/console cart:migrate` (`Shopware\Core\Checkout\Cart\Command\CartMigrateCommand`)
+- `Shopware\Core\Checkout\Cart\RedisCartPersister`
 
 ## Gotchas
 
-- The storage type value is `mysql`, but the `cart:migrate` source argument for the database is `sql`.
-- Any eviction policy other than `volatile-lru` risks losing carts that have not expired.
-- Unlike the HTTP/app cache Redis, the cart Redis holds durable data and should persist to disk.
+- Redis cart keys are written with a TTL of `shopware.cart.expire_days` (default 120) days by the migration, which is what makes `volatile-lru` safe.
+- Any `type` other than `mysql`/`redis` is rejected by the config tree.
 
 ## Version notes
 
-- Before 6.6.8.0 the docs configured the cart Redis with a single `shopware.cart.redis_url` DSN key; since 6.6.8.0 use `shopware.redis.connections` plus `shopware.cart.storage`. The old key no longer exists in the 6.7 code.
+- Before 6.6.8.0 the cart used a single `shopware.cart.redis_url` DSN key. Since 6.6.8.0 the named-connection form above is used; the installed 6.7 code no longer knows the old key.
 
-## Code check (6.7.13.0)
-- absent `shopware.cart.redis_url` — old pre-6.6.8.0 DSN key; not found anywhere in the installed code
-- confirmed `shopware.cart.storage.type` — enum mysql/redis, default mysql — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:898
-- confirmed `shopware.cart.storage.config.connection` — scalar, default null — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:904
-- confirmed `redisNotConfiguredForCartStorage` — connection parameter required for redis storage — vendor/shopware/core/Checkout/DependencyInjection/DependencyInjectionException.php:16
-- confirmed `shopware.redis.connections` — named connections, each with required dsn — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1588
-- confirmed `cart:migrate` — console command — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:30
-- corrected `CartMigrateCommand::VALID_SOURCE_STORAGES` — docs: `{fromStorage} {redisUrl?}`; code takes `from` (redis or sql) and optional `url` — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:38
+## Code check (6.7.15.1)
+- absent `shopware.cart.redis_url` — pre-6.6.8.0 key not present anywhere in the installed code
+- confirmed `shopware.cart.storage` — enum type mysql/redis, default mysql — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:932
+- confirmed `config.connection` — named Redis connection for cart storage, default null — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:940
+- confirmed `expire_days` — cart expiry, default 120 days — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:928
+- confirmed `shopware.redis.connections` — named connections with required dsn — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1633
+- confirmed `cart:migrate` — console command name — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:31
+- confirmed `CartMigrateCommand::VALID_SOURCE_STORAGES` — source must be redis or sql — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:38
+- confirmed `url` — optional Redis URL argument of cart:migrate — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:66
+- confirmed `RedisCartPersister::PREFIX` — key prefix of carts stored in Redis — vendor/shopware/core/Checkout/Cart/Command/CartMigrateCommand.php:193

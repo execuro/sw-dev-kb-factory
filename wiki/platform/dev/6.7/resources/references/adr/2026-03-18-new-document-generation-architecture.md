@@ -6,88 +6,89 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-03-18-new-document-generation-architecture.html
 sourceHash: 899563062ec2a970d65235e447f49e50f2d255e6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["document generation", "DocumentV2", "AbstractDocumentDataProvider", "AbstractDocumentRenderer", "shopware.document_v2.provider", "shopware.document_v2.renderer", "DocumentGenerationRequest", "RenderInput", "RenderState", "document_file", "DocumentFormat", "DocumentType", "zugferd", "invoice pdf", "adr"]
-summary: "ADR: DocumentV2 architecture - generator orchestrates tagged data providers and format renderers, resolving format dependencies (HTML to PDF to Zugferd)."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["DocumentV2", "AbstractDocumentDataProvider", "AbstractDocumentRenderer", "shopware.document_v2.provider", "shopware.document_v2.renderer", "DocumentFormat", "DocumentType", "RenderInput", "RenderState", "document_file", "zugferd", "invoice pdf", "document generation", "DOCUMENT_GENERATION_REWORK"]
+summary: "ADR: DocumentV2 design - a generator orchestrates tagged data providers and format renderers (HTML, PDF, ZUGFeRD) in dependency order."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2026-03-18) for the refactored ("DocumentV2") document generation: one document (one number) of one document type is stored as one or more document files, each in one format. A generator orchestrates, data providers collect data, renderers produce format artifacts. Implemented in 6.7.13.0 under `Shopware\Core\Checkout\DocumentV2`.
+An architecture decision record (2026-03-18, area after-sales) for the refactored document generation ("DocumentV2"). It defines the vocabulary (document type, document format, document file, document), the entity relations, and a three-layer design: a generator service orchestrates, data providers collect/enrich data, renderers transform it into formatted artifacts. In 6.7.15.1 the implementation lives under `Shopware\Core\Checkout\DocumentV2\` and is experimental behind a feature flag (see Version notes).
 
 ## When to use
 
-- Generating documents through the new implementation or writing a provider/renderer for it.
-- Understanding how `zugferd_embedded_pdf` is derived from `pdf`, `zugferd_xml` and `html`.
+- Writing a plugin that adds data to documents, a new document format, or a new document type on the DocumentV2 stack.
+- Understanding how multi-format generation (e.g. ZUGFeRD embedded PDF built from PDF + ZUGFeRD XML, PDF built from HTML) is ordered.
 
 ## Key steps / config
 
-Model: an order has zero or more `document`s; each has one type and one or more `document_file`s, each in one format. The ADR keeps types/formats as strings (not DB entities). Enums: `DocumentType` — `invoice`, `delivery_note`, `credit_note`, `cancellation_invoice`; `DocumentFormat` — `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`.
+Glossary:
 
-Caller API — `Shopware\Core\Checkout\DocumentV2\Generation\DocumentGenerator`:
+- Document format: representation such as PDF, HTML, ZUGFeRD XML, ZUGFeRD embedded PDF (`DocumentFormat`: `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`).
+- Document type: invoice, delivery note, credit note, cancellation invoice (`DocumentType`: `invoice`, `delivery_note`, `credit_note`, `storno`, plus `app_provided`).
+- Document: one document number, one or more `document_file`s in different formats, all based on the same order version.
 
-```php
-public function generate(DocumentGenerationRequest $generationRequest, Context $apiContext): DocumentEntity
-// new DocumentGenerationRequest(orderId, orderVersionId,
-//     DocumentType|string $documentType, list<DocumentFormat|string> $requestedFormats,
-//     ?documentNumber, ?documentComment, ?documentDate)
-```
+Entity relations: an order has zero or more `document`s; each `document` has one type and one or more `document_file`s; each `document_file` has one format. Types and formats are stored as plain strings, not as entities.
 
-Flow: validate, resolve render plan, let matching providers enrich the order `Criteria`, load the order in the given version, generate a number if none given, build `RenderInput`, run renderers in plan order into `RenderState`, persist only requested formats via `DocumentPersister`.
+Caller API (installed code): the generator service in the `Generation` namespace exposes `generate(DocumentGenerationRequest $generationRequest, Context $apiContext): DocumentEntity` and `preview(...)`. The request DTO carries `orderId`, `documentType`, `requestedFormats`, optional `documentNumber`, `documentComment`, `deliveryDate`, `referencedDocumentId`. `generate` always creates a new order version; `preview` renders against `Defaults::LIVE_VERSION` and persists nothing.
 
-Data provider — tagged `shopware.document_v2.provider`:
+Data provider (Symfony service tagged `shopware.document_v2.provider`), installed shape:
 
 ```php
-final readonly class MyDataProvider extends AbstractDocumentDataProvider {
-    public function getKey(): string { /* ... */ }
+readonly class MyDataProvider extends AbstractDocumentDataProvider
+{
+    public function getKey(): string { /* key in RenderInput */ }
     public function supports(string $documentType): bool { /* ... */ }
-    public function provideRenderingData(OrderEntity $order, DocumentGenerationRequest $generationRequest, Context $context): AbstractRenderData { /* ... */ }
+    public function enrichOrderCriteria(Criteria $criteria): void { /* optional */ }
+    public function provideRenderingData(ProviderInput $input, Context $context): AbstractRenderData { /* ... */ }
 }
 ```
 
-Optional `enrichOrderCriteria(Criteria $criteria)`; the result is stored in `RenderInput` under `getKey()`.
-
-Renderer — tagged `shopware.document_v2.renderer`:
+Renderer (Symfony service tagged `shopware.document_v2.renderer`), installed shape:
 
 ```php
-final readonly class MyRenderer extends AbstractDocumentRenderer {
-    public function getFormat(): string { /* ... */ }
-    public function getDocumentTypes(): array { /* ... */ }
+readonly class MyRenderer extends AbstractDocumentRenderer
+{
+    public function getFormat(): string { /* DocumentFormat value */ }
+    public function getFileExtension(): string { /* ... */ }
+    public function getDependencies(): array { return ['html']; } // optional
     public function renderToString(RenderInput $input, RenderState $state, Context $context): RenderResult { /* ... */ }
 }
 ```
 
-Optional `supports(string $type)` and `getDependencies()` (formats). `RenderResult` holds `format`, `content`, `fileName`, `fileExtension`, `mimeType`; `RenderInput` exposes `documentType`, `documentNumber`, `order`, `getData()` / `requireData()`.
-
-`DocumentDependencyResolver` expands transitive dependencies and sorts with Kahn's algorithm (cycle throws); plan for `zugferd_embedded_pdf`: `html`, `zugferd_xml`, `pdf`, `zugferd_embedded_pdf`.
+- Providers run at most once per generation call; their `AbstractRenderData` subclass is stored in `RenderInput` under `getKey()`.
+- Renderers read dependency output from `RenderState`. Overriding a core renderer: give the tagged service a higher priority.
+- Render order is a dependency graph (Kahn's algorithm); circular dependencies throw.
+- Only requested formats are persisted as `document_file`; intermediate formats are not (installed exception: `html` is always persisted when rendered, as the accessible version).
 
 ## Essential identifiers
 
-- `Shopware\Core\Checkout\DocumentV2\Generation\DocumentGenerator`, `DocumentGenerationRequest`
-- `Shopware\Core\Checkout\DocumentV2\Provider\AbstractDocumentDataProvider`
-- `Shopware\Core\Checkout\DocumentV2\Renderer\AbstractDocumentRenderer`
-- `shopware.document_v2.provider`, `shopware.document_v2.renderer`
-- `RenderInput`, `RenderState`, `RenderResult`, `AbstractRenderData`, `DocumentDependencyResolver`
+- `Shopware\Core\Checkout\DocumentV2\Provider\AbstractDocumentDataProvider`, tag `shopware.document_v2.provider`
+- `Shopware\Core\Checkout\DocumentV2\Renderer\AbstractDocumentRenderer`, tag `shopware.document_v2.renderer`
+- `DocumentGenerationRequest`, `RenderInput`, `RenderState`, `RenderResult`, `ProviderInput`, `AbstractRenderData`
+- `DocumentFormat`, `DocumentType` enums
+- Core renderers `HtmlRenderer`, `PdfRenderer`, `ZugferdXmlRenderer`, `ZugferdEmbeddedPdfRenderer`
 
 ## Gotchas
 
-- The ADR draft differs from code: tags `shopware.documentV2.provider` / `shopware.documentV2.renderer`; `RenderData` is `AbstractRenderData`; providers use `supports()` not `getDocumentTypes()`; `renderToString()` also takes `Context`; no renderer `persistToFile()`.
-- Overriding a built-in renderer via higher tag priority (ADR idea) fails in 6.7.13.0: `DocumentRendererRegistry` throws on a duplicate format/type pair.
-- ADR update: generator creates the order version itself, preview uses `LIVE_VERSION`. In 6.7.13.0 the caller passes `orderVersionId`, `LIVE_VERSION` is rejected, and there is no preview method.
-- All DocumentV2 classes are `@internal`.
+- The ADR names the service `Shopware\Core\Checkout\DocumentV2\DocumentGenerator`; that class does not exist. The installed class is `Shopware\Core\Checkout\DocumentV2\Generation\DocumentGenerator`, and it takes a DTO, as the ADR anticipated, not scalar parameters.
+- The ADR tags `shopware.documentV2.provider` / `shopware.documentV2.renderer` are wrong; installed tags use snake case `document_v2`.
+- The ADR draft signatures differ from the code: providers declare `supports(string)` instead of `getDocumentTypes()`, and `provideRenderingData` receives `ProviderInput` + `Context` and returns `AbstractRenderData`. Renderers have no `supports()` or `persistToFile()`; they declare `getFileExtension()` and `renderToString` takes a `Context`. Persistence is handled centrally by `DocumentPersister`.
+- Document types are registered via `AbstractDocumentType` services tagged `shopware.document_v2.type` (`getTechnicalName()`, `getSupportedFormats()`), not only discovered from providers/renderers.
+- Abstract classes were chosen over interfaces so optional methods (`enrichOrderCriteria`, `getDependencies`) have defaults and new methods can be added without breaking implementations.
 
 ## Version notes
 
-Opt-in during 6.7 (feature flag `DOCUMENT_GENERATION_REWORK`), planned default in 6.8.
+In 6.7.15.1 the DocumentV2 classes are marked `@experimental stableVersion:v6.8.0 feature:DOCUMENT_GENERATION_REWORK`; the `DOCUMENT_GENERATION_REWORK` flag defaults to `false`. Extension points are covered by the follow-up ADR of 2026-03-19.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Checkout\DocumentV2\DocumentGenerator` — real class is `Shopware\Core\Checkout\DocumentV2\Generation\DocumentGenerator`
-- corrected `DocumentGenerator::generate()` — docs: scalar params orderId/docType/formats/context/docNumber; code: `DocumentGenerationRequest` + `Context` — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:51
-- corrected `DocumentGenerator::validateGenerationRequest()` — docs: generator creates order version itself; code rejects `LIVE_VERSION` — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:233
-- corrected `shopware.document_v2.provider` — docs: `shopware.documentV2.provider` — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:66
-- corrected `shopware.document_v2.renderer` — docs: `shopware.documentV2.renderer` — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:99
-- corrected `AbstractDocumentDataProvider::supports()` — docs: `getDocumentTypes()` on providers — vendor/shopware/core/Checkout/DocumentV2/Provider/AbstractDocumentDataProvider.php:33
-- corrected `AbstractDocumentDataProvider::provideRenderingData()` — docs: `(OrderEntity): RenderData`; code adds request and Context, returns `AbstractRenderData` — vendor/shopware/core/Checkout/DocumentV2/Provider/AbstractDocumentDataProvider.php:45
-- corrected `AbstractDocumentRenderer::renderToString()` — docs: `(RenderInput, RenderState)` plus abstract `persistToFile()`; code adds Context, no persistToFile — vendor/shopware/core/Checkout/DocumentV2/Renderer/AbstractDocumentRenderer.php:65
-- corrected `DocumentRendererRegistry` — docs: override built-in renderer via higher priority; code throws on duplicate format/type — vendor/shopware/core/Checkout/DocumentV2/Renderer/DocumentRendererRegistry.php:12
-- confirmed `DocumentDependencyResolver` — Kahn's algorithm, throws on circular dependency — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentDependencyResolver.php:25
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Checkout\DocumentV2\DocumentGenerator` — installed class is in the `Generation` sub-namespace
+- confirmed `DocumentGenerator::generate()` — takes DocumentGenerationRequest and Context, returns DocumentEntity — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:66
+- confirmed `Defaults::LIVE_VERSION` — preview uses live version, generate creates an order version — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentGenerator.php:250
+- corrected `shopware.document_v2.provider` — docs: shopware.documentV2.provider — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:99
+- corrected `shopware.document_v2.renderer` — docs: shopware.documentV2.renderer — vendor/shopware/core/Checkout/DependencyInjection/documentV2.php:185
+- corrected `AbstractDocumentDataProvider::supports()` — docs: getDocumentTypes(): array — vendor/shopware/core/Checkout/DocumentV2/Provider/AbstractDocumentDataProvider.php:32
+- corrected `AbstractDocumentDataProvider::provideRenderingData()` — docs: (OrderEntity $order): RenderData — vendor/shopware/core/Checkout/DocumentV2/Provider/AbstractDocumentDataProvider.php:44
+- corrected `AbstractDocumentRenderer::getFileExtension()` — docs: supports() and persistToFile() instead — vendor/shopware/core/Checkout/DocumentV2/Renderer/AbstractDocumentRenderer.php:35
+- corrected `AbstractDocumentRenderer::renderToString()` — docs: no Context parameter — vendor/shopware/core/Checkout/DocumentV2/Renderer/AbstractDocumentRenderer.php:52
+- confirmed `DocumentV2Exception::circularRenderDependency()` — thrown on circular renderer dependencies — vendor/shopware/core/Checkout/DocumentV2/Generation/DocumentDependencyResolver.php:172

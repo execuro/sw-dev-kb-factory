@@ -5,34 +5,37 @@ docType: functional
 version: "6.5"
 versions: ["6.5", "6.6", "6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/commercial-features/scene-editor
-sourceHash: 5984585772a365dd3eff289c98cc8d2ed3b09c3f688adbfebad8d2cbafc5a96c
+sourceHash: 9d32975378ba5e25edb042662d997cad3aa61e7107db9383c11465a21b0aa71d
 revision:
   current: true
   range: "current"
-  swMin: null
   swMax: null
-keywords: ["Scene Editor", "3D scene", "Content > Scene Editor", "Insider Previews", "Shopware Rise plan", "export image", "3D object", "product image rendering", "Move Rotate Scale tools", "beta feature"]
-summary: "Scene Editor (beta) lets Rise-plan customers compose 3D scenes with products and render product images, accessible under Content > Scene Editor."
-lastBuilt: "2026-09-15"
+  swMin: null
+keywords: ["scene editor", "3D scene", "3D objects", "Content > Scene Editor", "render image", "export image", "move tool", "rotate tool", "scale tool", "primitives", "light settings", "beta", "Shopware Commercial", "product images"]
+summary: "Scene Editor (beta) under Content > Scene Editor: build 3D scenes from product 3D objects, set lights and cameras, and export rendered images to media."
+lastBuilt: 2026-10-20
 ---
 ## What it is
-The Scene Editor lets merchants build 3D scenes with their products and render product images from them, available under **Content > Scene Editor**.
+
+The Scene Editor lets you build 3D scenes with your products' 3D models and render images from them. It is found under **Content > Scene Editor** in the Administration and is in beta with limited functionality.
 
 ## When to use
-When generating product photography-style images from existing 3D models instead of traditional photo shoots.
+
+When you want to generate product images from 3D models, for example placing products in a staged scene with background, floor and lighting.
 
 ## Key steps / config
-Overview lists existing scenes with a list view, sort-by (Name/Creation date/Modification date) dropdown, and a per-scene context menu (Edit, Duplicate, Delete); create new scenes via **Create new scene**.
 
-Scene Editor controls: Add 3D object, Add group, View selection, Move tool (arrows: blue = Z axis, green = Y axis, red = X axis), Rotate tool (rings: red = tilt forward/back, blue = tilt left/right, green = rotate on own axis, yellow outer ring = rotate from camera), Scale tool (green = height, red = width, blue = depth), Light Settings (type, presets, light colour e.g. `#ffffff`, light intensity 0-100%), Export image, Save scene.
-
-Scene tab: Scene name, Background colour, Floor colour. Export image to media: choose camera, resolution, width, height, then **Save Image** stores it in the Scene Editor Media folder. Shapes (platforms/walls) are added via Add 3D Object > Primitives tab.
-
-## Essential identifiers
-- `Content > Scene Editor`
+- **Overview**: lists scenes, with a list view, sorting by Name, Creation date or Modification date, a context menu (Edit, Duplicate, Delete) and **Create new scene**.
+- **Create**: name the scene, then the editor opens.
+- **3D Objects**: **Add 3D object** (types via dropdown), **Add group**, view selection (for example Free view), Move tool (blue Z, green Y, red X arrows), Rotate tool (rings), Scale tool (uniform by default, per-axis when unlinked), Light Settings (type for scene or object, presets or custom, light colour code, intensity 0-100%), **Export image**, **Save scene** (objects, lighting, camera perspectives).
+- **Scene** settings: scene name, background colour, floor colour.
+- **Export image to media**: choose a camera (or orbit view), a template or custom resolution with width and height, then **Save Image**; the image goes to the Scene Editor Media folder.
+- **Shapes**: platforms and walls via **Add 3D Object** and the **Primitives** tab in Select Media; material properties and colour are editable.
 
 ## Gotchas
-Requires activation via the Insider Previews module for versions between 6.6.8.1 and 6.6.10.5; available to Shopware Rise plan (or higher) customers from 6.6.8.1 onward. This is a beta feature — functionality is limited and behaviour may still change.
+
+- Beta status: scope and behaviour may change.
 
 ## Version notes
-Scene Editor is available from Shopware 6.6.8.1 onward for Rise plan customers; between 6.6.8.1 and 6.6.10.5 it must be enabled via Insider Previews first.
+
+Available to Shopware Rise plan customers (or higher) from Shopware 6.6.8.1; a commercial feature from the Beyond plan and part of the Shopware Commercial extension.

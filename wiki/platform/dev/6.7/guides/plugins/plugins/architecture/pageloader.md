@@ -1,67 +1,73 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/plugins/plugins/architecture/pageloader.md
-sourceHash: c1a91441e39578807266ea592834f5dc053c779d
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/architecture/pageloader.html
 title: Page Loader Extension Architecture
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["page loader", "PageLoader", "\\Shopware\\Storefront\\Page\\Page", "PageLoadedEvent", "GenericPageLoaderInterface", "getDecorated", "decoration", "store api route", "storefront page", "page object", "ProductPageLoader", "page loaded event"]
-summary: "Storefront page loader rules: fetch via Store API routes, no repositories, abstract base for decoration, page extends Page, dispatch a PageLoadedEvent."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/architecture/pageloader.html
+sourceHash: c1a91441e39578807266ea592834f5dc053c779d
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["page loader", "PageLoader", "Shopware\\Storefront\\Page\\Page", "PageLoadedEvent", "GenericPageLoaderInterface", "ProductPageLoader", "store api route", "decoration", "storefront page", "page object", "architecture guidelines"]
+summary: Design rules for Storefront page loaders - Store API routes only, decoratable, dedicated Page object, PageLoaded event after loading.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md"]
 ---
 ## What it is
 
-Architecture guideline for Storefront page loaders in Shopware 6.7: services that assemble all data needed to render a storefront page, keeping HTTP concerns apart from business logic and producing a fully built page object before rendering.
+Architecture guidelines for Storefront page loaders: the classes that assemble all data a Storefront page needs before rendering, keeping HTTP concerns apart from business logic and keeping data fetching consistent.
 
 ## When to use
 
-- Writing a new Storefront page (controller + loader + page object) in a plugin or core contribution.
-- Deciding how to fetch data for a page, or how a project can replace an existing loader.
+When writing a new page loader (core or extension) or when deciding how to extend an existing Storefront page - by decorating the loader or by listening to its `PageLoaded` event.
 
 ## Key steps / config
 
-Design principles: page loaders separate HTTP from business logic, fetch data via Store API routes, stay replaceable via decoration, and construct pages fully before rendering.
+Design principles:
 
-1. Split loaders by Storefront domain (products, account, checkout, ...).
-2. Provide an abstract base class so the loader can be decorated or fully replaced (see [decoration pattern ADR](platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md)). Installed example shape:
+- Separate HTTP concerns from business logic.
+- Fetch all data via Store API routes, so the Store API can reach every Storefront feature.
+- Keep the loader replaceable via [decoration](platform/dev/6.7/resources/references/adr/2020-11-25-decoration-pattern.md).
+- Construct the page fully before rendering.
+
+Extension guidelines:
+
+1. Divide loaders by Storefront domain (products, account, checkout, ...).
+2. Provide an abstract base class for decoration so a project can replace the loader entirely.
+3. Return a dedicated page object holding all required data; it must extend `\Shopware\Storefront\Page\Page`.
+4. Dispatch a matching `PageLoaded` event after loading, so third parties can add data. In core these extend the abstract `Shopware\Storefront\Page\PageLoadedEvent` (constructor takes `SalesChannelContext` and `Request`, abstract `getPage()`).
+5. Never access repositories directly inside a page loader.
+
+Shape of a core loader, as in `ProductPageLoader::load()`:
 
 ```php
-abstract class AbstractCustomerGroupRegistrationPageLoader
+public function load(Request $request, SalesChannelContext $context): ProductPage
 {
-    abstract public function getDecorated(): AbstractCustomerGroupRegistrationPageLoader;
-    abstract public function load(Request $request, SalesChannelContext $salesChannelContext): CustomerGroupRegistrationPage;
+    // ... data via $this->productDetailRoute->load(...)
+    $page = ProductPage::createFrom($this->genericLoader->load($request, $context));
+    // ... fill page
+    $this->eventDispatcher->dispatch(new ProductPageLoadedEvent($page, $context, $request));
+    return $page;
 }
 ```
 
-3. Return a dedicated page object that extends `\Shopware\Storefront\Page\Page` (e.g. `ProductPage extends Page`); `GenericPageLoaderInterface::load()` returns a base `Page` that can be converted with `ProductPage::createFrom($page)`.
-4. Retrieve data through Store API routes (e.g. `ProductPageLoader` calls `AbstractProductDetailRoute::load()`), never repositories directly.
-5. After loading, dispatch the matching loaded event — a subclass of `\Shopware\Storefront\Page\PageLoadedEvent` (e.g. `ProductPageLoadedEvent`) — so third parties can add data.
-
 ## Essential identifiers
 
-- `\Shopware\Storefront\Page\Page`
-- `\Shopware\Storefront\Page\PageLoadedEvent` (abstract; `getPage()`, `getRequest()`, `getSalesChannelContext()`)
-- `\Shopware\Storefront\Page\GenericPageLoaderInterface`
-- `getDecorated()` on abstract loader base classes
+- `\Shopware\Storefront\Page\Page` - base page struct (carries `MetaInformation`)
+- `Shopware\Storefront\Page\PageLoadedEvent`
+- `Shopware\Storefront\Page\GenericPageLoaderInterface` / `GenericPageLoader`
+- `Shopware\Storefront\Page\Product\ProductPageLoader`, `ProductPageLoadedEvent`
 
 ## Gotchas
 
-- Most installed core page loaders (e.g. `ProductPageLoader`) are concrete classes without an abstract base; only a few (e.g. `AbstractCustomerGroupRegistrationPageLoader`) follow the abstract-base rule, so decorating an existing core loader is not always possible.
-- `ProductPageLoader` carries a docblock repeating "Always use a store-api route", yet itself injects a product review repository — do not take core loaders as proof that repository access is acceptable.
-- `PageLoadedEvent` implements `ShopwareSalesChannelEvent`, so subclasses get `getContext()` from the sales channel context.
+- Not every core loader follows the "abstract base class" rule: `ProductPageLoader` is a concrete class with an `@internal` constructor, so extend product pages by decorating the service or by subscribing to `ProductPageLoadedEvent` rather than subclassing it.
+- `ProductPageLoader` still takes an `EntityRepository` for product reviews in its constructor, even though its docblock repeats the "no repository calls" rule. Do not take it as a pattern to copy.
 
-## Code check (6.7.13.0)
-- confirmed `Page` — class Shopware\Storefront\Page\Page extends Struct — vendor/shopware/storefront/Page/Page.php:9
-- confirmed `PageLoadedEvent` — abstract, implements ShopwareSalesChannelEvent — vendor/shopware/storefront/Page/PageLoadedEvent.php:14
-- confirmed `PageLoadedEvent::getPage()` — abstract member subclasses implement — vendor/shopware/storefront/Page/PageLoadedEvent.php:25
-- confirmed `GenericPageLoaderInterface::load()` — returns Page — vendor/shopware/storefront/Page/GenericPageLoaderInterface.php:12
-- confirmed `AbstractCustomerGroupRegistrationPageLoader::getDecorated()` — abstract base for decoration — vendor/shopware/storefront/Page/Account/CustomerGroupRegistration/AbstractCustomerGroupRegistrationPageLoader.php:15
-- confirmed `ProductPageLoader` — concrete class, no abstract base — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:37
-- confirmed `AbstractProductDetailRoute` — Store API route used by ProductPageLoader — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:57
-- confirmed `ProductPageLoadedEvent` — dispatched after loading — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:128
-- confirmed `$productReviewRepository` — repository injected into ProductPageLoader — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:58
-- confirmed `ProductPage` — extends Page — vendor/shopware/storefront/Page/Product/ProductPage.php:16
+## Code check (6.7.15.1)
+- confirmed `\Shopware\Storefront\Page\Page` — concrete class extending `Struct` — vendor/shopware/storefront/Page/Page.php:9
+- confirmed `PageLoadedEvent::getPage()` — abstract, so every PageLoaded event exposes its page — vendor/shopware/storefront/Page/PageLoadedEvent.php:28
+- confirmed `PageLoadedEvent` — abstract base for loaded events — vendor/shopware/storefront/Page/PageLoadedEvent.php:17
+- confirmed `GenericPageLoaderInterface::load()` — returns `Page` — vendor/shopware/storefront/Page/GenericPageLoaderInterface.php:12
+- confirmed `ProductPageLoader` — concrete class, not abstract — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:37
+- confirmed `AbstractProductDetailRoute` — loader fetches product via Store API route — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:57
+- confirmed `$productReviewRepository` — core loader still injects a repository — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:58
+- confirmed `ProductPageLoadedEvent` — dispatched at end of `load()` — vendor/shopware/storefront/Page/Product/ProductPageLoader.php:128

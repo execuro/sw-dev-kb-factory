@@ -6,56 +6,52 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-07-23-administration-http-client-compatibility-facade.html
 sourceHash: bb1d982895c7e98be249c3b4bcc0b30d590311ff
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["useAxiosV1", "axios", "axios v1", "axios-v1", "http client", "createHTTPClient", "interceptors", "interceptorsV0", "interceptorsV1", "V6_8_0_0", "compatibility facade", "administration", "adr"]
-summary: "ADR: Admin HTTP client facade over Axios 0.x and 1.x; useAxiosV1 selects transport per request. 6.7.13.0 defaults to 0.x unless V6_8_0_0 is on."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["axios", "axios v1", "axios migration", "useAxiosV1", "createHTTPClient", "http client", "httpClient", "HttpRequestConfig", "interceptors", "repository", "V6_8_0_0", "administration", "http.factory"]
+summary: "ADR: Admin HTTP client facade over Axios 0.x and 1.x; direct requests choose via useAxiosV1, repositories always use Axios v1."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2026-07-23): the Administration exposes a Shopware-owned HTTP client facade over two private Axios instances (legacy 0.x and 1.x) so extensions can migrate to Axios 1 incrementally, and repository requests are meant to always use Axios v1 internally.
+An architecture decision record (2026-07-23) for the Administration HTTP client. Historically the client exposed Axios behavior to extensions, so swapping Axios 0.x for 1.x directly would affect interceptors, default configuration, request cancellation, TypeScript types and test mocks across the extension ecosystem. The decision: expose a Shopware-owned HTTP client facade and keep the concrete Axios instances private.
 
 ## When to use
 
-When an Administration extension makes direct HTTP requests, registers interceptors or defaults on the Admin HTTP client, mocks it in tests, or depends on Axios-specific behaviour (cancellation, errors, types) ahead of the Axios 1 migration.
+- Writing or migrating Administration extension code that issues direct HTTP requests or registers interceptors/defaults.
+- Assessing whether repository-based code needs changes for the Axios v1 upgrade (it does not).
 
 ## Key steps / config
 
-Installed 6.7.13.0 behaviour of `createHTTPClient` (`src/core/factory/http.factory.js`):
+- `createHTTPClient()` in `src/core/factory/http.factory.js` creates an Axios v0 and an Axios v1 instance and returns a dispatcher (the facade).
+- Transport selection per direct request: an explicit `useAxiosV1: true|false` in the request config wins; otherwise the `V6_8_0_0` feature flag decides (v1 when active); otherwise v0.
 
-1. Two instances are created from the same base config (`baseURL` = API path, `timeout` 30000, 50 MB `maxContentLength`/`maxBodyLength`); refresh-token, global-error, session-expired and tracing interceptors are applied to both.
-2. The returned dispatcher routes each request by `config.useAxiosV1`, else the `V6_8_0_0` feature flag, else Axios 0.x.
-   ```javascript
-   httpClient.get(url, { useAxiosV1: true });
-   ```
-3. The dispatcher offers `request`, `get`, `delete`, `head`, `options`, `post`, `put`, `patch`, `getUri`, `isCancel` (checks both adapters) and `CancelToken` (v0).
-4. `dispatcher.interceptors` and `dispatcher.defaults` point to ONE instance (v1 when `V6_8_0_0` is active, else v0). To affect both transports, register on `interceptorsV0` and `interceptorsV1` / `defaultsV0` and `defaultsV1`.
-5. `axiosV0` and `axiosV1` are exposed on the dispatcher for testing/mocking.
-6. `useAxiosV1?: boolean` is declared on `AxiosRequestConfig` for both `axios` and `axios-v1` module typings.
+```js
+httpClient.get('/some/route', { useAxiosV1: true });
+```
+
+- Interceptors and defaults registered through the facade (`httpClient.interceptors.request/response`, `httpClient.defaults`) are mirrored onto both transports.
+- Repository requests always send `useAxiosV1: true`; repository options cannot select the transport. Repository incompatibilities are fixed centrally in Shopware.
+- New code should use Shopware's HTTP client types (`HttpRequestConfig`, `HttpResponse` in `src/core/factory/http-client.types.ts`) instead of depending on an Axios instance.
 
 ## Essential identifiers
 
-- `useAxiosV1`
-- `createHTTPClient`, `CancelToken`, `isCancel`
-- `interceptorsV0`, `interceptorsV1`, `defaultsV0`, `defaultsV1`, `axiosV0`, `axiosV1`
-- `V6_8_0_0` feature flag
+- `useAxiosV1` (request config option)
+- `createHTTPClient` (`src/core/factory/http.factory.js`)
+- `HttpRequestConfig`, `HttpResponse`
+- `V6_8_0_0` feature flag (default transport switch)
 
 ## Gotchas
 
-- The ADR states interceptors and defaults registered through the facade apply to both transports; in 6.7.13.0 the plain `interceptors`/`defaults` properties map to a single instance only.
-- The ADR states repository requests always use Axios v1 and repository options cannot select the transport; in 6.7.13.0 the repository does not pass `useAxiosV1`, so repository calls follow the dispatcher default (v0 unless `V6_8_0_0` is active).
-- New code should use Shopware's HTTP client types instead of depending on an Axios instance; code relying on Axios-specific behaviour must migrate before the legacy transport is removed.
+- Code that depends directly on Axios-specific behavior (cancellation, errors, configuration) must still migrate before the legacy transport and compatibility surface are removed.
+- The former runtime escape hatches (`axiosV0`, `axiosV1`, `interceptorsV0`/`V1`, `defaultsV0`/`V1` on the client) remain at runtime but are intentionally kept out of the TypeScript contract.
+- Maintaining two transports adds temporary complexity; the facade is meant as the stable boundary for future HTTP-library upgrades.
+- The ADR points to an "Axios migration guide" in the Administration technical docs for the supported migration path.
 
-## Version notes
-
-Two transports are transitional; the legacy Axios 0.x path and compatibility surface are planned for removal. The `V6_8_0_0` feature flag already switches the default to v1.
-
-## Code check (6.7.13.0)
-- confirmed `useAxiosV1` — per-request transport selector, falls back to V6_8_0_0 then v0 — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:98
-- confirmed `useAxiosV1` — typed on AxiosRequestConfig — vendor/shopware/administration/Resources/app/administration/src/global.types.ts:610
-- confirmed `createHTTPClient` — facade factory — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:21
-- corrected `dispatcher.interceptors` — docs: facade interceptors apply to both transports; maps to one instance — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:127
-- corrected `dispatcher.defaults` — docs: defaults apply to both transports; maps to one instance — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:132
-- confirmed `dispatcher.interceptorsV1` — separate per-transport interceptors — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:129
-- confirmed `dispatcher.axiosV1` — instances exposed for mocking — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:138
-- corrected `Repository::search()` — docs: repositories always use Axios v1; no transport flag passed — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:124
+## Code check (6.7.15.1)
+- confirmed `useAxiosV1` — optional boolean on the request config type — vendor/shopware/administration/Resources/app/administration/src/core/factory/http-client.types.ts:27
+- confirmed `useAxiosV1` — explicit value wins, else `V6_8_0_0` flag, else v0 — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:101
+- confirmed `createHTTPClient` — factory returning the facade dispatcher — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:21
+- confirmed `dispatcher.interceptors` — mirrored interceptor managers for both transports — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:133
+- confirmed `dispatcher.defaults` — mirrored defaults for both transports — vendor/shopware/administration/Resources/app/administration/src/core/factory/http.factory.js:137
+- confirmed `Repository::buildRequestConfig()` — repository requests always set `useAxiosV1: true` — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:801
+- confirmed `HttpRequestConfig` — Shopware-owned request config type — vendor/shopware/administration/Resources/app/administration/src/core/factory/http-client.types.ts:13

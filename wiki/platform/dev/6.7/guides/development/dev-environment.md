@@ -5,36 +5,34 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/dev-environment.html
-sourceHash: f2d9e86671ab20e9cb53dc8f239c83a824e2bfb8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli project dev", "docker", "compose.override.yaml", ".shopware-project.yml", "compatibility_date", "swx", "shopware-cli project console", "memory_limit", "xdebug", "local proxy", "dev environment", "shopware/deployment-helper", "tui dashboard"]
-summary: Shopware CLI Docker dev environment via project dev - TUI, .shopware-project.yml, compose.override.yaml, ports, legacy migration
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/tools/cli/project-commands/local-proxy.md", "platform/dev/6.7/guides/development/tooling/using-watchers.md", "platform/dev/6.7/products/tools/cli/project-commands/build.md", "platform/dev/6.7/guides/development/start-developing.md"]
+sourceHash: a5190f298cf04d3f99f98c91d89e4f7ac08fe29e
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli project dev", "shopware-cli project console", "swx", "shopware-cli project logs", "compose.override.yaml", ".config/shopware-project.yml", "compatibility_date", "environments.local", "shopware-cli project proxy", "docker dev environment", "development tui", "xdebug profiler", "memory_limit"]
+summary: "shopware-cli project dev: Docker dev stack with TUI, managed compose.yaml, executors, ports, profiler config and legacy make-setup migration."
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/tools/cli/configuration.md", "platform/dev/6.7/products/tools/cli/project-commands/local-proxy.md", "platform/dev/6.7/guides/hosting/_index.md", "platform/dev/6.7/guides/development/tooling/using-watchers.md"]
 ---
 ## What it is
 
-Shopware CLI's integrated Docker development environment: `shopware-cli project dev` starts the stack, a terminal dashboard (TUI) shows status, logs, watchers and PHP/profiler config, and the CLI generates and owns `compose.yaml`. Requires `compatibility_date` `2026-03-01` or later in `.shopware-project.yml` (set automatically by `shopware-cli project create`).
+Shopware CLI ships a Docker-based development environment: one command starts the stack, opens a terminal dashboard (TUI), streams logs, toggles watchers and configures PHP version and profiler, and generates the `compose.yaml` for you.
 
 ## When to use
 
-- Setting up or running a local Shopware project with Docker.
-- Migrating a pre-March-2026 project using `make up`/`make setup` and a hand-written `compose.yaml`.
-- Testing an extension against several Shopware versions at once.
+Setting up or running a local Shopware project, migrating an older `make up`/`make setup` project, running `bin/console`/Composer against the container, or running several Shopware versions side by side to test an extension.
 
 ## Key steps / config
 
-Lifecycle: `shopware-cli project dev` (TUI; starts containers, runs install wizard if needed), `shopware-cli project dev start` (non-interactive, CI), `shopware-cli project dev status`, `shopware-cli project dev stop`.
+Requires `compatibility_date` `2026-03-01` or later in `.config/shopware-project.yml` (set automatically by `shopware-cli project create`; lookup paths: see platform/dev/6.7/products/tools/cli/configuration.md).
 
-TUI tabs: **Overview** (shop info, Admin/Adminer/Mailpit credentials, setup health, watcher toggles), **Instance** (containers, watcher processes, log files such as `dev.log`), **Config** (PHP `8.2`–`8.5`; profiler `none`, `xdebug`, `blackfire`, `tideways`, `pcov`, `spx`). **Save & Regenerate** rewrites `compose.yaml`; restart afterwards.
+- `shopware-cli project dev` — TUI; starts containers, runs the install wizard if Shopware is not installed.
+- `shopware-cli project dev start` / `status` / `stop` — non-interactive (CI/scripting).
+- TUI tabs: 1 Overview (shop/access info, Setup health, watcher toggles), 2 Instance (containers, watcher processes, log files such as `dev.log`; `Enter` toggles follow), 3 Config (PHP `8.2`–`8.5`; profiler `none`, `xdebug`, `blackfire`, `tideways`, `pcov`, `spx`). **Save & Regenerate** rewrites `compose.yaml`; restart afterwards.
+- Logs: `shopware-cli project logs` (last 100 lines), `<file>`, `-f`, `-l`, `--lines 50`.
+- Console: `shopware-cli project console plugin:refresh` (alias `swx plugin:refresh`); runs via `docker compose exec` with the Docker executor.
+- Composer/PHP/npm run **inside** the container: `docker compose exec web composer install`, `docker compose exec web bash`. Prefer `shopware-cli project admin-watch` / `storefront-watch` over npm watch scripts.
+- Host PHP (local / symfony-cli executors): `memory_limit = 512M`, verify with `php -i | grep memory_limit`.
 
-Commands from the host:
-- Logs: `shopware-cli project logs` (`-f`, `-l`, `--lines 50`, or a file name).
-- Console: `shopware-cli project console cache:clear`, alias `swx` (e.g. `swx plugin:refresh`, `swx dal:refresh:index`).
-- Composer/PHP/npm inside the container: `docker compose exec web composer install`, `docker compose exec web bash`.
-- Host PHP only: `memory_limit = 512M`, check with `php -i | grep memory_limit`.
-
-`.shopware-project.yml` shape:
+`.config/shopware-project.yml`:
 
 ```yaml
 compatibility_date: '2026-03-01'
@@ -48,45 +46,53 @@ docker:
 environments:
   local:
     type: docker        # docker | local | symfony-cli
-    url: ...
+    url: ...            # e.g. port 8000 on 127.0.0.1
     admin_api: { username: admin, password: shopware }
 ```
 
-Blackfire/Tideways credentials go in `.shopware-project.local.yml` (gitignored). Select an environment with `-e`/`--env` (empty defaults to `environments.local`; unknown names fail).
+Secrets (Blackfire/Tideways) go in `.config/shopware-project.local.yml` (git-ignored). Select an environment with global `-e`/`--env` (e.g. `shopware-cli project extension list -e local`); empty defaults to `environments.local`, an unknown name fails.
 
-Services: `web` (PHP + Node.js with Caddy, port 8000), `database` (MariaDB 11.8), `adminer` (9080), `mailer` (Mailpit, 8025); auto-detected from `composer.lock`: `lavinmq` (15672, for `symfony/amqp-messenger`, sets `MESSENGER_TRANSPORT_DSN`), `opensearch` (9200, for `shopware/elasticsearch`), `blackfire`, `tideways-daemon`. Web ports: `8000` Storefront, `8080` HTTP alt, `5173` Admin Watcher (Vite), `9998` Storefront Watcher, `9999` Storefront Proxy, `5773` IDE debugging. Customisations go in `compose.override.yaml`.
+Generated services: `web` (PHP + Node.js + Caddy, port 8000), `database` (MariaDB 11.8), `adminer` (9080), `mailer` (Mailpit, 8025), plus auto-detected from `composer.lock`: `lavinmq` (15672, for `symfony/amqp-messenger`, sets `MESSENGER_TRANSPORT_DSN`), `opensearch` (9200, for `shopware/elasticsearch`), `blackfire`, `tideways-daemon`. Web container ports: `8000` Storefront, `8080` HTTP alt, `5173` Admin Watcher (Vite), `9998` Storefront Watcher, `9999` Storefront Proxy, `5773` IDE debugging. Project dir is bind-mounted as `.:/var/www/html`.
 
-Legacy migration: `shopware-cli project dev` with a missing or older `compatibility_date` launches a wizard (admin `admin`/`shopware`, PHP version from `composer.lock`). It sets the date, adds `environments.local` of type `docker`, replaces `compose.yaml`, leaves `Makefile` untouched, and adds `shopware/deployment-helper` to `composer.json` if missing.
+Customise only via `compose.override.yaml` (merged on top), e.g. `services.web.environment`, extra `ports`, extra services.
 
-Parallel versions (Docker executor only; see [local proxy](platform/dev/6.7/products/tools/cli/project-commands/local-proxy.md)):
+Legacy migration: if `compatibility_date` is missing or before `2026-03-01`, `project dev` runs a wizard (admin user `admin`, password `shopware`, PHP version from `composer.lock`), then sets the date, adds `environments.local` of type `docker`, regenerates `compose.yaml`, adds `shopware/deployment-helper` to `composer.json` if missing, and installs Shopware. The `Makefile` is left untouched.
+
+Parallel versions (needs `--docker` and the local proxy, platform/dev/6.7/products/tools/cli/project-commands/local-proxy.md):
+
 ```bash
 shopware-cli project create my-shop-6-7 6.7.0.0 --docker --local-domain --no-interaction
 (cd my-shop-6-7 && shopware-cli project dev start)
 shopware-cli project proxy list
 shopware-cli project proxy teardown
 ```
+
 Each shop gets `https://<project>.shopware.local`.
 
 ## Essential identifiers
 
-- `shopware-cli project dev` / `start` / `status` / `stop`, `shopware-cli project logs`, `shopware-cli project console`, `swx`
-- `.shopware-project.yml`, `.shopware-project.local.yml`, `compatibility_date`, `environments.local.type`
-- `compose.yaml` (managed), `compose.override.yaml`
-- `shopware/deployment-helper`
+- `shopware-cli project dev`, `shopware-cli project console`, `swx`, `shopware-cli project logs`, `shopware-cli project proxy list|teardown`
+- `.config/shopware-project.yml`, `.config/shopware-project.local.yml`, `compose.yaml`, `compose.override.yaml`
+- `compatibility_date`, `docker.php.version`, `docker.php.profiler`, `environments.local.type`, `environments.local.admin_api`
+- `shopware/deployment-helper`, `MESSENGER_TRANSPORT_DSN`
 
 ## Gotchas
 
-- `compose.yaml` is regenerated on config changes; never edit it. Back up a legacy one before the wizard — it is overwritten.
-- Host Composer often fails with "Allowed memory size of 134217728 bytes exhausted" (128M); Shopware needs at least 512M, and composer scripts may need the database reachable only in the Docker network. The TUI memory check reports container PHP, not host PHP.
-- Top-level `url` and `admin_api` keys are deprecated (still work, log a warning); use `environments`.
-- Compatibility date error: set `compatibility_date: '2026-03-01'` (see [build](platform/dev/6.7/products/tools/cli/project-commands/build.md)).
+- `compose.yaml` is CLI-managed and regenerated on every config change — never edit it; the migration wizard overwrites an existing hand-written one, so move customisations to `compose.override.yaml` first.
+- Host Composer often fails: host PHP defaults to `memory_limit=128M` ("Allowed memory size of 134217728 bytes exhausted"), Shopware needs at least 512M, and Composer scripts may need the database inside the Docker network. The TUI memory check reports the container PHP, not the host.
+- Top-level `url`/`admin_api` keys are deprecated (still work, log a warning); `project create` and `project config init` only write `environments.local`.
+- The local proxy works only with the Docker executor.
 
-## Code check (6.7.13.0)
-- confirmed `MEMORY_LIMIT_REQUIREMENT` — installer requires memory_limit 512M — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:18
-- confirmed `MESSENGER_TRANSPORT_DSN` — env var for messenger transport, default doctrine — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:3
-- confirmed `plugin:refresh` — PluginRefreshCommand name — vendor/shopware/core/Framework/Plugin/Command/PluginRefreshCommand.php:21
-- confirmed `plugin:install` — PluginInstallCommand name — vendor/shopware/core/Framework/Plugin/Command/Lifecycle/PluginInstallCommand.php:25
-- confirmed `dal:refresh:index` — RefreshIndexCommand name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:22
-- unverified `cache:clear` — Symfony framework command, outside vendor/shopware
-- unverified `shopware-cli project dev` — shopware-cli binary, out of scope
-- unverified `shopware/deployment-helper` — separate package, out of scope
+## Version notes
+
+Projects created before March 2026 use the older `make up`/`make down`/`make setup` workflow and must pass the migration wizard.
+
+## Code check (6.7.15.1)
+- confirmed `MEMORY_LIMIT_REQUIREMENT` — installer requirement check expects memory_limit of 512M — vendor/shopware/core/Installer/Requirements/ConfigurationRequirementsValidator.php:18
+- confirmed `MESSENGER_TRANSPORT_DSN` — env var drives the messenger transport, default doctrine://default — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:3
+- confirmed `plugin:refresh` — console command name — vendor/shopware/core/Framework/Plugin/Command/PluginRefreshCommand.php:22
+- confirmed `plugin:install` — console command name, used with --activate — vendor/shopware/core/Framework/Plugin/Command/Lifecycle/PluginInstallCommand.php:28
+- confirmed `dal:refresh:index` — console command name — vendor/shopware/core/Framework/DataAbstractionLayer/Command/RefreshIndexCommand.php:23
+- unverified `cache:clear` — provided by Symfony FrameworkBundle, out of scope
+- unverified `shopware-cli project dev` — Shopware CLI binary, not part of vendor/shopware
+- unverified `shopware/deployment-helper` — separate Composer package, out of scope

@@ -5,50 +5,54 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/get-started/quickstart.html
-sourceHash: 6c247b66b9369b5e6ed5eef41dc9bd311bb67ab6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw-paas", "sw-paas project create", "sw-paas application create", "sw-paas application deploy create", "sw-paas watch", "sw-paas version", "paas cli", "deploy key", "ssh key", "first deployment", "paas native"]
-summary: "Shopware PaaS Native quickstart: install the sw-paas CLI, create a project with a repository deploy key, create an application, deploy and watch progress."
-lastBuilt: 2026-09-15
+sourceHash: f1874c76076dafe3783d0688b4066d7d55975557
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-paas project create", "sw-paas application create", "sw-paas watch", "sw-paas open storefront", "sw-paas version", "DEPLOYING_STORE_SUCCESS", "deploy key", "ssh key", "paas native", "first deployment", "quickstart"]
+summary: "PaaS Native quickstart: install sw-paas, create a project with a repo deploy key, run sw-paas application create, watch for DEPLOYING_STORE_SUCCESS."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/products/paas/shopware/get-started/_index.md"]
 ---
 ## What it is
 
-The minimal command sequence to deploy a first Shopware application on Shopware PaaS Native with the `sw-paas` CLI.
+A minimal walkthrough for deploying a first Shopware application on Shopware PaaS Native with the `sw-paas` CLI: install the CLI, create a project connected to a Git repository, then create and deploy an application.
 
 ## When to use
 
-When a Git repository with a Shopware application already prepared for PaaS exists (see [Get started](platform/dev/6.7/products/paas/shopware/get-started/_index.md)), Git is installed, and a terminal is available.
+Use it once your Shopware codebase is prepared for PaaS (see the [Get started](platform/dev/6.7/products/paas/shopware/get-started/_index.md) section) and you want a running shop on PaaS Native.
 
 ## Key steps / config
 
-1. Install the CLI and verify it:
-   ```sh
-   curl -L https://install.sw-paas-cli.shopware.systems | sh
-   sw-paas version
-   ```
-2. Create the project and connect the repository with `sw-paas project create`. The wizard asks for organization, project name and Git repository. Answer `y` when asked to create a project SSH key; the CLI prints the public key and waits until it is added to the repository:
+Prerequisites: a Git repository with a PaaS-prepared Shopware application, terminal access, and Git installed locally.
+
+1. **Install the CLI**
+   `curl -L https://install.sw-paas-cli.shopware.systems | sh`
+   Verify with `sw-paas version`.
+2. **Create a project and connect the repository**
+   Run `sw-paas project create`. The wizard asks for organization, project name and Git repository. Answer `y` when asked to create a project SSH key; the CLI shows the public key and waits until you add it as a deploy key:
    - GitHub: `Settings` → `Deploy keys` → `Add deploy key`
    - GitLab: `Settings` → `Repository` → `Deploy Keys`
    - Bitbucket: `Repository settings` → `Access keys`
-   
-   Give the key read access, then confirm in the wizard.
-3. Create the application: `sw-paas application create`.
-4. Deploy: `sw-paas application deploy create`.
-5. Monitor: `sw-paas watch`.
+   The key needs **read access**. Confirm in the wizard and the CLI finishes creating the project.
+3. **Create and deploy the application**
+   `sw-paas application create` creates, builds and deploys the application — no separate deploy step.
+4. **Monitor** with `sw-paas watch` until the status is `DEPLOYING_STORE_SUCCESS`, then press `Ctrl+C`.
+5. **Open the shop**: `sw-paas open storefront`.
 
 ## Essential identifiers
 
 - `sw-paas version`
 - `sw-paas project create`
 - `sw-paas application create`
-- `sw-paas application deploy create`
 - `sw-paas watch`
+- `sw-paas open storefront`
+- `DEPLOYING_STORE_SUCCESS` — deployment status to wait for
 
 ## Gotchas
 
-- The deploy key only needs read access to the repository; the wizard does not complete project creation until you confirm the key was added.
+- `sw-paas watch` streams indefinitely and never exits by itself; stop it with `Ctrl+C` after the success status.
+- The deploy key must have read access to the repository, otherwise project creation cannot complete.
 
-## Code check (6.7.13.0)
-- unverified `sw-paas` — external PaaS CLI, not part of the installed Shopware core/storefront/administration code
-- unverified `sw-paas application deploy create` — CLI subcommand, out of scope of vendor/shopware
+## Code check (6.7.15.1)
+- unverified `sw-paas` — standalone PaaS CLI, not part of vendor/shopware core, storefront or administration
+- unverified `DEPLOYING_STORE_SUCCESS` — PaaS deployment status from the platform API, out of scope of the installed Shopware code
+- unverified `sw-paas application create` — PaaS CLI subcommand, out of scope

@@ -6,68 +6,81 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/upgrades-migrations/administration/vite.html
 sourceHash: ddcfc74c50f14c50f53350297ae32fd8a8e0e218
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["vite", "webpack", "vite.config.mts", "webpack.config.js", "bundle:dump", "BundleDumpCommand", "var/plugins.json", "composer build:js:admin", "composer watch:admin", "pentatrion_vite", "sw-plugin-dev.json", "hmr", "administration build", "shopware-vite-plugin"]
-summary: Shopware 6.7 builds the Administration with Vite instead of Webpack; plugins with a custom webpack.config.js must move it to vite.config.mts.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["vite", "webpack", "vite.config.mts", "webpack.config.js", "bundle:dump", "BundleDumpCommand", "var/plugins.json", "composer build:js:admin", "composer watch:admin", "plugins.vite.ts", "sw-plugin-dev.json", "hmr", "admin build"]
+summary: Shopware 6.7 builds the Administration with Vite instead of Webpack; plugins move a custom webpack.config.js to vite.config.mts. Covers build internals.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Explains the switch of the Shopware Administration build from Webpack to Vite in Shopware 6.7: what extension developers must migrate, and how the core, plugin builds, dev server and asset loading work.
+Describes the switch of the Administration build from Webpack to Vite in Shopware 6.7. It covers what plugin authors must change and how the core, extension and dev-server builds work internally. The source marks timelines and implementation details as subject to change.
 
 ## When to use
 
-- A plugin ships its own `webpack.config.js` for the Administration (apps are not affected; their build is decoupled).
-- You need to understand how `composer build:js:admin` / `composer watch:admin` find and build plugins.
+Your plugin ships a custom `webpack.config.js` for the Administration. You also need this page when debugging how extension bundles are built, served in dev mode, or loaded at runtime.
 
 ## Key steps / config
 
-Migrating a custom webpack config:
+Apps are not affected because their build is decoupled from Shopware. Plugins only need action if they extend the webpack config:
 
-1. Create `vite.config.mts` in `YourApp/src/Resources/app/administration/src` (previously `webpack.config.js` lived in `YourApp/src/Resources/app/administration/build/`).
-2. Remove the old `webpack.config.js`.
-3. Remove all webpack-related dependencies from `package.json`.
+1. Create `vite.config.mts` in `YourApp/src/Resources/app/administration/src`. The old file was `YourApp/src/Resources/app/administration/build/webpack.config.js`.
+2. Delete the old `webpack.config.js`.
+3. Remove webpack-related dependencies from `package.json`.
 4. Add the Vite dependencies to `package.json`.
+
+Minimal migration of an alias:
 
 ```typescript
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-    resolve: {
-        alias: { '@example': 'src/example' },
-    },
+    resolve: { alias: { '@example': 'src/example' } },
 });
 ```
 
 Build pipeline:
 
-- `php bin/console bundle:dump` (`Shopware\Core\Framework\Plugin\Command\BundleDumpCommand`) writes all active bundles/plugins to `var/plugins.json` (default path argument). It is part of `build:js:admin`, `build:js:storefront`, `watch:admin`, `watch:storefront`.
-- `composer build:js:admin` builds the Administration with all extensions. The core config `<shopwareRoot>/src/Administration/Resources/app/administration/vite.config.mts` covers only the core.
-- `build/plugins.vite.ts` reads `var/plugins.json`, calls Vite `build` per plugin (Vite loads `vite.config` files from the entry file's path); in `composer watch:admin` it calls `createServer` per plugin instead.
-- Asset loading: the core uses the `pentatrion_vite` Symfony bundle with the `entrypoints.json` from `vite-plugin-symfony`. For plugins, `application.ts` injects entry files — production from the `/api/_info/config` call, dev mode from `sw-plugin-dev.json`.
+- `Shopware\Core\Framework\Plugin\Command\BundleDumpCommand` (`php bin/console bundle:dump`) writes all active bundles/plugins to `<shopwareRoot>/var/plugins.json`. It also runs as part of `build:js:admin`, `build:js:storefront`, `watch:admin` and `watch:storefront`.
+- Full Administration build: `composer build:js:admin`. Dev/HMR server: `composer watch:admin`.
+- Core build: `<shopwareRoot>/src/Administration/Resources/app/administration/vite.config.mts`. It builds the core only, not extensions.
+- Extensions build: `<shopwareRoot>/src/Administration/Resources/app/administration/build/plugins.vite.ts` reads `var/plugins.json` and calls Vite's `build` for each plugin. In dev mode it calls `createServer` instead. Vite picks up each plugin's `vite.config` from the entry file's path.
+- Asset loading: the core uses the `pentatrion_vite` Symfony bundle with the `entrypoints.json` produced by `vite-plugin-symfony`. In production, `application.ts` injects plugin entry files from the `/api/_info/config` response. In dev mode it uses `sw-plugin-dev.json`, served by `shopware-vite-plugin-serve-multiple-static`.
 
-Vite plugins (prefix `shopware-vite-plugin-`): `asset-path` (prepends `window.__sw__.assetPath` to chunk paths, for S3/cluster setups), `static-assets`, `serve-multiple-static`, `vue-globals` (rewrites Vue imports to `Shopware.Vue`), `override-component` (auto-imports `*.override.vue` and calls `Shopware.Component.registerOverrideComponent`), `twigjs` (loads `*.html.twig`).
+Shopware's Vite plugins, all prefixed `shopware-vite-plugin-`:
+
+- `asset-path`: prepends `window.__sw__.assetPath` to chunk paths, for S3/cluster setups.
+- `static-assets`: copies `static` to the output directory.
+- `serve-multiple-static`: serves static assets in dev mode.
+- `vue-globals`: rewrites Vue imports to destructure from `Shopware.Vue`, which avoids multiple Vue instances.
+- `override-component`: auto-imports `*.override.vue` files and registers them via `Shopware.Component.registerOverrideComponent`.
+- `twigjs`: makes `*.html.twig` files loadable by Vite.
 
 ## Essential identifiers
 
-- `vite.config.mts`, `webpack.config.js`
-- `bundle:dump`, `Shopware\Core\Framework\Plugin\Command\BundleDumpCommand`, `var/plugins.json`
+- `vite.config.mts`, `plugins.vite.ts`, `var/plugins.json`, `sw-plugin-dev.json`
+- `bundle:dump` / `Shopware\Core\Framework\Plugin\Command\BundleDumpCommand`
 - `composer build:js:admin`, `composer watch:admin`
-- `pentatrion_vite`, `sw-plugin-dev.json`, `Shopware.Component.registerOverrideComponent`
+- `pentatrion_vite`, `vite-plugin-symfony`, `shopware-vite-plugin-*`
 
 ## Gotchas
 
-- The source says the setup can be tested via the feature flag `ADMIN_VITE`; that flag no longer exists in the installed code — Vite is the build in 6.7.
-- HMR only reloads `*.vue` files, so it is limited until components move to SFCs.
-- The source mentions `*.vite.ts` duplicates such as `src/index.vite.ts`; no such file exists in the installed admin `src`.
-- `Shopware.Component.registerOverrideComponent` is marked `@experimental` (feature `ADMIN_COMPOSITION_API_EXTENSION_SYSTEM`).
+- HMR only reloads `*.vue` files. Full HMR benefit needs components migrated to SFCs.
+- Webpack config migrations can vary a lot. The alias example is the minimal case.
+- The source says the setup could be tested via the feature flag `ADMIN_VITE`. That flag no longer exists in 6.7.15.1, where Vite is the build.
+- The source names an entry file `src/index.vite.ts`, a `*.vite.ts` duplicate. In 6.7.15.1 the Administration entry is `src/index.ts`, and no `index.vite.ts` exists under `src`.
 
-## Code check (6.7.13.0)
-- absent `ADMIN_VITE` — feature flag not found anywhere in the installed code
-- confirmed `bundle:dump` — command name, aliases `administration:dump:plugins`/`administration:dump:bundles` — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:14
-- confirmed `BundleDumpCommand` — class in `Shopware\Core\Framework\Plugin\Command` — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:16
-- confirmed `var/plugins.json` — default `dumpFilePath` argument — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:33
-- confirmed `sw-plugin-dev.json` — fetched in development mode by `loadPlugins()` — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:617
-- confirmed `registerOverrideComponent` — `@experimental stableVersion:v6.8.0` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:148
-- unverified `index.vite.ts` — not present in admin `src`; referenced only outside the checked roots
-- unverified `pentatrion_vite` — bundle config lives outside the checked roots
+## Version notes
+
+- 6.7: Vite replaces Webpack for the Administration build. The source reports a core build of about 18s, more than 50% faster than Webpack.
+
+## Code check (6.7.15.1)
+- absent `ADMIN_VITE` — no feature flag of that name anywhere in the installed code
+- confirmed `BundleDumpCommand` — console command class in `Shopware\Core\Framework\Plugin\Command` — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:20
+- confirmed `bundle:dump` — command name; aliases `administration:dump:plugins`, `administration:dump:bundles` — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:16
+- confirmed `var/plugins.json` — default `dumpFilePath` argument — vendor/shopware/core/Framework/Plugin/Command/BundleDumpCommand.php:37
+- confirmed `sw-plugin-dev.json` — fetched by `loadPlugins()` in development mode — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:626
+- confirmed `plugins.vite.ts` — referenced as the source of dev plugin metadata — vendor/shopware/administration/Resources/app/administration/src/core/application.ts:629
+- confirmed `registerOverrideComponent` — `Shopware.Component` hook marked @private — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:159
+- confirmed `Vue` — exposed as `Shopware.Vue` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:231
+- unverified `index.vite.ts` — not present under administration `src`; entry is `src/index.ts`
+- unverified `vite.config.mts` — lives outside the administration `src` root, out of scope

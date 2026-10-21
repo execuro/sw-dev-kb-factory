@@ -1,73 +1,81 @@
 ---
-id: platform/dev/6.7/resources/guidelines/code/core/extendability.md
-title: Extendability
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/resources/guidelines/code/core/extendability.md
+sourceHash: 9fb3aa0f95d36cbaf65fd8e76ac992f52702ffc5
 sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/core/extendability.html
-sourceHash: d2c1ae6a0fea1d2f72acab33ab90b730525d4257
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["extendability", "extensibility", "design patterns", "decoration", "AbstractCategoryRoute", "getDecorated", "factory", "LineItemFactoryRegistry", "visitor", "Processor", "mediator", "checkout.order.placed", "ProductPageLoadedHook", "adapter", "HoneypotCaptcha"]
-summary: "Core extendability guideline: technical/business requirements, project templates, apps, plugins, and decoration/factory/visitor/mediator/adapter patterns."
-lastBuilt: 2026-09-15
+title: Extendability
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["extendability", "extensibility", "design patterns", "decoration", "factory", "visitor", "mediator", "adapter", "LineItemFactoryRegistry", "ExtensionDispatcher", "ResolveListingExtension", "ProductPageLoadedHook", "checkout.order.placed", "app scripts hooks", "core guidelines"]
+summary: "Shopware core extendability guideline: requirements, apps/plugins/templates, and decoration, factory, visitor, mediator, adapter patterns"
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A core coding guideline (mirrored from `coding-guidelines/core/extendability.md` in the Shopware repository) describing which extension use cases the core architecture must support and which design patterns realise them, with a reference class for each pattern.
+A core coding guideline (mirrored from the Shopware repository's `coding-guidelines/core/extendability.md`) describing why and how Shopware features must be built so third parties and Shopware itself can extend, modify, or replace them. It lists the technical and business requirements, the three extension approaches, and five design patterns with concrete core examples.
 
 ## When to use
 
-When designing a new core feature or plugin-facing API and deciding how third parties should extend, modify, or replace it; or when looking for the canonical example of a Shopware extension pattern.
+When designing a new core feature or extension point and deciding which pattern (decorator, factory registry, processor/visitor, event/extension event/hook, adapter registry) third-party developers should use to customize it.
 
 ## Key steps / config
 
-**Technical requirements** (how the software must be designed):
-- Functional extensibility: add features to a feature (e.g. suggestions for enterprise search).
-- Functional modifiability: rewrite parts of a feature (e.g. US tax calculation via tax providers).
-- Functional differentiation: parts of a feature can be unlocked by a paid edition.
-- Functional exchange market: replace a feature entirely by an external solution (e.g. external newsletter system).
+**Technical requirements** a feature must support:
 
-**Business requirements**: marketplace extensions, adaptive technologies (e.g. listings read via Elasticsearch), environment specifications (e.g. assets via CDN with several app servers).
+- Functional extensibility — add features (e.g. a suggestion feature for enterprise search).
+- Functional modifiability — rewrite parts (e.g. US tax calculation via tax providers).
+- Functional differentiation — parts can be unlocked per paid edition.
+- Functional exchange market — replace the feature with an external solution (e.g. an external newsletter system).
 
-**Approaches**:
-- Project templates: large customers deploy a fork of the production template; local customisations are bundles, not plugins.
-- Apps: minor extensions, designed for cloud products.
-- Plugins: larger extensions, able to replace any area of Shopware.
+**Business requirements:** marketplace extensions (e.g. a CMS page publishing plugin), adaptive technologies (e.g. listings read via Elasticsearch), environment specifications (e.g. assets served via CDN across several app servers).
 
-**Patterns and their reference implementations (verified in 6.7.13.0)**:
-- Decoration: Store API routes. `Shopware\Core\Content\Category\SalesChannel\AbstractCategoryRoute` declares `abstract public function getDecorated(): AbstractCategoryRoute`; `CategoryRoute` extends it. Decorators extend the abstract class and delegate to `getDecorated()`.
-- Factory: `Shopware\Core\Checkout\Cart\LineItemFactoryRegistry` (marked `@final`) receives handlers tagged `shopware.cart.line_item.factory`; `ProductLineItemFactory` implements `LineItemFactoryInterface` and instantiates/enriches the line item when adding to the cart via Store API.
-- Visitor: `Shopware\Core\Checkout\Cart\Processor` calls all cart processors such as `ProductCartProcessor` (implements `CartProcessorInterface`, `CartDataCollectorInterface`), which transfer line items from the previous cart to the calculated one.
-- Mediator: events, e.g. `CheckoutOrderPlacedEvent` with `EVENT_NAME = 'checkout.order.placed'`, dispatched when an order is created.
-- Hooks (observer, for App Scripts): `Shopware\Storefront\Page\Product\ProductPageLoadedHook`, instantiated in `ProductController` via `$this->hook(new ProductPageLoadedHook($page, $context))`; every app script registered to the hook runs.
-- Adapter: registries of selectable adapters, extended via events or tagged services. Example: captcha — `HoneypotCaptcha` extends `AbstractCaptcha`; captchas are tagged `shopware.storefront.captcha`.
+**Approaches:**
+
+- Project templates — forks of the production template; local customizations are bundles, not plugins.
+- Apps — minor extensions, designed for cloud products.
+- Plugins — larger extensions, able to replace all areas of Shopware.
+
+**Patterns and core examples:**
+
+| Pattern | Serves | Core example |
+|---|---|---|
+| Decoration | functional exchange/replacement | replace or extend whole areas |
+| Factory | functional extensibility (interpret/validate user input) | `LineItemFactoryRegistry` with handlers such as `ProductLineItemFactory`, used when adding items to the cart via Store API |
+| Visitor | extensibility and modifiability | cart `Processor` calling line item processors like `ProductCartProcessor` |
+| Mediator (+ Observer) | extensibility and modifiability | Symfony EventDispatcher events, e.g. `checkout.order.placed` (`CheckoutOrderPlacedEvent`) dispatched from `CartOrderRoute` |
+| Adapter | functional exchange market | captcha types, e.g. `HoneypotCaptcha`, picked by configuration from a registry |
+
+**Extension events:** `ExtensionDispatcher` lets plugins modify inputs and results or replace an operation via a typed extension event. `ProductListingLoader` publishes `ResolveListingExtension` around listing loading, so a plugin can adjust the criteria, enrich the result, or replace loading entirely.
+
+**Hooks:** the app-script equivalent of events. Apps cannot execute server code directly; hooks run registered app scripts within the request instead of calling the app server via HTTP. `ProductPageLoadedHook` is instantiated and dispatched in the Storefront `ProductController` and lets apps load extra data on the product detail page.
+
+**Adapters** are usually registered in a registry; third parties add new ones via events or tagged services.
 
 ## Essential identifiers
 
-- `AbstractCategoryRoute`, `CategoryRoute`, `getDecorated()`
-- `LineItemFactoryRegistry`, `ProductLineItemFactory`, `LineItemFactoryInterface`, tag `shopware.cart.line_item.factory`
-- `Processor`, `ProductCartProcessor`
-- `CheckoutOrderPlacedEvent`, `checkout.order.placed`
-- `ProductPageLoadedHook`
-- `HoneypotCaptcha`, `AbstractCaptcha`, tag `shopware.storefront.captcha`
+- `Shopware\Core\Checkout\Cart\LineItemFactoryRegistry`
+- `Shopware\Core\Checkout\Cart\LineItemFactoryHandler\ProductLineItemFactory`
+- `Shopware\Core\Checkout\Cart\Processor`, `Shopware\Core\Content\Product\Cart\ProductCartProcessor`
+- `Shopware\Core\Checkout\Cart\Event\CheckoutOrderPlacedEvent` (`checkout.order.placed`)
+- `Shopware\Core\Framework\Extensions\ExtensionDispatcher`
+- `Shopware\Core\Content\Product\Extension\ResolveListingExtension`
+- `Shopware\Storefront\Page\Product\ProductPageLoadedHook`
+- `Shopware\Storefront\Framework\Captcha\HoneypotCaptcha`
 
 ## Gotchas
 
-- Best practice for new events: pass only the primary key (`private string $orderId;`), not the entity (`private OrderEntity $order;`), so listeners load data themselves and async processing is easier. The existing `CheckoutOrderPlacedEvent` still carries the full `OrderEntity` in 6.7.13.0 (it also offers `getOrderId()`).
-- Apps cannot run server code; hooks are their equivalent of events.
+- Events should carry only a primary key, not entities: an optimized `checkout.order.placed` would hold `private string $orderId;` instead of `private OrderEntity $order;`. Listeners then load data themselves, and asynchronous processing becomes easier. The current event still takes an `OrderEntity`.
 
-## Version notes
-
-- The source's example links point to v6.4.12.0, including a `CachedCategoryRoute` cache decorator. That class no longer exists in the installed 6.7.13.0 code; the decoration chain for the category route is `AbstractCategoryRoute` / `CategoryRoute` only.
-
-## Code check (6.7.13.0)
-- confirmed `AbstractCategoryRoute::getDecorated()` — abstract decoration contract — vendor/shopware/core/Content/Category/SalesChannel/AbstractCategoryRoute.php:16
-- confirmed `CategoryRoute` — concrete route extends the abstract class — vendor/shopware/core/Content/Category/SalesChannel/CategoryRoute.php:27
-- absent `CachedCategoryRoute` — cache decorator from the v6.4 docs link is not in the installed code
-- confirmed `LineItemFactoryRegistry` — marked @final, collects tagged factories — vendor/shopware/core/Checkout/Cart/LineItemFactoryRegistry.php:24
-- confirmed `shopware.cart.line_item.factory` — tagged iterator for the registry — vendor/shopware/core/Checkout/DependencyInjection/cart.xml:429
+## Code check (6.7.15.1)
+- confirmed `LineItemFactoryRegistry` — class exists in the cart namespace — vendor/shopware/core/Checkout/Cart/LineItemFactoryRegistry.php:24
 - confirmed `ProductLineItemFactory` — implements LineItemFactoryInterface — vendor/shopware/core/Checkout/Cart/LineItemFactoryHandler/ProductLineItemFactory.php:15
-- confirmed `ProductCartProcessor` — cart processor and data collector — vendor/shopware/core/Content/Product/Cart/ProductCartProcessor.php:40
-- confirmed `CheckoutOrderPlacedEvent::$order` — installed event still holds the full OrderEntity — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:33
-- confirmed `ProductPageLoadedHook` — dispatched from ProductController — vendor/shopware/storefront/Controller/ProductController.php:65
-- confirmed `HoneypotCaptcha` — extends AbstractCaptcha — vendor/shopware/storefront/Framework/Captcha/HoneypotCaptcha.php:13
+- confirmed `Processor` — cart processor class — vendor/shopware/core/Checkout/Cart/Processor.php:14
+- confirmed `ProductCartProcessor` — implements CartProcessorInterface and CartDataCollectorInterface — vendor/shopware/core/Content/Product/Cart/ProductCartProcessor.php:40
+- confirmed `CheckoutOrderPlacedEvent::EVENT_NAME` — value checkout.order.placed; constructor still takes OrderEntity $order — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:34
+- confirmed `CheckoutOrderPlacedEvent` — dispatched from CartOrderRoute — vendor/shopware/core/Checkout/Cart/SalesChannel/CartOrderRoute.php:137
+- confirmed `ExtensionDispatcher` — final readonly class — vendor/shopware/core/Framework/Extensions/ExtensionDispatcher.php:9
+- confirmed `ResolveListingExtension::NAME` — listing-loader.resolve, published by ProductListingLoader — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingLoader.php:133
+- confirmed `ProductPageLoadedHook` — dispatched in ProductController — vendor/shopware/storefront/Controller/ProductController.php:66
+- confirmed `HoneypotCaptcha` — extends AbstractCaptcha — vendor/shopware/storefront/Framework/Captcha/HoneypotCaptcha.php:15

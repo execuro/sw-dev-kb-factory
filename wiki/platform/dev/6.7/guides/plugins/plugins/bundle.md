@@ -5,72 +5,68 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/bundle.html
-sourceHash: 77b648b739f563c8ca5d8dab37fb2226c304a7a8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Shopware\\Core\\Framework\\Bundle", "Symfony\\Component\\HttpKernel\\Bundle\\Bundle", "storefront theme interface", "config/bundles.php", "registerMigrationPath", "database:migrate", "shopware-bundles", "InstalledVersions::isInstalled", "Feature::isActive", "project customization", "bundle vs plugin", "symfony bundle"]
-summary: "Symfony bundle instead of plugin for project code: extend Shopware\\Core\\Framework\\Bundle, register in config/bundles.php, run migrations manually."
-lastBuilt: 2026-09-15
-relatedPages:
-  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
-  - platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md
-  - platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md
-  - platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md
+sourceHash: 18d3eb5a3b5cca6cebd0419cfe91501afc323fb3
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["bundle", "symfony bundle", "Shopware\\Core\\Framework\\Bundle", "config/bundles.php", "registerMigrationPath", "database:migrate", "shopware-bundles", "InstalledVersions::isInstalled", "Feature::isActive", "ThemeInterface", "project customization", "plugin alternative", "theme.json"]
+summary: Project code as a bundle instead of a plugin - bundles.php registration, migrations, theme interface, shopware-bundles for Shopware CLI.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md", "platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md"]
 ---
 ## What it is
 
-How to build project-level extensions as Symfony bundles instead of Shopware plugins. Plugins extend bundles (`Plugin` → `Shopware\Bundle` → `Symfony\Bundle`) and add a lifecycle (install, update, activate, uninstall), automatic migration handling, asset-building integration and Administration management. See the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
+How to ship project-level customizations as a Symfony bundle instead of a Shopware plugin. Plugins extend bundles and add a lifecycle (install, update, activate, uninstall), automatic migration handling, asset building integration and Administration management. Hierarchy: `Shopware\Core\Framework\Plugin` → `Shopware\Core\Framework\Bundle` → `Symfony\Component\HttpKernel\Bundle\Bundle`. See the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
 
 ## When to use
 
-- Customizing a single project that is not distributed.
-- No plugin lifecycle or Administration management needed; everything managed via Composer.
+Customizing a single project, managed entirely via Composer, not distributed, with no need for a plugin lifecycle or Administration management.
 
 ## Key steps / config
 
-1. Choose a base class: `Shopware\Core\Framework\Bundle` (theme support, JS/CSS assets, migrations) or `Symfony\Component\HttpKernel\Bundle\Bundle` (plain Symfony).
-2. Create the class under `src/` in the default `App\` namespace (configurable in `composer.json`):
-
-```php
-namespace App\YourBundleName;
-
-use Shopware\Core\Framework\Bundle;
-
-class YourBundleName extends Bundle
-{
-}
-```
-
-3. Register in `config/bundles.php`: `App\YourBundleName\YourBundleName::class => ['all' => true],`
-4. Optional bundles: wrap the registration in `if (InstalledVersions::isInstalled('vendor/your-bundle-package'))`, optionally `&& Feature::isActive('YOUR_FEATURE_FLAG')` (reads env vars, safe in `bundles.php`); otherwise a missing package causes class-not-found.
-5. `Resources/config/services.php`, `Resources/config/routes.php` and `Resources/views` are loaded automatically.
-6. Theme: implement the storefront theme marker interface (FQCN under Gotchas); optionally add `theme.json` ([theme configuration](platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md)).
-7. Migrations: `Bundle::build()` already calls `registerMigrationPath($container)` for the `Migration/` directory; keep `parent::build($container)` when overriding `build()`. Migrations are not executed automatically: run `bin/console database:migrate <BundleName> --all`, or add it as a `deployment.hooks.pre-update` hook in `.shopware-project.yaml` for the [Deployment Helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md).
-8. Shopware CLI does not detect bundles; declare them in `composer.json` so assets get built:
-
-```json
-{ "extra": { "shopware-bundles": { "src/<BundleName>": { "name": "<BundleName>" } } } }
-```
+1. Pick a base class: `Shopware\Core\Framework\Bundle` (theme support, JS/CSS assets, migrations) or plain `Symfony\Component\HttpKernel\Bundle\Bundle`.
+2. Create the class under `src/` in the `App\` namespace (changeable in the project `composer.json`):
+   ```php
+   namespace App\YourBundleName;
+   use Shopware\Core\Framework\Bundle;
+   class YourBundleName extends Bundle {}
+   ```
+3. Register it in `config/bundles.php`: `App\YourBundleName\YourBundleName::class => ['all' => true],`. For optional packages guard it with `Composer\InstalledVersions::isInstalled('vendor/your-bundle-package')`, optionally combined with `Shopware\Core\Framework\Feature::isActive('YOUR_FEATURE_FLAG')` (safe in `bundles.php`).
+4. Services, routes and templates load like in a plugin: `Resources/config/services.php`, `Resources/config/routes.php`, `Resources/views`.
+5. Theme: implement `Shopware\Storefront\Framework\ThemeInterface` on the bundle class; add `theme.json` for [theme configuration](platform/dev/6.7/guides/plugins/themes/configuration/theme-configuration.md).
+6. Migrations: `Bundle::build()` already calls `registerMigrationPath()` for a `Migration/` directory next to the bundle class. If you override `build()`, keep `parent::build($container);`. Run them manually: `bin/console database:migrate <BundleName> --all`, or via [Deployment Helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md) in `.config/shopware-project.yml`:
+   ```yaml
+   deployment:
+     hooks:
+       pre-update: |
+         bin/console database:migrate <BundleName> --all
+   ```
+7. Shopware CLI asset builds: declare the bundle in `composer.json`:
+   ```json
+   { "extra": { "shopware-bundles": { "src/<BundleName>": { "name": "<BundleName>" } } } }
+   ```
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\Bundle`, `Symfony\Component\HttpKernel\Bundle\Bundle`
-- `config/bundles.php`, `theme.json`, `.shopware-project.yaml`
-- `Bundle::build()`, `Bundle::registerMigrationPath()`
+- `Shopware\Storefront\Framework\ThemeInterface`
+- `config/bundles.php`, `extra.shopware-bundles`
 - `bin/console database:migrate <BundleName> --all`
-- `extra.shopware-bundles`
 
 ## Gotchas
 
-- The docs name the theme interface `Shopware\Core\Framework\ThemeInterface`; it does not exist. The installed interface is `Shopware\Storefront\Framework\ThemeInterface`, checked by `StorefrontPluginConfigurationFactory`.
-- The docs say `build()` must be overridden to register migrations; the base `Bundle::build()` already does this.
-- Next: [Dependency Injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md), [Listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md).
+- An unguarded `bundles.php` entry for a package that is not installed crashes the app with a class-not-found error.
+- Bundles have no lifecycle, so migrations never run automatically.
+- Shopware CLI cannot detect bundles; without `shopware-bundles` their assets are not built.
+- The docs name the theme interface `Shopware\Core\Framework\ThemeInterface`; that class does not exist - use the Storefront one.
+- The docs say migrations are not detected and require overriding `build()`; in 6.7.15.1 the base `build()` already registers them.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\ThemeInterface` — not in the installed code index; the real interface is Shopware\Storefront\Framework\ThemeInterface (vendor/shopware/storefront/Framework/ThemeInterface.php)
-- confirmed `Shopware\Core\Framework\Bundle` — abstract class extending the Symfony bundle — vendor/shopware/core/Framework/Bundle.php:32
-- corrected `Bundle::build()` — docs: override build() to enable migrations; base build() already calls registerMigrationPath — vendor/shopware/core/Framework/Bundle.php:36
-- confirmed `Bundle::registerMigrationPath()` — protected, registers a MigrationSource if the Migration dir exists — vendor/shopware/core/Framework/Bundle.php:131
-- confirmed `database:migrate` — migration console command — vendor/shopware/core/Framework/Migration/Command/MigrationCommand.php:21
-- confirmed `Feature::isActive()` — static feature flag check — vendor/shopware/core/Framework/Feature.php:128
-- unverified `InstalledVersions::isInstalled()` — Composer runtime API, out of scope
-- unverified `shopware-bundles` — read by Shopware CLI, outside the checked vendor roots
+## Code check (6.7.15.1)
+- absent `Shopware\Core\Framework\ThemeInterface` — not in the code index; the interface is `Shopware\Storefront\Framework\ThemeInterface`
+- confirmed `Shopware\Storefront\Framework\ThemeInterface` — marker interface, no members — vendor/shopware/storefront/Framework/ThemeInterface.php:8
+- confirmed `Bundle` — abstract, extends Symfony bundle — vendor/shopware/core/Framework/Bundle.php:33
+- confirmed `Plugin` — extends `Bundle` — vendor/shopware/core/Framework/Plugin.php:17
+- corrected `Bundle::registerMigrationPath()` — docs: must override `build()` to enable migrations; base `build()` calls it already — vendor/shopware/core/Framework/Bundle.php:40
+- confirmed `Bundle::registerMigrationPath()` — skips when the migration dir is missing — vendor/shopware/core/Framework/Bundle.php:144
+- confirmed `Resources/config/services.*` — loaded by `registerContainerFile()` — vendor/shopware/core/Framework/Bundle.php:238
+- confirmed `database:migrate` — command name — vendor/shopware/core/Framework/Migration/Command/MigrationCommand.php:22
+- confirmed `--all` — option "no migration timestamp cap" — vendor/shopware/core/Framework/Migration/Command/MigrationCommand.php:57
+- confirmed `Feature::isActive()` — static method — vendor/shopware/core/Framework/Feature.php:139

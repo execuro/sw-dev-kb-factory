@@ -6,27 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/
 sourceHash: ad0c89e857aaaa375911bbf2d23d009ef4748d4d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["developer documentation", "home", "shopware 6", "concepts", "guides", "references", "installation guide", "getting started", "docs structure", "academy"]
-summary: Entry page of the Shopware 6 developer docs - explains the Concepts, Guides and References sections and points to the installation guide to start.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware 6 developer documentation", "home", "start page", "concepts", "guides", "references", "installation guide", "getting started", "documentation structure", "academy", "community", "stackoverflow"]
+summary: Entry page of the Shopware 6.7 developer docs - explains the Concepts, Guides and References sections and points to the installation guide.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/installation/_index.md"]
 ---
 ## What it is
 
-The landing page of the official Shopware 6 developer documentation. It explains how the documentation is organised by products, topics and depth of interest.
+The landing page of the Shopware 6 developer documentation. It describes how the documentation is organised by products, topics and depth of interest, and where to start.
 
 ## When to use
 
-When orienting in the developer documentation and deciding where a topic lives, or when looking for the starting point for a new development setup.
+When you need to know which part of the developer documentation answers a given kind of question, or where to begin a new Shopware 6 project.
 
 ## Key steps / config
 
-- **Concepts** - ideas, inner workings and architectural considerations behind Shopware.
-- **Guides** - explicit examples and step-by-step tutorials for specific tasks.
-- **References** - structured code references, lists of flags, commands and endpoints.
+- **Concepts** — the ideas, inner workings and architectural considerations behind Shopware.
+- **Guides** — explicit examples and step-by-step tutorials for specific tasks.
+- **References** — structured code references, lists of flags, commands and endpoints used during development.
 - To begin developing, start with the installation guide: [platform/dev/6.7/guides/installation/_index.md](platform/dev/6.7/guides/installation/_index.md).
-- Guided learning content is in the Academy in the Shopware Community Hub; questions can go to StackOverflow (tag `shopware6`) or the Shopware Discord community.
+- Guided learning content lives in the Academy in the Shopware Community Hub; questions can be asked on StackOverflow (tag `shopware6`) or in the Shopware community Discord.
 
-## Code check (6.7.13.0)
-- unverified `shopware6` — StackOverflow tag, external community resource, not part of vendor/shopware
+## Code check (6.7.15.1)
+- unverified `Home` — navigation-only page, names no class, config key, route or CLI command to check against the installed code

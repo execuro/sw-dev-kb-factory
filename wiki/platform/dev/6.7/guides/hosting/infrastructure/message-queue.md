@@ -5,81 +5,85 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/infrastructure/message-queue.html
-sourceHash: 95c64d136b674a1badd7f7cec65ead729459f0fe
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["messenger:consume", "admin_worker", "enable_admin_worker", "MESSENGER_TRANSPORT_DSN", "MESSENGER_TRANSPORT_LOW_PRIORITY_DSN", "MESSENGER_TRANSPORT_FAILURE_DSN", "routing_overwrite", "AsyncMessageInterface", "messenger.bus.default", "symfony messenger", "cli worker", "rabbitmq", "failed messages", "systemd"]
-summary: Running the Shopware 6.7 message queue in production - CLI workers vs admin worker, transport DSN env vars, failed transport, routing and routing_overwrite.
-lastBuilt: 2026-09-15
+sourceHash: 0906a43f5a6d3a65a9cf9815d3882f15169dcb83
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["message queue", "messenger:consume", "admin_worker", "enable_admin_worker", "MESSENGER_TRANSPORT_DSN", "MESSENGER_TRANSPORT_LOW_PRIORITY_DSN", "MESSENGER_TRANSPORT_FAILURE_DSN", "routing_overwrite", "AsyncMessageInterface", "messenger.bus.default", "symfony messenger", "cli worker", "rabbitmq", "systemd consumer"]
+summary: Running Shopware's Symfony Messenger queue in production - CLI workers, admin worker config, transport DSN env vars, routing and routing_overwrite.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware processes background tasks through Symfony Messenger. Out of the box messages are stored in the database (Doctrine transport) and consumed by the admin worker — browser polling while someone is logged into the Administration. This page covers moving consumption to CLI workers, swapping transports, and routing.
+Shopware processes asynchronous tasks through the Symfony Messenger component. By default messages are stored in the database (Doctrine transport) and consumed by the browser-based admin worker while someone is logged into the Administration. This page covers moving consumption to CLI workers, switching transports, routing messages and the related `shopware.yaml` options.
 
 ## When to use
 
-Setting up a production system (admin worker causes CPU load with many admin users and stops when nobody is logged in), switching to a broker such as RabbitMQ, sending mails asynchronously, or re-routing specific message classes.
+- Preparing a production system: the admin worker causes high CPU load with several admin users and only runs while someone is logged in.
+- Moving the queue off the database to a dedicated broker such as RabbitMQ.
+- Routing specific message classes to their own transport (e.g. to limit workers for indexing or prioritise mails).
 
 ## Key steps / config
 
-1. Run one or more CLI workers, restarted by systemd/supervisor (or cron, which does not limit concurrent workers):
+1. Run one or more CLI workers, kept alive by systemd or supervisor (a cron job cannot cap the number of running workers):
    - `bin/console messenger:consume async --time-limit=60 --memory-limit=128M`
-   - consume several transports in priority order: `bin/console messenger:consume async low_priority`
-   - systemd: template unit `/etc/systemd/system/shopware_consumer@.service` with `ExecStart=php …/bin/console messenger:consume --time-limit=60 --memory-limit=512M async low_priority`, a `shopware_consumer.target`, then `systemctl enable shopware_consumer@{1..3}.service`, `systemctl enable shopware_consumer.target`, `systemctl start shopware_consumer.target`.
+   - Multiple transports in priority order: `bin/console messenger:consume async low_priority`
+   - Options: `bin/console messenger:consume -h`
+   - systemd: template unit `/etc/systemd/system/shopware_consumer@.service` (`ExecStart=php /var/www/html/bin/console messenger:consume --time-limit=60 --memory-limit=512M async low_priority`, `Restart=always`) plus `/etc/systemd/system/shopware_consumer.target`; then `systemctl enable shopware_consumer@{1..3}.service`, `systemctl enable shopware_consumer.target`, `systemctl start shopware_consumer.target`.
 2. Disable the admin worker once CLI workers run:
-
-```yaml
-# config/packages/shopware.yaml
-shopware:
-    admin_worker:
-        enable_admin_worker: false
-```
-
-   If you keep the admin worker, `shopware.admin_worker` also has `poll_interval` (installed default `20` seconds, must stay below PHP `max_execution_time`) and `transports` (installed default `["webhook", "async", "low_priority"]`).
-3. Transports (defined in core `framework.yaml`) via env vars:
-   - `MESSENGER_TRANSPORT_DSN` → `async` (default `doctrine://default?auto_setup=false`)
-   - `MESSENGER_TRANSPORT_LOW_PRIORITY_DSN` → `low_priority`
-   - `MESSENGER_TRANSPORT_FAILURE_DSN` → `failed` (`failure_transport: failed`)
-   - a `webhook` transport (`shopware-webhook://default`, no retries) also exists.
-4. Async mails: `framework.mailer.message_bus: 'messenger.default_bus'` in `config/packages/framework.yaml`. Core routing already sends `Symfony\Component\Mailer\Messenger\SendEmailMessage` to `async`.
-5. Routing in `framework.messenger.routing` by class name, a list of transports, or `'*'` as fallback. Core default routes `Shopware\Core\Framework\MessageQueue\AsyncMessageInterface` → `async` and `Shopware\Core\Framework\MessageQueue\LowPriorityMessageInterface` → `low_priority`. To replace (not add to) a route:
-
-```yaml
-shopware:
-  messenger:
-    routing_overwrite:
-      'Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexingMessage': entity_indexing
-```
-
-6. Messages handled inside Shopware must go through the bus `messenger.bus.default`; custom buses (`framework.messenger.buses`, `default_bus`) are for external systems.
+   ```yaml
+   # config/packages/shopware.yaml
+   shopware:
+       admin_worker:
+           enable_admin_worker: false
+   ```
+   If you keep it, `poll_interval` (seconds, core default `20`, must stay below PHP `max_execution_time`) and `transports` (core default `["webhook", "async", "low_priority"]`) are configurable under `shopware.admin_worker`.
+3. Send mails via the queue (core default is synchronous, `message_bus: false`):
+   ```yaml
+   # config/packages/framework.yaml
+   framework:
+       mailer:
+           message_bus: 'messenger.default_bus'
+   ```
+4. Transports are set by env vars (core defaults are Doctrine DSNs with `auto_setup=false`):
+   - `MESSENGER_TRANSPORT_DSN` → `async` transport
+   - `MESSENGER_TRANSPORT_LOW_PRIORITY_DSN` → `low_priority` (`queue_name=low_priority`)
+   - `MESSENGER_TRANSPORT_FAILURE_DSN` → `failed` (`queue_name=failed`)
+5. Route messages by class in `framework.messenger.routing` (`'*'` as fallback, a list sends to several transports). To replace, not extend, an existing route:
+   ```yaml
+   shopware:
+     messenger:
+       routing_overwrite:
+         'Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexingMessage': entity_indexing
+   ```
 
 ## Essential identifiers
 
 - `bin/console messenger:consume`
-- `shopware.admin_worker.enable_admin_worker`, `poll_interval`, `transports`
-- `MESSENGER_TRANSPORT_DSN`, `MESSENGER_TRANSPORT_LOW_PRIORITY_DSN`, `MESSENGER_TRANSPORT_FAILURE_DSN`
+- `shopware.admin_worker.enable_admin_worker`, `shopware.admin_worker.poll_interval`, `shopware.admin_worker.transports`
 - `shopware.messenger.routing_overwrite`
-- `Shopware\Core\Framework\MessageQueue\AsyncMessageInterface`, `LowPriorityMessageInterface`
-- `messenger.bus.default`
+- `MESSENGER_TRANSPORT_DSN`, `MESSENGER_TRANSPORT_LOW_PRIORITY_DSN`, `MESSENGER_TRANSPORT_FAILURE_DSN`
+- `Shopware\Core\Framework\MessageQueue\AsyncMessageInterface` (routed to `async`), `Shopware\Core\Framework\MessageQueue\LowPriorityMessageInterface` (routed to `low_priority`)
+- `messenger.bus.default` — the bus Shopware handlers run on; mandatory for messages handled inside Shopware.
 
 ## Gotchas
 
-- Also run a worker for the failed queue, otherwise failed messages are never processed.
-- `async`/`low_priority` retry 3 times (delay 1000 ms, multiplier 2) before a message ends up in `failed`.
-- Worker count depends on message mix: product indexing is slow; route heavy types to their own transport to limit workers or avoid DB locks.
-- Without a configured transport, messages are handled synchronously.
+- Run a CLI worker for the `failed` transport too, otherwise failed messages are never processed.
+- `async` and `low_priority` retry 3 times (delay 1000 ms, multiplier 2) before a message goes to the failure transport.
+- Cron-started workers can pile up when messages run past the time limit; a worker always finishes its current message first.
+- Product indexing messages are slow; monitor the queue and size workers accordingly, or route them to their own transport.
+- Without any transport configured, messages are handled synchronously.
 
 ## Version notes
 
 - `shopware.messenger.routing_overwrite` exists since 6.6.4.0 and 6.5.12.0.
 
-## Code check (6.7.13.0)
-- confirmed `enable_admin_worker` — default true in shipped config — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:386
-- corrected `poll_interval` — docs example: 30; installed default 20 — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:390
-- corrected `transports` — docs: ["async", "low_priority"]; installed default adds webhook first — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:392
-- confirmed `MESSENGER_TRANSPORT_DSN` — Doctrine default DSN — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:3
-- confirmed `MESSENGER_TRANSPORT_FAILURE_DSN` — used by failed transport — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:66
-- confirmed `max_retries` — 3 retries on async — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:71
-- corrected `messenger.bus.default` — docs: a service tag; it is the bus id in framework config — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:88
-- confirmed `AsyncMessageInterface` — routed to async by default — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:94
-- confirmed `routing_overwrite` — config node — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1465
-- confirmed `EntityIndexingMessage` — implements AsyncMessageInterface — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexingMessage.php:12
+## Code check (6.7.15.1)
+- confirmed `admin_worker.enable_admin_worker` — boolean, default true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:263
+- confirmed `admin_worker.poll_interval` — integer, default 20 — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:260
+- corrected `admin_worker.transports` — docs: ["async", "low_priority"]; core default lists webhook first — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:422
+- confirmed `messenger.routing_overwrite` — map of class to transport — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1510
+- confirmed `MESSENGER_TRANSPORT_DSN` — default Doctrine DSN for async — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:3
+- confirmed `MESSENGER_TRANSPORT_LOW_PRIORITY_DSN` — low_priority transport DSN — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:4
+- confirmed `MESSENGER_TRANSPORT_FAILURE_DSN` — failed transport DSN — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:5
+- confirmed `AsyncMessageInterface` — routed to async by default — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:96
+- confirmed `messenger.bus.default` — Shopware bus with QueuedTimeMiddleware — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:90
+- confirmed `mailer.message_bus` — false by default, mails sent synchronously — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:36

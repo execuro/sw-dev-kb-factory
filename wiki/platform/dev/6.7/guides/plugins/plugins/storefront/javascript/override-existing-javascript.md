@@ -6,23 +6,24 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/javascript/override-existing-javascript.html
 sourceHash: 834b684b2a48a239370e0a9bc8bbc148912f79e4
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["PluginManager.override", "PluginManager.getPlugin", "CookiePermissionPlugin", "CookiePermission", "CookieStorage", "_hideCookieBar", "[data-cookie-permission]", "main.js", "shopware-cli project storefront-build", "override javascript plugin", "extend storefront plugin", "async plugin"]
-summary: Override a core Storefront JS plugin by subclassing it and registering it via PluginManager.override() in main.js; example extends CookiePermission.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["PluginManager.override", "CookiePermissionPlugin", "CookiePermission", "CookieStorage", "_hideCookieBar", "main.js", "window.PluginManager", "override storefront plugin", "extend javascript plugin", "storefront js", "cookie bar", "shopware-cli project storefront-build"]
+summary: Override a core Storefront JS plugin by extending its class and registering it with window.PluginManager.override() in the plugin's main.js.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md", "platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-Storefront JavaScript plugins are plain ES classes, so a Shopware plugin can subclass one, override its methods (calling `super` where needed) and swap its registration with `PluginManager.override()`. The guide's example extends the core `CookiePermission` plugin so the cookie bar always shows and asks for confirmation before hiding.
+How to replace the logic of an existing Storefront JavaScript plugin from a Shopware plugin: extend the original vanilla JS class, override its methods, and register the subclass via `PluginManager.override()`. The example extends the core `CookiePermission` plugin so the cookie bar always shows and asks for confirmation before hiding.
 
 ## When to use
 
-You need to change the behavior of an existing Storefront JS plugin and no emitter event covers it (check [reacting to JavaScript events](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md) first). Requires a running plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) and familiarity with [adding custom JavaScript](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md).
+When a core (or third-party) Storefront JS plugin needs different behaviour and no `$emitter` event covers the change (see [reacting to JavaScript events](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md)). Requires a running plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)) and familiarity with [adding custom JavaScript](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/add-custom-javascript.md).
 
 ## Key steps / config
 
-1. Create `<plugin root>/src/Resources/app/storefront/src/my-cookie-permission/my-cookie-permission.plugin.js` with a class extending the original:
+1. Create `<plugin root>/src/Resources/app/storefront/src/my-cookie-permission/my-cookie-permission.plugin.js`.
+2. Extend the original class and override methods, calling `super` where the original behaviour is still wanted:
 
 ```javascript
 import CookiePermissionPlugin from 'src/plugin/cookie/cookie-permission.plugin';
@@ -39,38 +40,39 @@ export default class MyCookiePermission extends CookiePermissionPlugin {
 }
 ```
 
-2. If the original class cannot be imported (e.g. a third-party plugin without an alias), get it from the registry: `window.PluginManager.getPlugin('CookiePermission').get('class')` and extend that.
-3. Register in `<plugin root>/src/Resources/app/storefront/src/main.js` (a `main.ts` there is also picked up) with the registered plugin name and selector. Core registers `CookiePermission` with a dynamic import, so override it the same way:
+3. Register it in the auto-loaded entry point `<plugin root>/src/Resources/app/storefront/src/main.js` with `override()` (not `register()`), using the original plugin name and selector. Because core registers `CookiePermission` as an async (lazy-import) plugin, use a dynamic import:
 
 ```javascript
-window.PluginManager.override('CookiePermission', () => import('./my-cookie-permission/my-cookie-permission.plugin'), '[data-cookie-permission]');
+const PluginManager = window.PluginManager;
+PluginManager.override('CookiePermission', () => import('./my-cookie-permission/my-cookie-permission.plugin'), '[data-cookie-permission]');
 ```
 
-   For a plugin registered synchronously, pass the class directly: `PluginManager.override('Name', MyClass, '[selector]')`.
-4. Build the Storefront: `shopware-cli project storefront-build` (template) or `composer run build:js:storefront` (platform contribution setup), then reload.
+   A synchronous form `PluginManager.override('CookiePermission', MyCookiePermission, '[data-cookie-permission]')` with a static import is also accepted by the code.
+4. Build the Storefront: `shopware-cli project storefront-build` (template project) or `composer run build:js:storefront` (platform contribution setup), then reload.
 
 ## Essential identifiers
 
-- `window.PluginManager`, `PluginManager.override(overrideName, pluginClass, selector, options)`, `PluginManager.register()`, `PluginManager.getPlugin()`
+- `window.PluginManager`, `PluginManager.override(name, pluginClass, selector, options)`
+- `PluginManager.getPlugin(name)` — returns the registry entry; `.get('class')` gives the class
 - `CookiePermissionPlugin` (`src/plugin/cookie/cookie-permission.plugin`), registered as `CookiePermission` on `[data-cookie-permission]`
-- `CookieStorage` (`src/helper/storage/cookie-storage.helper`), `this.options.cookieName` (default `cookie-preference`)
+- `CookieStorage` (`src/helper/storage/cookie-storage.helper`), `this.options.cookieName`
 - `init()`, `_hideCookieBar()`
 
 ## Gotchas
 
-- Each JS plugin can only be overridden once; if two plugins override the same one, only the last registration works (`override()` deregisters and re-registers under the same name).
-- `override()` only works on an already registered name — otherwise it logs "Trying to extend non-registered plugin" and does nothing. Core registers `CookiePermission` only when `window.useDefaultCookieConsent` is set.
-- An async (dynamic-import) registered plugin needs an async override import as well.
-- Reloading the page brings the cookie bar back in this example, by design.
+- Each JS plugin can effectively be overridden once: `override()` deregisters the current registration and registers the new class under the same name, so a second override replaces the first — the last one wins.
+- When the original class cannot be imported (e.g. third-party plugin without alias), the source suggests `window.PluginManager.getPlugin('CookiePermission').get('class')`. For a plugin registered async, the registry holds the lazy-import function, not a class, until it has been loaded — extending that value fails.
+- Core only registers `CookiePermission` when `window.useDefaultCookieConsent` is set; otherwise there is nothing to override.
+- The override plugin fully replaces the original; on page reload the confirm behaviour restarts from `init()`.
 
-## Code check (6.7.13.0)
-- confirmed `PluginManager::override()` — calls extend() with the same name for both arguments — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:698
-- confirmed `PluginManagerSingleton::extend()` — warns and returns if not registered; same name deregisters then registers — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:122
-- confirmed `PluginManager::getPlugin()` — returns the registry definition — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:716
-- confirmed `class` — registry map key holding the plugin class — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.registry.js:50
-- confirmed `CookiePermission` — registered async on [data-cookie-permission] inside the useDefaultCookieConsent check — vendor/shopware/storefront/Resources/app/storefront/src/main.js:130
-- confirmed `CookiePermissionPlugin` — core class in src/plugin/cookie/cookie-permission.plugin.js — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:10
-- confirmed `cookieName` — option default 'cookie-preference' — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:23
-- confirmed `CookiePermissionPlugin::init()` — checks preference via CookieStorage — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:42
-- confirmed `CookiePermissionPlugin::_hideCookieBar()` — hides bar and publishes hideCookieBar — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:131
-- confirmed `cookie-storage.helper` — import path src/helper/storage/cookie-storage.helper — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:7
+## Code check (6.7.15.1)
+- confirmed `PluginManager.override()` — calls `extend(overrideName, overrideName, …)` — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:871
+- confirmed `extend()` — same name deregisters then registers the new class (last override wins) — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:127
+- confirmed `register()` — class without prototype is stored as async lazy import — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:79
+- confirmed `PluginManager.getPlugin()` — returns registry entry — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:889
+- confirmed `CookiePermission` — registered async under `window.useDefaultCookieConsent` — vendor/shopware/storefront/Resources/app/storefront/src/main.js:132
+- confirmed `CookiePermissionPlugin` — default export of cookie-permission.plugin.js — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:10
+- confirmed `_hideCookieBar()` — publishes `hideCookieBar` — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:131
+- confirmed `cookieName` — default `cookie-preference` — vendor/shopware/storefront/Resources/app/storefront/src/plugin/cookie/cookie-permission.plugin.js:23
+- confirmed `setItem()` — static setter on `CookieStorageHelper` — vendor/shopware/storefront/Resources/app/storefront/src/helper/storage/cookie-storage.helper.js:23
+- unverified `shopware-cli project storefront-build` — CLI tooling outside the vendor roots

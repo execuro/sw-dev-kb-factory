@@ -5,72 +5,74 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/project-commands/mysql-dump.html
-sourceHash: af4238466b01ffad0d5ede41003e183f50f25a9d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli project dump", "--anonymize", "--clean", "--skip-lock-tables", "--compression", "--limit", "dump.rewrite", "dump.nodata", "dump.ignore", "dump.where", "dump.limit", "mysql dump", "database export", "anonymize production data"]
-summary: "shopware-cli project dump: native MySQL dump with compression, anonymization, --clean, row limits and dump.rewrite/nodata/ignore/where config."
-lastBuilt: 2026-09-15
+sourceHash: 43eb00bc2e5caf74735e6a429cb228f7772355ef
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli project dump", "mysql dump", "database export", "--anonymize", "anonymization", "gdpr safe dump", "--clean", "--skip-lock-tables", "--compression", "--limit", "dump.rewrite", "dump.nodata", "dump.ignore", "dump.where", "dump.limit"]
+summary: shopware-cli project dump writes a native MySQL dump with compression, anonymization, table cleaning/ignoring, where clauses and FK-aware row limits.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-`shopware-cli project dump` is a native MySQL dump implementation (not `mysqldump`) that writes `dump.sql` in the current directory, with options to anonymize, skip or filter table data.
+`shopware-cli project dump` is a native MySQL dump implementation (it does not call `mysqldump`). It writes `dump.sql` in the current directory using the database credentials from the project's `.env`, and can compress, anonymize, skip or filter table data.
 
 ## When to use
 
-Exporting a (production) Shopware database for local development, optionally anonymized and trimmed.
+Exporting a production or staging database for local development — typically anonymized, without log/queue tables, and optionally trimmed to a subset of rows.
 
 ## Key steps / config
 
 ```bash
-shopware-cli project dump                     # credentials from .env
+shopware-cli project dump
 shopware-cli project dump --host 127.0.0.1 --username root --password root --database sw6
 shopware-cli project dump --anonymize
 shopware-cli project dump --limit order=100
 ```
 
-Flags: `--compression=gzip` or `--compression=zstd`; `--skip-lock-tables` (no LOCK TABLES, for large DBs or users without lock rights); `--anonymize` (known customer-data tables); `--clean` (skip content of log-like tables); `--limit <table>=<rows>`.
+- `--compression=gzip` or `--compression=zstd` compresses the dump.
+- `--skip-lock-tables` skips the lock-tables step (large DBs, or a MySQL user without lock rights). Locking is on by default.
+- `--anonymize` anonymizes known customer-data tables while keeping structure and relations; the list is in the shopware-cli source ([config.go](https://github.com/shopware/shopware-cli/blob/main/internal/shop/config.go#L246)).
+- `--clean` dumps no content for default tables: `cart`, `customer_recovery`, `messenger_messages`, `increment`, `elasticsearch_index_task`, `log_entry`, `notification`, `payment_token`, `refresh_token`, `version`, `version_commit`, `version_commit_data`, `webhook_event_log` (plus legacy names, see Gotchas).
+- `--limit <table>=<rows>` caps rows of one table; tables referencing it via foreign keys (transitively) keep only matching rows; for self-references (e.g. `product.parent_id`) ancestors of kept rows are exported too.
 
-`--clean` skips the content of: `cart`, `customer_recovery`, `dead_message`, `enqueue`, `messenger_messages`, `increment`, `elasticsearch_index_task`, `log_entry`, `message_queue_stats`, `notification`, `payment_token`, `refresh_token`, `version`, `version_commit`, `version_commit_data`, `webhook_event_log`.
-
-`.shopware-project.yml` shape:
+Persistent settings in `.config/shopware-project.yml`:
 
 ```yaml
 dump:
   rewrite:
     <table-name>:
-      <column-name>: "'new-value'"            # or "faker.Internet().Email()"
-  nodata: [<table-name>]                    # keep structure, drop content
-  ignore: [<table-name>]                    # drop table entirely
+      <column-name>: "'new-value'"            # literal
+      <column-name>: "faker.Internet().Email()" # go-faker
+  nodata: [<table-name>]      # skip content only
+  ignore: [<table-name>]      # skip table entirely
   where:
     <table-name>: 'id > 5'
   limit:
-    <table-name>:
-      rows: 100
-      order_by: 'created_at DESC'           # default when created_at exists
+    <table-name>: { rows: 100, order_by: 'created_at DESC' }
 ```
+
+`limit.order_by` defaults to `created_at DESC` when the table has a `created_at` column.
 
 ## Essential identifiers
 
 - `shopware-cli project dump`, `dump.sql`
-- `--anonymize`, `--clean`, `--skip-lock-tables`, `--compression`, `--limit`, `--host`, `--username`, `--password`, `--database`
-- `dump.rewrite`, `dump.nodata`, `dump.ignore`, `dump.where`, `dump.limit.<table>.rows`, `dump.limit.<table>.order_by`
+- Flags: `--host`, `--username`, `--password`, `--database`, `--compression`, `--skip-lock-tables`, `--anonymize`, `--clean`, `--limit`
+- Config: `dump.rewrite`, `dump.nodata`, `dump.ignore`, `dump.where`, `dump.limit` (`rows`, `order_by`)
 
 ## Gotchas
 
-- Table locking is on by default and fails without lock privileges; use `--skip-lock-tables`.
-- `--limit` also filters tables referencing the limited table via foreign keys (transitively); a second limit on an already-filtered table is rejected. Self-referencing tables (e.g. `product.parent_id`) also export ancestors of kept rows. Requires `CREATE` and `DROP` privileges (staging tables).
-- The source's prose says `dump.ignore` for skipping extra table content, but its example uses `dump.nodata`; `dump.ignore` drops whole tables.
-- Rewrite values are SQL expressions (note the inner quotes) or go-faker calls.
-- Several `--clean` tables (`enqueue`, `dead_message`, `message_queue_stats`) are dropped by 6.5 destructive migrations and only exist on databases that have not run them.
+- The source prose says additional content-less tables go under `dump.ignore`, but its example uses `dump.nodata`; `dump.ignore` is shown separately as dropping the whole table, not only its content.
+- A second `--limit` on a table already filtered via foreign keys is rejected.
+- `--limit` needs MySQL `CREATE` and `DROP` privileges (kept rows are frozen in staging tables).
+- The `--clean` list also names `dead_message`, `enqueue` and `message_queue_stats`; core 6.5 migrations drop these tables, so they do not exist on a 6.7 database.
 
-## Code check (6.7.13.0)
-- confirmed `DATABASE_URL` — core builds its DB connection from this env var (the `.env` credentials) — vendor/shopware/core/Framework/Adapter/Database/MySQLFactory.php:42
-- confirmed `enqueue` — dropped by destructive migration — vendor/shopware/core/Migration/V6_5/Migration1669125399DropEnqueueTable.php:26
-- confirmed `dead_message` — dropped by destructive migration — vendor/shopware/core/Migration/V6_5/Migration1669124190AddDoctrineMessengerTable.php:43
-- confirmed `message_queue_stats` — dropped by destructive migration — vendor/shopware/core/Migration/V6_5/Migration1675082889DropUnusedTables.php:22
-- confirmed `messenger_messages` — created for the Doctrine messenger transport — vendor/shopware/core/Migration/V6_5/Migration1669124190AddDoctrineMessengerTable.php:24
-- confirmed `notification` — table created in 6.7 — vendor/shopware/core/Migration/V6_7/Migration1742563555AddNotificationTable.php:23
-- confirmed `webhook_event_log` — table exists — vendor/shopware/core/Migration/V6_4/Migration1620147234CreateWebhookEventLogTable.php:23
-- confirmed `increment` — table exists — vendor/shopware/core/Migration/V6_4/Migration1635388654CreateIncrementTable.php:23
-- confirmed `cart` — table exists — vendor/shopware/core/Migration/V6_3/Migration1536232980Cart.php:23
-- unverified `shopware-cli project dump` — Go shopware-cli command, flags and `dump.*` config, out of scope
+## Code check (6.7.15.1)
+- confirmed `messenger_messages` — Doctrine Messenger table created by core migration — vendor/shopware/core/Migration/V6_5/Migration1669124190AddDoctrineMessengerTable.php:24
+- confirmed `increment` — increment table — vendor/shopware/core/Migration/V6_4/Migration1635388654CreateIncrementTable.php:23
+- confirmed `notification` — table added in 6.7 migrations — vendor/shopware/core/Migration/V6_7/Migration1742563555AddNotificationTable.php:23
+- confirmed `webhook_event_log` — webhook log table — vendor/shopware/core/Migration/V6_4/Migration1620147234CreateWebhookEventLogTable.php:23
+- confirmed `customer_recovery` — password recovery table — vendor/shopware/core/Migration/V6_3/Migration1570622696CustomerPasswordRecovery.php:26
+- corrected `dead_message` — docs: listed for `--clean`; dropped by a 6.5 migration — vendor/shopware/core/Migration/V6_5/Migration1669124190AddDoctrineMessengerTable.php:43
+- corrected `enqueue` — docs: listed for `--clean`; dropped by a 6.5 migration — vendor/shopware/core/Migration/V6_5/Migration1669125399DropEnqueueTable.php:26
+- corrected `message_queue_stats` — docs: listed for `--clean`; dropped by a 6.5 migration — vendor/shopware/core/Migration/V6_5/Migration1675082889DropUnusedTables.php:22
+- confirmed `ParentFkField` — product has a parent FK (self-reference `product.parent_id`) — vendor/shopware/core/Content/Product/ProductDefinition.php:155
+- unverified `shopware-cli project dump` — Go CLI, not part of the Shopware core/storefront/administration packages

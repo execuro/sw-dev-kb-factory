@@ -1,28 +1,35 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-components/order-approval/_index.md
-title: Order Approval
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
+id: platform/dev/6.7/products/extensions/b2b-components/order-approval/_index.md
+sourceHash: 6bae853e2f2b907db342bba508a8c2367bf9725c
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/order-approval/
+title: Order Approval
 version: "6.7"
 versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/order-approval/
-sourceHash: 6bae853e2f2b907db342bba508a8c2367bf9725c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["order approval", "b2b components", "employee management", "approval rules", "pending orders", "approve order", "decline order", "b2b commercial", "order release"]
-summary: "Order Approval B2B component: rules deciding which employee orders need approval and who approves; requires Employee Management installed and active."
-lastBuilt: 2026-09-15
+keywords: ["order approval", "b2b", "employee management", "approval rules", "pending orders", "approve order", "decline order", "b2b components", "order review", "commercial"]
+summary: B2B Order Approval component overview - approval rules decide which employee orders need review; requires the Employee Management component.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview of the Order Approval component, part of B2B Employee Management. It lets you define rules that determine which orders require approval and which employees may approve them, and provides a view of all pending orders to approve or decline.
+Order Approval is a B2B component that belongs to B2B Employee Management. It lets you define rules that decide which orders require approval and which employees may approve them, and it gives you a view of all pending orders where they can be approved or declined.
 
 ## When to use
 
-When B2B employee orders must pass an approval step before being placed, based on configurable rules.
+When orders placed by B2B employees must be reviewed by another employee (or the business partner) before they are placed.
 
 ## Key steps / config
 
-- Requirement: the Employee Management component must be installed and activated.
+- Install and activate the Employee Management component first. Order Approval depends on it.
+- Define approval rules for the orders that need review and assign the employees who may approve them.
+- Review the pending orders list and approve or decline each order.
 
-## Code check (6.7.13.0)
-- unverified `order approval` — Shopware Commercial (B2B) plugin feature; no matching code in vendor/shopware/{core,storefront,administration}; out of scope
-- unverified `employee management` — Commercial plugin dependency, out of scope
+## Gotchas
+
+- Order Approval does not work without the Employee Management component installed and activated.
+- The component ships with the Shopware Commercial B2B extension, not with the core packages.
+
+## Code check (6.7.15.1)
+- unverified `Order Approval` — Shopware Commercial B2B component, not in the core/storefront/administration packages
+- unverified `Employee Management` — Shopware Commercial B2B component, not in the core/storefront/administration packages

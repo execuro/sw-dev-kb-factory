@@ -6,23 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/plugin-fundamentals/add-scheduled-task.html
 sourceHash: a0e29ebe2decce755740cfa9f29b7a6aa5506049
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ScheduledTask", "ScheduledTaskHandler", "DynamicallyScheduledTaskHandler", "shopware.scheduled.task", "messenger.message_handler", "getNextExecutionTime", "scheduled-task:register", "scheduled-task:run", "messenger:consume", "cronjob", "cron", "recurring task", "background job"]
-summary: "Plugin scheduled task: ScheduledTask and handler classes, service tags, DynamicallyScheduledTaskHandler, register/run/consume commands."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-custom-commands.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ScheduledTask", "ScheduledTaskHandler", "DynamicallyScheduledTaskHandler", "getNextExecutionTime", "shopware.scheduled.task", "messenger.message_handler", "AsMessageHandler", "scheduled-task:register", "scheduled-task:run", "messenger:consume", "scheduled_task", "cronjob", "cron"]
+summary: Create a ScheduledTask plus ScheduledTaskHandler in a plugin, tag them, optionally reschedule dynamically, and run them via scheduled-task:run.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md", "platform/dev/6.7/guides/plugins/plugins/services/add-custom-service.md", "platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-custom-commands.md"]
 ---
 ## What it is
 
-Shopware's cronjob equivalent: a `ScheduledTask` class defines the task name and interval, and a `ScheduledTaskHandler` (a Messenger handler) executes `run()` when the task is dispatched to the message bus.
+Shopware's cronjob mechanism: a `ScheduledTask` message class defines the task name and interval, and a `ScheduledTaskHandler` (a Messenger handler) executes the work when the task is dispatched.
 
 ## When to use
 
-For recurring background work in a plugin, e.g. periodically cleaning up old entries. For manual CLI work, use a [custom command](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-custom-commands.md).
+Code must run periodically, e.g. cleaning up old entries, from a plugin.
 
 ## Key steps / config
 
-1. Register both services in `<plugin root>/src/Resources/config/services.php`:
+1. Register both classes in `<plugin root>/src/Resources/config/services.php` (see [Dependency Injection](platform/dev/6.7/guides/plugins/plugins/services/dependency-injection.md)):
 
 ```php
 $services->set(ExampleTask::class)
@@ -33,9 +33,9 @@ $services->set(ExampleTaskHandler::class)
     ->tag('messenger.message_handler');
 ```
 
-The handler arguments map to the base constructor `(EntityRepository $scheduledTaskRepository, LoggerInterface $exceptionLogger)`. The task is saved to the database once the plugin is activated.
+The handler constructor takes the `scheduled_task` repository and a logger. The task is saved to the database when the plugin is activated.
 
-2. Task class — extend `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask` and implement both abstract static methods:
+2. Task class extends `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask` and implements both abstract static methods:
 
 ```php
 class ExampleTask extends ScheduledTask
@@ -45,53 +45,52 @@ class ExampleTask extends ScheduledTask
 }
 ```
 
-3. Handler — extend `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTaskHandler`, implement `run()`, mark with `#[AsMessageHandler(handles: ExampleTask::class)]`. Optionally implement `Shopware\Core\Framework\MessageQueue\ScheduledTask\DynamicallyScheduledTaskHandler` to compute the next run:
+Prefix the task name with your vendor (`swag.`) to avoid collisions.
+
+3. Handler extends `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTaskHandler`, is marked `#[AsMessageHandler(handles: ExampleTask::class)]`, and implements `run(): void`.
+
+4. Optional dynamic rescheduling (6.7.13.0+): also implement `Shopware\Core\Framework\MessageQueue\ScheduledTask\DynamicallyScheduledTaskHandler`:
 
 ```php
-#[AsMessageHandler(handles: ExampleTask::class)]
 class ExampleTaskHandler extends ScheduledTaskHandler implements DynamicallyScheduledTaskHandler
 {
     public function run(): void { /* ... */ }
-
     public function getNextExecutionTime(ScheduledTask $task, ScheduledTaskEntity $taskEntity): ?\DateTimeInterface
-    { return $this->resolveNextPendingTimestamp(); } // null = default schedule
+    { /* ... */ }
 }
 ```
 
-4. Default rescheduling after a run: `nextExecutionTime + runInterval`, capped to now if in the past; status set to `scheduled`. With `DynamicallyScheduledTaskHandler`, `getNextExecutionTime()` is called after `run()`; `null` falls back to the default, a past time is capped to now so the task runs again as soon as possible.
-5. Run locally:
-   - `bin/console scheduled-task:register` — register tasks without reinstalling the plugin
-   - `bin/console scheduled-task:run` — starts the `ScheduledTaskRunner`, dispatches due tasks
-   - `bin/console messenger:consume` — executes the dispatched messages
+Called after `run()`; `null` falls back to the default `nextExecutionTime + runInterval` (capped to now); a past time runs the task again as soon as possible.
+
+5. Execute: `bin/console scheduled-task:register` (register without reinstalling), `bin/console scheduled-task:run` (starts `ScheduledTaskRunner`, dispatches due tasks), `bin/console messenger:consume` (executes dispatched messages). The admin worker replaces the manual consume.
 
 ## Essential identifiers
 
 - `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask` — `getTaskName()`, `getDefaultInterval()`
 - `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTaskHandler` — `run()`
 - `Shopware\Core\Framework\MessageQueue\ScheduledTask\DynamicallyScheduledTaskHandler` — `getNextExecutionTime()`
-- `shopware.scheduled.task`, `messenger.message_handler` — service tags
-- `scheduled_task.repository`, table `scheduled_task`
-- `scheduled-task:register`, `scheduled-task:run`, `messenger:consume`
+- Tags `shopware.scheduled.task`, `messenger.message_handler`; service `scheduled_task.repository`
+- `scheduled-task:register`, `scheduled-task:run`, `messenger:consume`; table `scheduled_task`
 
 ## Gotchas
 
-- Prefix the task name with your vendor (`swag.`) to avoid collisions.
-- A task only runs when its `status` in `scheduled_task` is `scheduled` (not needed with the admin worker).
-- Tag the handler `messenger.message_handler`: the core compiler pass only injects the `ScheduledTaskExecutor` into handlers carrying that tag; otherwise the handler falls back to a deprecated inline execution path that throws once `v6.8.0.0` is active.
-- Handler service and task service are separate: registering the task makes it persistable and schedulable; only the handler actually executes `run()`.
+- A task only runs while its `status` in `scheduled_task` is `scheduled`.
+- In 6.7.15.1 the `ScheduledTaskExecutor` is injected only into services tagged `messenger.message_handler`; a handler invoked without it falls back to deprecated inline execution, which throws once the `v6.8.0.0` flag is active.
+- Do not override `rescheduleTask()` for custom timing — it is deprecated for 6.8; implement `DynamicallyScheduledTaskHandler` instead.
+- Any `ScheduledTask` subclass is autoconfigured with `shopware.scheduled.task`; the explicit tag is still harmless.
 
 ## Version notes
 
-- `DynamicallyScheduledTaskHandler` is available since 6.7.13.0. The older approach of overriding `ScheduledTaskHandler::rescheduleTask()` is deprecated for 6.8.0.
+- `DynamicallyScheduledTaskHandler` is available since 6.7.13.0.
 
-## Code check (6.7.13.0)
-- confirmed `ScheduledTask::getTaskName()` — abstract static — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:37
-- confirmed `ScheduledTask::getDefaultInterval()` — abstract static int — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:42
-- confirmed `ScheduledTaskHandler::run()` — abstract — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskHandler.php:55
-- confirmed `ScheduledTaskHandler::__construct()` — scheduledTaskRepository, exceptionLogger args — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskHandler.php:26
-- confirmed `DynamicallyScheduledTaskHandler::getNextExecutionTime()` — nullable DateTimeInterface — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/DynamicallyScheduledTaskHandler.php:20
-- confirmed `persistNextExecutionTime` — null uses runInterval, past capped to now, status scheduled — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskExecutor.php:114
-- confirmed `messenger.message_handler` — executor injected only into tagged handlers — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/ScheduledTaskExecutorCompilerPass.php:29
-- confirmed `shopware.scheduled.task` — autoconfigured for ScheduledTask subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:90
-- confirmed `scheduled-task:run` — ScheduledTaskRunner command — vendor/shopware/core/Framework/MessageQueue/Command/ScheduledTaskRunner.php:19
-- deprecated `ScheduledTaskHandler::rescheduleTask()` — deprecated tag:v6.8.0 — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskHandler.php:109
+## Code check (6.7.15.1)
+- confirmed `ScheduledTask::getTaskName()` — abstract static, must be implemented — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:37
+- confirmed `ScheduledTask::getDefaultInterval()` — abstract static, interval in seconds — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:42
+- confirmed `ScheduledTaskHandler::run()` — abstract, must be implemented — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskHandler.php:55
+- confirmed `DynamicallyScheduledTaskHandler::getNextExecutionTime()` — returns nullable DateTimeInterface — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/DynamicallyScheduledTaskHandler.php:20
+- confirmed `shopware.scheduled.task` — autoconfigured for ScheduledTask subclasses — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:91
+- confirmed `messenger.message_handler` — executor injected into handlers with this tag — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/ScheduledTaskExecutorCompilerPass.php:29
+- confirmed `scheduled-task:register` — command name — vendor/shopware/core/Framework/MessageQueue/Command/RegisterScheduledTasksCommand.php:14
+- confirmed `scheduled-task:run` — command name of ScheduledTaskRunner — vendor/shopware/core/Framework/MessageQueue/Command/ScheduledTaskRunner.php:20
+- confirmed `ScheduledTaskDefinition::STATUS_SCHEDULED` — value `scheduled` — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskDefinition.php:24
+- deprecated `ScheduledTaskHandler::rescheduleTask()` — removed in v6.8.0, use DynamicallyScheduledTaskHandler — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTaskHandler.php:114

@@ -1,30 +1,29 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2022-04-28-tax-providers.md
-title: Introducing tax providers
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-04-28-tax-providers.html
+id: platform/dev/6.7/resources/references/adr/2022-04-28-tax-providers.md
 sourceHash: 6cd9f368931da9ccb3796c353529084c476f955e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["tax provider", "tax_provider", "AbstractTaxProvider", "TaxProviderProcessor", "TaxProviderResult", "TaxProviderRegistry", "shopware.tax.provider", "TaxProviderDefinition", "availabilityRuleId", "external tax calculation", "us sales tax", "adr"]
-summary: "ADR: tax_provider entity plus AbstractTaxProvider services (tag shopware.tax.provider) let external services overwrite cart taxes after calculation."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-04-28-tax-providers.html
+title: Introducing tax providers
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["tax provider", "external tax calculation", "tax_provider", "AbstractTaxProvider", "TaxProviderResult", "TaxProviderProcessor", "TaxProviderRegistry", "shopware.tax.provider", "TaxProviderExceptions", "processUrl", "availabilityRuleId", "TaxJar", "AvaTax", "us sales tax", "adr"]
+summary: "ADR: tax providers overwrite cart taxes; in 6.7 extend AbstractTaxProvider (tag shopware.tax.provider) and return TaxProviderResult."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2022-04-28, area checkout) introducing *tax providers*: a hook that runs after the cart is calculated and may overwrite line item, delivery and total taxes. Motivation: countries such as the USA have state/county-specific rates, served by external services like `TaxJar`, `Vertex` or `AvaTax`.
+An architecture decision record (2022-04-28) that adds *tax providers*: a hook that runs after the cart is calculated and can overwrite its taxes with rates from an external service such as `TaxJar`, `Vertex` or `AvaTax`. It targets markets like the USA, where the rate depends on the state and county the order ships to.
 
 ## When to use
 
-When a shop needs taxes computed by an external service or custom logic instead of Shopware's static tax rates, or when debugging why cart taxes differ from the configured tax rules.
+You need tax rates the built-in tax rules cannot express, for example rates that depend on the address. Or you are writing a plugin or app that calls an external tax service.
 
 ## Key steps / config
 
-Described as implemented in the installed code (the ADR's proposed names differ, see Gotchas):
-
-1. A `tax_provider` entity (`TaxProviderDefinition`) registers providers. Fields: `id`, `identifier` (required), `active`, `name` (translated), `priority` (required int), `processUrl` (app providers), `availabilityRuleId`, `appId`, `customFields` (translated). Defaults: `active` true.
-2. Implement a service extending `Shopware\Core\Checkout\Cart\TaxProvider\AbstractTaxProvider`. It is autoconfigured with the tag `shopware.tax.provider`. The entity's `identifier` must be the provider's class name — `TaxProviderRegistry` keys services by `$provider::class`.
+1. **Register a `tax_provider` entity row** with the fields `id`, `identifier` (required), `active`, `name` (translated), `priority` (required), `availabilityRuleId`, `processUrl`, `appId` and `customFields` (translated).
+2. **Plugin provider**: extend `Shopware\Core\Checkout\Cart\TaxProvider\AbstractTaxProvider`. Subclasses are autoconfigured with the tag `shopware.tax.provider`. `TaxProviderRegistry` keys providers by their class name, so the entity's `identifier` must be the provider's FQCN.
 
 ```php
 class MyTaxProvider extends AbstractTaxProvider
@@ -36,37 +35,35 @@ class MyTaxProvider extends AbstractTaxProvider
 }
 ```
 
-3. `TaxProviderResult` (`Shopware\Core\Checkout\Cart\TaxProvider\Struct\TaxProviderResult`) holds `?array $lineItemTaxes` (key: line item id), `?array $deliveryTaxes` (key: delivery id) and `?CalculatedTaxCollection $cartPriceTaxes`.
-4. `TaxProviderProcessor::process()` loads active providers whose `availabilityRuleId` is null or matches the context rule ids, sorts them by priority, and calls each one. App providers (with `app` and `processUrl`) are called via an HTTP request instead of a PHP service.
-5. The first result where `declaresTaxes()` is true stops the loop; its taxes are applied via `TaxAdjustment`.
+3. **App provider**: set `processUrl` and `appId` on the entity instead. `TaxProviderProcessor` sends a `TaxProviderPayload` to that URL, but only if the app has been granted the tax permission.
+4. **Result**: `TaxProviderResult` holds `?array $lineItemTaxes` (keyed by line item id), `?array $deliveryTaxes` (keyed by delivery id) and `?CalculatedTaxCollection $cartPriceTaxes`. If `declaresTaxes()` is true, no further provider is called, and `TaxAdjustment` overwrites the cart's taxes.
+
+`TaxProviderProcessor::process()` skips tax-free contexts. It loads providers that are `active` and whose `availabilityRuleId` is null or matches the context's rules, and calls them in order of `priority`, highest first.
 
 ## Essential identifiers
 
-- `tax_provider` / `TaxProviderDefinition`
 - `Shopware\Core\Checkout\Cart\TaxProvider\AbstractTaxProvider::provide()`
 - `Shopware\Core\Checkout\Cart\TaxProvider\Struct\TaxProviderResult`
-- `TaxProviderProcessor`, `TaxProviderRegistry`
-- service tag `shopware.tax.provider`
+- `Shopware\Core\Checkout\Cart\TaxProvider\TaxProviderProcessor`, `TaxProviderRegistry`
+- Service tag `shopware.tax.provider`, entity `tax_provider`
+- `Shopware\Core\Checkout\Cart\Exception\TaxProviderExceptions`
 
 ## Gotchas
 
-- The ADR names `TaxProviderInterface::provideTax()`, `TaxProviderStruct`, `TaxProviderHook`, `TaxProviderNotAvailableException`, `TaxProviderOutOfScopeException` and a `providerIdentifier` field; none exist in the installed code.
-- The ADR says the processor runs in `CartRuleLoader`. In code it is invoked from `CartOrderRoute` when placing an order and from `CartLoadRoute` only when the request passes `taxed`.
-- Provider exceptions (including a missing provider for an identifier) are collected; if any occurred, the processor logs and throws them after the loop. Since taxes are applied after full cart calculation, rules depending on changed taxes are not re-validated.
-- Tax-free contexts (`CartPrice::TAX_STATE_FREE`) skip tax providers entirely.
+- The ADR's `TaxProviderInterface::provideTax()`, `TaxProviderStruct` and `TaxProviderHook` do not exist. App providers are called over HTTP through `processUrl`.
+- The ADR places the processor in `CartRuleLoader`, limited to logged-in customers. In the code it runs from `CartOrderRoute` when an order is placed, and from `CartLoadRoute` only when the request sets `taxed`. There is no logged-in check.
+- Rules are not re-validated after taxes are overwritten.
+- There is no `TaxProviderOutOfScopeException`/`TaxProviderNotAvailableException`. Any `\Throwable`, or an identifier with no service, is collected into `TaxProviderExceptions` and the next provider is tried. If anything was collected, the processor throws `TaxProviderExceptions` after the loop.
+- The ADR's `providerIdentifier` is the field `identifier`, and `priority` is required with no default.
 
-## Version notes
-
-`TaxProviderDefinition::since()` returns `6.5.0.0`.
-
-## Code check (6.7.13.0)
-- corrected `AbstractTaxProvider` — docs: TaxProviderInterface with provideTax() — vendor/shopware/core/Checkout/Cart/TaxProvider/AbstractTaxProvider.php:11
-- confirmed `AbstractTaxProvider::provide()` — abstract method returning TaxProviderResult — vendor/shopware/core/Checkout/Cart/TaxProvider/AbstractTaxProvider.php:13
-- corrected `TaxProviderResult` — docs: TaxProviderStruct — vendor/shopware/core/Checkout/Cart/TaxProvider/Struct/TaxProviderResult.php:13
-- confirmed `shopware.tax.provider` — autoconfigured tag for AbstractTaxProvider — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:146
-- corrected `identifier` — docs: providerIdentifier; registry keys by class name — vendor/shopware/core/System/TaxProvider/TaxProviderDefinition.php:61
-- confirmed `priority` — required IntField; no default in getDefaults() — vendor/shopware/core/System/TaxProvider/TaxProviderDefinition.php:65
-- confirmed `tax_provider` — entity name — vendor/shopware/core/System/TaxProvider/TaxProviderDefinition.php:27
-- corrected `TaxProviderProcessor` — docs: called in CartRuleLoader; code calls it from CartOrderRoute and CartLoadRoute — vendor/shopware/core/Checkout/Cart/TaxProvider/TaxProviderProcessor.php:26
-- absent `TaxProviderHook` — not found in installed code; app providers use processUrl requests instead
-- absent `TaxProviderOutOfScopeException` — not found in installed code; all Throwables are collected
+## Code check (6.7.15.1)
+- absent `TaxProviderInterface` — replaced by `AbstractTaxProvider` in the installed code
+- confirmed `AbstractTaxProvider::provide()` — returns `TaxProviderResult` — vendor/shopware/core/Checkout/Cart/TaxProvider/AbstractTaxProvider.php:13
+- absent `TaxProviderStruct` — result struct is `TaxProviderResult`
+- confirmed `TaxProviderResult::declaresTaxes()` — stops provider iteration when taxes are set — vendor/shopware/core/Checkout/Cart/TaxProvider/Struct/TaxProviderResult.php:47
+- absent `TaxProviderHook` — apps are called via `processUrl` instead
+- absent `TaxProviderOutOfScopeException` — all throwables collected into `TaxProviderExceptions`
+- confirmed `shopware.tax.provider` — tagged iterator for the registry — vendor/shopware/core/Checkout/DependencyInjection/cart.php:374
+- corrected `TaxProviderProcessor::process()` — docs: called in `CartRuleLoader` for logged-in customers; no such check, called from cart routes — vendor/shopware/core/Checkout/Cart/TaxProvider/TaxProviderProcessor.php:45
+- corrected `identifier` — docs: field `providerIdentifier`, priority default 1 — vendor/shopware/core/System/TaxProvider/TaxProviderDefinition.php:64
+- absent `TaxProviderNotAvailableException` — no such exception in the installed code

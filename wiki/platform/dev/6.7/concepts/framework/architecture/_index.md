@@ -6,58 +6,58 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/architecture/
 sourceHash: de4d2b0b2455c12f6e3f0b8d24b8e58c3a98fa7e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["architecture", "Core", "Storefront", "Administration", "api-first", "headless", "Store API", "Admin API", "DAL", "EntityRepository", "ScheduledTask", "message queue", "plugin system", "separation of concerns"]
-summary: Shopware 6 architecture overview - Core, Storefront and Administration domains, API-first design, plugins/events, message queue and scheduled tasks.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["architecture", "shopware architecture", "core", "storefront", "administration", "api-first", "headless", "symfony", "data abstraction layer", "dal", "store api", "plugin system", "message queue", "scheduled tasks"]
+summary: Shopware 6.7 architecture overview - Core, Storefront and Administration domains on a Symfony, API-first base with DAL, plugins and queues.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Overview of Shopware's modular, API-first architecture built on Symfony. The platform is split into three domains that share one backend foundation and communicate through a shared API layer and a common plugin system:
+Overview of Shopware's architecture. Shopware is modular and API-first, built on Symfony plus modern frontend technologies. Concerns are separated into clearly defined layers so that storefront experiences, administrative tooling and core business logic can evolve independently while sharing one backend foundation.
 
-- **Core** — backend foundation: business logic, data abstraction, APIs, extension mechanisms.
-- **Storefront** — customer-facing presentation layer rendering sales channels and using the Store API.
-- **Administration** — management UI for merchants and operators.
+The system has three primary domains:
+
+- **Core** - the backend foundation: business logic, data abstraction, APIs and extension mechanisms.
+- **Storefront** - the customer-facing presentation layer that renders sales channels and talks to the Store API.
+- **Administration** - the management interface merchants and operators use to configure, manage and operate the platform.
+
+The three are unified through a shared API layer and a consistent plugin system, so features can be extended without being tightly coupled to a presentation layer.
 
 ## When to use
 
-When you need the mental model of where a feature belongs (Core vs. Storefront vs. Administration) before choosing an extension point, or when explaining how headless/composable setups relate to the default frontends.
+As the starting point for understanding where a piece of functionality lives (Core vs. Storefront vs. Administration) before reading the individual architecture concept pages, or when deciding at which layer an extension should hook in.
 
 ## Key steps / config
 
-Architectural principles stated by the source:
+Architectural principles the platform follows:
 
-1. **API-first** — all functionality is exposed via APIs (headless and composable commerce).
-2. **Separation of concerns** — Storefront/Administration are decoupled from backend logic and consume Core services instead of duplicating logic.
-3. **Extensibility** — plugins integrate through events, services and extension points, not by modifying core code.
-4. **Asynchronous processing** — indexing, messaging and integrations run via message queues and workers.
-5. **Domain-driven structure** — business logic is organized around commerce domains, not UI features.
+- **API-first design** - all functionality is exposed via APIs, enabling headless and composable commerce.
+- **Separation of concerns** - storefront and admin frontends are decoupled from backend logic.
+- **Extensibility** - plugins integrate through events, services and extension points instead of modifying core code.
+- **Asynchronous processing** - background work such as indexing, messaging and integrations runs through message queues and workers.
+- **Domain-driven structure** - business logic is organised around commerce domains, not UI features.
 
-Core components provided by the Core:
+What the Core provides:
 
-- Data Abstraction Layer (DAL) for database access — entry point `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`
+- Data Abstraction Layer (DAL) for database interaction
 - Business services and domain logic
-- Sales Channel / Store API (route scope id `store-api`) and Admin API (route scope id `api`)
-- Plugin and event system — plugins extend `Shopware\Core\Framework\Plugin`
-- Messaging and scheduled task infrastructure — `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask`
-- Entity indexing — `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`
+- Sales Channel and Store APIs
+- Plugin and event system
+- Messaging and scheduled task infrastructure
+
+The Storefront and Administration consume these Core services rather than duplicating logic, which keeps behaviour consistent across channels.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`
-- `Shopware\Core\Framework\Plugin`
-- `Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTask`
-- `Shopware\Core\Framework\DataAbstractionLayer\Indexing\EntityIndexer`
-- `store-api` / `api` route scopes
-- `Shopware\Storefront\Storefront` (Storefront bundle)
+- Core, Storefront, Administration
+- Data Abstraction Layer (DAL), Store API, plugin system, message queue, scheduled tasks
 
-## Code check (6.7.13.0)
-- confirmed `Framework` — framework layer is a Symfony bundle in core — vendor/shopware/core/Framework/Framework.php:57
-- confirmed `Storefront` — Storefront is its own bundle (also a theme) — vendor/shopware/storefront/Storefront.php:21
-- confirmed `EntityRepository` — DAL repository class exists in core — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:36
-- confirmed `Plugin` — plugins are Symfony bundles — vendor/shopware/core/Framework/Plugin.php:17
-- confirmed `ScheduledTask` — scheduled tasks are async messages — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:10
-- confirmed `EntityIndexer` — base class of the indexer pattern — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/EntityIndexer.php:9
-- confirmed `StoreApiRouteScope::ID` — Store API route scope id `store-api` — vendor/shopware/core/Framework/Routing/StoreApiRouteScope.php:15
-- confirmed `ApiRouteScope::ID` — Admin API route scope id `api` — vendor/shopware/core/Framework/Routing/ApiRouteScope.php:15
-- unverified `Administration` — bundle class sits outside the administration src root in scope
+## Code check (6.7.15.1)
+- confirmed `Kernel` — Shopware kernel extends the Symfony HttpKernel — vendor/shopware/core/Kernel.php:37
+- confirmed `EntityDefinition` — DAL base class for entity definitions — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:33
+- confirmed `EntityRepository` — DAL repository for database access — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:37
+- confirmed `SalesChannelRepository` — sales-channel-aware DAL repository — vendor/shopware/core/System/SalesChannel/Entity/SalesChannelRepository.php:36
+- confirmed `StoreApiRouteScope` — route scope for Store API routes — vendor/shopware/core/Framework/Routing/StoreApiRouteScope.php:13
+- confirmed `ApiRouteScope` — route scope for the Admin API — vendor/shopware/core/Framework/Routing/ApiRouteScope.php:13
+- confirmed `Plugin` — plugin base class, a Symfony Bundle — vendor/shopware/core/Framework/Plugin.php:17
+- confirmed `ScheduledTask` — scheduled task base, an async message — vendor/shopware/core/Framework/MessageQueue/ScheduledTask/ScheduledTask.php:10

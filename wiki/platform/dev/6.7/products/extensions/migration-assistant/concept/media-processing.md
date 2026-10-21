@@ -6,29 +6,26 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/migration-assistant/concept/media-processing.html
 sourceHash: 54ad397ba940e101bd0079ccfd12b3cdb0252bb9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["media processing", "swag_migration_media_file", "MediaConverter", "MediaFileService", "MediaFileProcessorRegistry", "MediaFileProcessorInterface", "HttpMediaDownloadService", "HttpDownloadServiceBase", "LocalMediaProcessor", "BaseMediaService", "media download", "image migration", "migration assistant"]
-summary: "Migration Assistant media: converters queue files in swag_migration_media_file; MediaFileProcessorRegistry picks the HTTP download or local copy processor."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["media processing", "swag_migration_media_file", "MediaConverter", "MediaFileService", "MediaFileProcessorRegistry", "MediaFileProcessorInterface", "HttpMediaDownloadService", "HttpDownloadServiceBase", "LocalMediaProcessor", "BaseMediaService", "media download", "file import", "migration assistant"]
+summary: Migration Assistant media - converters queue files in swag_migration_media_file; a gateway-specific processor downloads or copies them.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Migration Assistant media migration has two phases:
-
-1. During conversion, the converter creates the media mapping and queues file metadata in `swag_migration_media_file`.
-2. During the media-processing step, a processor for the active gateway imports the files into Shopware 6.
+Media migration in the Shopware Migration Assistant runs in two phases: during conversion the media mapping is created and file metadata is queued in `swag_migration_media_file`; during the media-processing step a gateway-specific processor imports the files into Shopware 6.
 
 ## When to use
 
-When writing a converter that migrates files, or a processor for a new gateway or profile, or when debugging media that failed to import.
+When writing a converter that produces media, adding a media processor for a custom profile/gateway, or debugging media files that were not imported.
 
 ## Key steps / config
 
-1. **Queue files in the converter** (docs example: `SwagMigrationAssistant\Profile\Shopware\Converter\MediaConverter::convert()`). Get or create the mapping with `$this->mappingService->getOrCreateMapping($connectionId, DefaultEntities::MEDIA, $data['id'], $context, $this->checksum)`. Then queue the file:
+1. **Queue during conversion.** `SwagMigrationAssistant\Profile\Shopware\Converter\MediaConverter::convert()` generates a checksum, gets or creates the main mapping (`DefaultEntities::MEDIA`, source id, checksum) and uses its `entityId` as the media id, then queues one record:
 
 ```php
 $this->mediaFileService->saveMediaFile([
-    'runId' => $migrationContext->getRunUuid(),
+    'runId' => /* current run id */,
     'entity' => MediaDataSet::getEntity(),
     'uri' => $data['uri'] ?? $data['path'],
     'fileName' => $data['name'] ?? $converted['id'],
@@ -37,32 +34,28 @@ $this->mediaFileService->saveMediaFile([
 ]);
 ```
 
-   `MediaFileService` stores these records and marks them `written` once the related entity write has completed.
-2. **Processor selection**: `SwagMigrationAssistant\Migration\Media\MediaFileProcessorRegistry::getProcessor($migrationContext)` returns the first processor whose `supports($migrationContext)` is true. If none matches, it throws a `MigrationException` naming the profile and gateway.
-3. **Implement a processor** as `MediaFileProcessorInterface` with `supports()` and `process(MigrationContextInterface $migrationContext, Context $context, array $workload): array`:
-   - API gateway: `SwagMigrationAssistant\Profile\Shopware\Media\HttpMediaDownloadService extends HttpDownloadServiceBase`. It supports the context when the profile is a `ShopwareProfileInterface`, the gateway name is `ShopwareApiGateway::GATEWAY_NAME`, and the data set entity is `MediaDataSet::getEntity()`. It overrides `getMediaEntity()` and `getHttpClient()`, which returns `HttpSimpleClient`. `HttpDownloadServiceBase::process()` maps the workload by media id and calls `getMediaFiles()`. It then sends the download requests concurrently (`doMediaDownloadRequests()`, `Utils::settle(...)->wait()`) and records the outcome with `setProcessedFlag()`.
-   - Local gateway: `SwagMigrationAssistant\Profile\Shopware\Media\LocalMediaProcessor extends BaseMediaService` uses the same checks with `ShopwareLocalGateway::GATEWAY_NAME`. Its `process()` calls `getMediaFiles()`, then `getMediaPathMapping()`, then `copyMediaFiles()`.
+2. `MediaFileService` persists the records and marks them `written` once the related entity write has completed.
+3. **Processor selection.** `SwagMigrationAssistant\Migration\Media\MediaFileProcessorRegistry::getProcessor()` returns the first processor whose `supports($migrationContext)` is true; if none matches it throws a `MigrationException` naming the connection's profile and gateway.
+4. **API gateway.** `SwagMigrationAssistant\Profile\Shopware\Media\HttpMediaDownloadService` extends `SwagMigrationAssistant\Migration\Media\Processor\HttpDownloadServiceBase` (which extends `BaseMediaService` and implements `MediaFileProcessorInterface`). It supports a Shopware profile + `ShopwareApiGateway::GATEWAY_NAME` + the media data set entity, and provides `getMediaEntity()` (`DefaultEntities::MEDIA`) and `getHttpClient()` (`HttpSimpleClient`). The base `process()` maps the workload by media id, loads media files, issues parallel download requests (`doMediaDownloadRequests()`, settled with `Utils::settle()`), and calls `setProcessedFlag()` with finished and failed ids.
+5. **Local gateway.** `SwagMigrationAssistant\Profile\Shopware\Media\LocalMediaProcessor` (extends `BaseMediaService`, implements `MediaFileProcessorInterface`) supports Shopware profile + `ShopwareLocalGateway::GATEWAY_NAME` + media data set; `process()` resolves local paths via `getMediaPathMapping()` and copies files with `copyMediaFiles()`.
 
 ## Essential identifiers
 
-- Table `swag_migration_media_file` with status fields `written`, `processed`, `processFailure` (column `process_failure`)
+- Table `swag_migration_media_file`; status fields `written` (entity write finished), `processed` (import succeeded), `processFailure` (column `process_failure`, processing failed)
 - `MediaFileService::saveMediaFile()`
-- `MediaFileProcessorRegistry`, `MediaFileProcessorRegistryInterface`, `MediaFileProcessorInterface`
-- `HttpDownloadServiceBase`, `HttpMediaDownloadService`, `LocalMediaProcessor`, `BaseMediaService`
+- `MediaFileProcessorRegistry::getProcessor()`, `MediaFileProcessorInterface::supports()` / `process()`
+- `HttpMediaDownloadService`, `HttpDownloadServiceBase`, `LocalMediaProcessor`, `BaseMediaService`
 
 ## Gotchas
 
-- Only one processor is used per migration context: the first one whose `supports()` returns true.
-- If no processor matches, the registry throws via `MigrationException::processorNotFound($profileName, $gatewayName)`. That factory name comes from the docs and is not present in the installed code index (see Code check).
-- The `written` flag means the entity write finished. It does not mean the file was imported; that is `processed`, or `processFailure` if the import failed.
+- Exactly one processor is resolved per migration context — the first whose `supports()` returns true; the built-in processors check profile, gateway name and data set entity together.
+- The source names the registry's failure factory `MigrationException::processorNotFound()`; that identifier is absent from the installed Shopware code index.
 
-## Code check (6.7.13.0)
-- absent `processorNotFound` — not found in the installed code index; SwagMigrationAssistant is not installed under vendor/shopware
-- confirmed `MediaDefinition::ENTITY_NAME` — core media entity name `'media'` — vendor/shopware/core/Content/Media/MediaDefinition.php:65
-- confirmed `Context` — core context passed to process() — vendor/shopware/core/Framework/Context.php:17
-- unverified `swag_migration_media_file` — plugin table, plugin not installed in vendor/shopware
-- unverified `MediaFileProcessorRegistry` — plugin class, plugin not installed in vendor/shopware
-- unverified `MediaFileProcessorInterface` — plugin interface, plugin not installed in vendor/shopware
-- unverified `HttpDownloadServiceBase` — plugin class, plugin not installed in vendor/shopware
-- unverified `LocalMediaProcessor` — plugin class, plugin not installed in vendor/shopware
-- unverified `Utils::settle()` — guzzlehttp/promises, out of scope
+## Code check (6.7.15.1)
+- absent `processorNotFound` — not found anywhere in the installed code index
+- unverified `MediaFileProcessorRegistry` — SwagMigrationAssistant plugin, outside installed core roots
+- unverified `HttpDownloadServiceBase` — SwagMigrationAssistant plugin, out of scope
+- unverified `LocalMediaProcessor` — SwagMigrationAssistant plugin, out of scope
+- unverified `swag_migration_media_file` — plugin table, not defined in Shopware core
+- unverified `Utils::settle()` — Guzzle promises, vendor package out of scope
+- confirmed `Context` — core context class in process() signature — vendor/shopware/core/Framework/Context.php:18

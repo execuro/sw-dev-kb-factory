@@ -6,54 +6,56 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-06-17-error-code-log-level-configuration-in-cloud-and-platform.html
 sourceHash: 88c599a235b8086cc8fcb539ce5af1eb8ea15fbc
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["error code log level", "shopware.logger.error_code_log_levels", "error_code_log_levels", "ErrorCodeLogLevelHandler", "notice level", "log level", "exception logging", "observability", "saas template", "cloud vs on-premise", "monolog"]
-summary: "ADR 2024-06-17: which error codes get lowered log level in platform (expected errors, e.g. 404, bad login) vs cloud config (misuse, misconfiguration)."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware.logger.error_code_log_levels", "error_code_log_levels", "ErrorCodeLogLevelHandler", "log level", "notice level", "error code", "exception logging", "on-premise vs cloud", "saas template", "monolog", "observability", "adr"]
+summary: "ADR: which error codes are lowered to notice log level in platform (expected errors) vs only in the cloud SaaS template (misuse, misconfiguration)."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2024-06-17, area core) giving the rule for deciding whether an error code's log level is lowered (e.g. to `notice`) in the platform configuration, which affects all installations, or only in the cloud (SaaS template) configuration. It builds on the earlier ADR "Exception Log Level configuration" (2023-05-25).
+An architecture decision record (2024-06-17) about where to downgrade the log level of specific Shopware error codes: in the platform configuration (affects every installation, including on-premise) or only in the cloud configuration file of the SaaS template. It builds on the earlier "Exception Log Level configuration" ADR (2023-05-25), which introduced per-error-code log levels in platform.
 
 ## When to use
 
-When adding or reviewing an error code in the error-code-to-log-level mapping and deciding whether on-premise customers should still see it at a high log level.
+- You add a new exception/error code and must decide whether it is lowered to `notice` in core or only in cloud.
+- You wonder why an error that is quiet in Shopware cloud still logs at a high level on a self-hosted shop.
 
 ## Key steps / config
 
-Decide per error code whether it makes sense for on-premise customers to keep logging it at a high level. If yes, lower it only in the cloud configuration file of the SaaS template.
-
-- **Never decrease critical errors in platform.**
-- **Configure in cloud** (keep high on-premise): unexpected situations a developer should look at even if the fix lies in calling code or configuration, e.g. API misuse or customer-side misconfiguration (such as an incorrectly configured flow).
-- **Configure in platform** (lowered everywhere): expected situations where no developer action is needed, e.g. 404 errors or invalid user credentials at login.
-
-In the installed platform the mapping is the `error_code_log_levels` map under `shopware.logger`, keyed by error code:
+Per-error-code log levels live under the `shopware.logger.error_code_log_levels` map in the core `shopware.yaml`; each entry maps an error code to a level:
 
 ```yaml
 shopware:
     logger:
         error_code_log_levels:
             CHECKOUT__CUSTOMER_AUTH_BAD_CREDENTIALS: notice
-            CHECKOUT__CUSTOMER_NOT_FOUND: notice
+            CHECKOUT__CART_HASH_MISMATCH: notice
 ```
 
-The container parameter `%shopware.logger.error_code_log_levels%` is passed to `Shopware\Core\Framework\Log\Monolog\ErrorCodeLogLevelHandler`, which decorates `monolog.handler.main` and rewrites the record level when the logged exception is a `ShopwareHttpException` whose error code is in the map (also unwrapping a Messenger `HandlerFailedException`).
+The installed core applies this via `ErrorCodeLogLevelHandler`, which decorates `monolog.handler.main` and rewrites the record's level when the logged exception is a `ShopwareHttpException` whose error code is in the map (it also unwraps a Messenger `HandlerFailedException`).
+
+Decision guide from the ADR, applied per error code:
+
+1. Never decrease critical errors in platform.
+2. Configure in **platform** (core `shopware.yaml`) the expected errors — things that normally happen and need no developer action, e.g. 404 errors or invalid user credentials at login.
+3. Configure only in **cloud** (cloud configuration file in the SaaS template) the unexpected errors a developer should look at even if the fix is not in Shopware itself but in calling code or configuration — e.g. API misuse or customer-side misconfiguration.
+4. Key question: does it still make sense for on-premise customers to log this error at a high level? If yes, add it to the cloud file only.
 
 ## Essential identifiers
 
 - `shopware.logger.error_code_log_levels`
-- `Shopware\Core\Framework\Log\Monolog\ErrorCodeLogLevelHandler`
-- `notice`
+- `ErrorCodeLogLevelHandler` (`Shopware\Core\Framework\Log\Monolog`)
+- `monolog.handler.main`
 
 ## Gotchas
 
-- An error that is noise for Shopware's own monitoring can still be important for the merchant (e.g. a misconfigured flow); such codes belong in the cloud file, not the platform default.
-- The mapping only applies to exceptions carrying a Shopware error code (`ShopwareHttpException`).
+- An incorrectly configured flow is the ADR's example of a cloud-only case: Shopware's own error monitoring does not need it, but the customer must still see it at the highest level — so it must not be lowered in platform.
+- Lowering a code in core `shopware.yaml` affects all self-hosted installations, not just cloud.
 
-## Code check (6.7.13.0)
-- confirmed `shopware.logger.error_code_log_levels` — platform default map of error codes to levels — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:520
-- confirmed `error_code_log_levels` — prototype array node keyed by name in bundle configuration — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:671
-- confirmed `CHECKOUT__CUSTOMER_AUTH_BAD_CREDENTIALS` — invalid login lowered to notice in platform — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:527
-- confirmed `ErrorCodeLogLevelHandler` — decorates monolog.handler.main with the mapping parameter — vendor/shopware/core/Framework/DependencyInjection/services.xml:675
-- confirmed `ShopwareHttpException` — only exceptions of this type have their level remapped — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:47
-- unverified `SaaS template cloud configuration` — cloud template is not part of the installed code
+## Code check (6.7.15.1)
+- confirmed `shopware.logger.error_code_log_levels` — passed to the log-level handler as a container parameter — vendor/shopware/core/Framework/DependencyInjection/services.php:871
+- confirmed `error_code_log_levels` — map of error code to level in core defaults (e.g. `CHECKOUT__CART_HASH_MISMATCH: notice`) — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:558
+- confirmed `ErrorCodeLogLevelHandler` — decorates `monolog.handler.main` — vendor/shopware/core/Framework/DependencyInjection/services.php:867
+- confirmed `ErrorCodeLogLevelHandler::handle()` — remaps level only for `ShopwareHttpException` error codes in the map — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:32
+- confirmed `ShopwareHttpException` — condition for remapping the record level — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:47
+- unverified `SaaS template cloud configuration file` — not part of the installed core packages

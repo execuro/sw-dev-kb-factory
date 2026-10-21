@@ -1,83 +1,93 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/development/testing/unit/jest-admin.md
-sourceHash: af4683436390d196cac24b7520aba78204ea7293
-sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/jest-admin.html
 title: Jest Unit Tests in Shopware's Administration
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["jest", "administration unit tests", "admin tests", "vue test utils", "shallowMount", "Shopware.Component.build", "composer run admin:unit", "admin:unit:watch", "admin:create:test", "global.activeAclRoles", "global.activeFeatureFlags", "repositoryFactoryMock", "stubs", "mocks", "spec file"]
-summary: "Jest unit tests for Administration code: .spec placement, Shopware.Component.build with shallowMount, stubs/mocks, ACL and feature-flag test globals."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/jest-admin.html
+sourceHash: af4683436390d196cac24b7520aba78204ea7293
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["jest", "administration unit tests", "component tests", "@vue/test-utils", "Shopware.Component.build", "wrapTestComponent", "shallowMount", "composer run admin:unit", "admin:unit:watch", "admin:create:test", "global.activeAclRoles", "global.activeFeatureFlags", "global.repositoryFactoryMock", "stubs", "mocks"]
+summary: Jest tests for Administration components and services - spec location, wrapTestComponent mounting, stubs, mocks, ACL/feature-flag/repository mocks.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Guide to writing and running Jest unit tests for Shopware Administration code: isolated services/ES modules and Vue components built through the global `Shopware.Component` factory, plus the preconfigured mocks the Admin test suite provides.
+Guide to writing Jest unit tests for Shopware Administration services, ES modules, and Vue components. Components cannot be imported as plain Vue components: they are registered on the global `Shopware` object and must be built through the component factory (which resolves Twig template inheritance, overrides and extensions) before mounting with Vue Test Utils.
 
 ## When to use
 
-When adding or changing Administration JavaScript/TypeScript (components, services, helpers) and a unit test must cover the change, or when a component test throws Vue warnings about missing props, components, directives, or injections.
+When adding or changing Administration JavaScript/TypeScript code (services, helpers, components) and you need a spec for it, or when debugging Vue warnings such as missing props, unknown custom elements, unresolved directives or missing injections in a test run.
 
 ## Key steps / config
 
-1. **Location**: put the test next to the tested file, same name with suffix `.spec.js` or `.spec.ts`.
-2. **Services / ES modules**: import directly and test like any Jest code, e.g. `import Sanitizer from 'src/core/helper/sanitizer.helper';` then `expect(Sanitizer.sanitize('<details open ontoggle=confirm()>')).toBe('<details open=""></details>')`.
-3. **Boilerplate**: in the Shopware root run `composer run admin:create:test` and paste the path of the untested component/service; it generates a `.spec` file with the recommended boilerplate.
-4. **Dependencies**: `composer run init:js`.
-5. **Run**: `composer run admin:unit` (all tests + coverage); `composer run admin:unit:watch` (changed files, re-runs on save). These scripts apply to the Shopware-provided Administration; plugins may need their own scripts.
-6. **Mount components** via the factory, not a direct component import. `Shopware.Component.build()` resolves the Twig template and all overrides/extensions into a Vue component; in 6.7 it is `async` and returns a Promise, so await it:
+1. **Location**: place the test next to the file under test, same name with suffix `.spec.js` or `.spec.ts` (e.g. `src/core/helper/sanitizer.helper.spec.js`).
+2. **Boilerplate**: from the Shopware root run `composer run admin:create:test`, paste the path of the untested component/service; a `.spec` file with the recommended boilerplate is generated.
+3. **Services / ES modules**: import directly and test like any Jest test, no mocking needed:
+   `import Sanitizer from 'src/core/helper/sanitizer.helper';`
+4. **Components**: build the component via the factory and mount it. In 6.7 core specs this is done with `wrapTestComponent` and Vue Test Utils `mount`/`shallowMount`, passing stubs under `global`:
 
-```typescript
+```javascript
+import { mount } from '@vue/test-utils';
+
 async function createWrapper() {
-    return shallowMount(await Shopware.Component.build('sw-your-component-for-test'), {
-        props: { /* required props */ },
-        stubs: { 'sw-missing-component-one': await Shopware.Component.build('sw-missing-component-one') },
-        mocks: { /* add mocks if needed */ },
-        attachTo: document.body, // needed if you interact with elements
+    return mount(await wrapTestComponent('sw-multi-select', { sync: true }), {
+        props: { options: [], value: '' },
+        global: {
+            stubs: { 'sw-select-base': await wrapTestComponent('sw-select-base'), 'sw-loader': true },
+        },
     });
 }
 ```
 
-   Prefer `shallowMount()` (children stubbed) over `mount()`. In `beforeEach` create the wrapper and `await flushPromises()`; in `afterEach` tear the wrapper down and flush again. A first test: `expect(wrapper.vm).toBeTruthy()`.
-7. **Fix Vue warnings**:
-   - `Missing required prop: "options"` → pass the props.
-   - `Unknown custom element: <sw-select-base>` → stub it, with a dummy or with `Shopware.Component.build('sw-select-base')` when the real child is needed.
-   - `Error in render: "TypeError: hasError is not a function"` → add a mock, e.g. `hasError: () => false`.
-   - `Failed to resolve directive: clipboard` → provide a directive mock.
-   - `Injection "mediaService" not found` → `provide: { mediaService: {} }` mutes it; a realistic stub mocks the used methods, e.g. `mediaService: { renameMedia: () => Promise.resolve() }`. If code calls `Shopware.Service('mediaService')`, register a mock in `beforeAll` with `Shopware.Service.register('mediaService', { ... })`.
-8. **Slots**: mount with `slots: { default: 'My custom message' }` and assert the rendered text.
+   `Shopware.Component.build('<name>')` is the underlying factory call that returns a native Vue component with the resolved template.
+5. **Fix warnings**:
+   - missing required prop → pass `props`;
+   - `Unknown custom element` → stub the child (with a built component or a dummy);
+   - `Failed to resolve directive: clipboard` → provide a directive mock;
+   - `Injection "mediaService" not found` → provide the injection (`mediaService: {}` mutes it; give methods such as `renameMedia: () => Promise.resolve()` when the test calls them);
+   - a service read via `Shopware.Service('mediaService')` → register a mock in `beforeAll` (the doc uses `Shopware.Service.register('mediaService', { /* mock */ })`);
+   - `hasError is not a function` → add `hasError` to `mocks`.
+6. **Run**: install dependencies first with `composer run init:js`, then `composer run admin:unit` (all tests + coverage) or `composer run admin:unit:watch` (changed files only, restarts on save). These scripts apply to the Shopware-provided Administration; plugins may need their own scripts.
 
 Preconfigured test environment:
 
-- ACL: `global.activeAclRoles = ['product.editor']` (default: no rights).
-- Feature flags: `global.activeFeatureFlags = ['FEATURE_NEXT_12345']`.
-- Repository factory works by default (generated from the entity schema); unmocked routes log a hint. Add responses via `global.repositoryFactoryMock.responses.addResponse({ method, url, status, response: { data: [...] } })`; silence with `global.repositoryFactoryMock.showWarning = false`.
-- Global directives and filters are registered; some services have mocks (missing ones warn); the `Shopware` context is prepared (override in `Shopware.Store`); `$tc`, `$device`, `$store`, `$router` are auto-mocked. Everything can be overridden in the `mount`/`shallowMount` options.
+- ACL: `global.activeAclRoles = ['product.editor'];` — no ACL rights by default.
+- Feature flags: `global.activeFeatureFlags = ['FEATURE_NEXT_12345'];`
+- Repository factory works by default (generated from the entity schema); unmocked routes print a hint. Add responses with:
+
+```javascript
+global.repositoryFactoryMock.responses.addResponse({
+    method: 'Post', url: '/search/product', status: 200,
+    response: { data: [{ id: '...', attributes: { id: '...' } }] },
+});
+global.repositoryFactoryMock.showWarning = false;
+```
+
+- All global directives and filters are registered; some services have mock alternatives (a console warning names missing ones); the `Shopware` context is prepared (override via `Shopware.Store`); `$tc`, `$device`, `$store`, `$router` are auto-mocked. Everything can be overridden in the `mount`/`shallowMount` options.
 
 ## Essential identifiers
 
-- `Shopware.Component.build()`, `Shopware.Component.register()`
-- `Shopware.Service.register()`, `Shopware.Store`
-- `shallowMount`, `mount` (`@vue/test-utils`), `flushPromises`
-- `composer run admin:unit`, `composer run admin:unit:watch`, `composer run admin:create:test`, `composer run init:js`
+- `Shopware.Component.build()`, `Shopware.Service`, `Shopware.Store`
+- `wrapTestComponent`, `mount`, `shallowMount` (`@vue/test-utils`), `flushPromises`
+- `composer run admin:create:test`, `composer run admin:unit`, `composer run admin:unit:watch`, `composer run init:js`
 - `global.activeAclRoles`, `global.activeFeatureFlags`, `global.repositoryFactoryMock`
 
 ## Gotchas
 
-- The 6.7 Administration boots with Vue 3 (`createApp` from `vue`). The source's snippets still use Vue 2-era Vue Test Utils helpers such as `createLocalVue`, `localVue.directive()` and `wrapper.destroy()`, and some call `Shopware.Component.build()` without `await`; check these against the `@vue/test-utils` version your Jest setup uses.
-- Importing `src/app/component/form/select/base/sw-multi-select` (its `index.js`) does not register the component in 6.7: the file only `export default`s the config. Registration happens lazily in `src/app/component/index.ts` via `Shopware.Component.register('sw-multi-select', () => import(...))`.
-- `sw-alert` now renders `mt-banner` by default; the `.sw-alert__message` element used in the source's slot example exists only in the `sw-alert-deprecated` template.
+- The doc's examples use Vue Test Utils v1 idioms (`createLocalVue`, top-level `stubs`, `wrapper.destroy()`, `localVue.directive(...)`). 6.7 core specs pass stubs under `global` and build components with `wrapTestComponent`; `createLocalVue` appears in only one core spec.
+- Importing a component's `index.js` does not register it: `index.js` only exports the component config, and `Shopware.Component.register('sw-multi-select', ...)` happens centrally with an async import in `src/app/component/index.ts`.
+- The doc's `sw-alert` slot example is outdated: `sw-alert` is deprecated (`tag:v6.8.0`, use `mt-banner`) and renders `mt-banner`, so asserting `.sw-alert__message` does not match current markup.
+- Repository mock responses must match the real backend API response; inspect the real API response in the Administration to copy the shape.
 
-## Code check (6.7.13.0)
-- confirmed `build` — `async function build(componentName, skipTemplate)` returns a Promise — vendor/shopware/administration/Resources/app/administration/src/core/factory/async-component.factory.ts:709
-- corrected `sw-multi-select` — docs: side-effect import of the component file registers it; registration is in the component index with a lazy import — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:325
-- confirmed `sanitize` — `Sanitizer.sanitize(dirtyHtml, config)` wraps DOMPurify — vendor/shopware/administration/Resources/app/administration/src/core/helper/sanitizer.helper.js:98
-- corrected `sw-alert__message` — docs: rendered by `sw-alert`; only in `sw-alert-deprecated` — vendor/shopware/administration/Resources/app/administration/src/app/component/base/sw-alert-deprecated/sw-alert-deprecated.html.twig:35
-- confirmed `mt-banner` — default render of `sw-alert` — vendor/shopware/administration/Resources/app/administration/src/app/component/base/sw-alert/sw-alert.html.twig:2
-- confirmed `renameMedia` — `mediaService` API method — vendor/shopware/administration/Resources/app/administration/src/core/service/api/media.api.service.js:285
-- confirmed `createApp` — Administration runs on Vue 3 — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:128
-- unverified `global.activeAclRoles` — Jest setup lives in the Admin `test/` folder, outside the scanned roots
-- unverified `createLocalVue` — `@vue/test-utils` package, out of scope
-- unverified `composer run admin:unit` — composer script of the development template, out of scope
+## Code check (6.7.15.1)
+- confirmed `Shopware.Component.build` — `Component.build` maps to `AsyncComponentFactory.build` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:138
+- corrected `Shopware.Component.register('sw-multi-select'` — docs: registered by the component's own `index.js`; actually registered centrally with async import — vendor/shopware/administration/Resources/app/administration/src/app/component/index.ts:329
+- confirmed `Shopware.Service` — `Service` is the `ServiceFactory`; `.register` signature not checked — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:221
+- confirmed `wrapTestComponent` — global test helper `(componentName, { sync? }) => Promise<VueComponent>` — vendor/shopware/administration/Resources/app/administration/src/global.types.ts:516
+- corrected `global` — docs: `stubs` at top level of mount options; core specs nest them under `global` — vendor/shopware/administration/Resources/app/administration/src/app/component/form/select/base/sw-multi-select/sw-multi-select.spec.js:9
+- deprecated `sw-alert` — `@deprecated tag:v6.8.0`, use `mt-banner` — vendor/shopware/administration/Resources/app/administration/src/app/component/base/sw-alert/index.ts:10
+- corrected `mt-banner` — docs: assert text in `.sw-alert__message`; sw-alert now renders `mt-banner` — vendor/shopware/administration/Resources/app/administration/src/app/component/base/sw-alert/sw-alert.spec.js:23
+- confirmed `global.repositoryFactoryMock` — `responses.addResponse` used in core specs — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-customer-group/page/sw-settings-customer-group-create/sw-settings-customer-group-create.spec.js:134
+- unverified `global.activeAclRoles` — defined in the Administration `test/` setup, outside the checked roots
+- unverified `composer run admin:unit` — composer script in the repository root, outside the checked roots

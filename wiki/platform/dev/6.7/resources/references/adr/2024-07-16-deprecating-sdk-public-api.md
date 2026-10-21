@@ -6,79 +6,73 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-07-16-deprecating-sdk-public-api.html
 sourceHash: 2c50c841947aba6f4f9ed54936a9f3bb1afffe39
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sw-extension-component-section", "Shopware.ExtensionAPI.publishData", "publishData", "positionIdentifier", "deprecated", "deprecationMessage", "meta.spec.ts", "meteor admin sdk", "component section", "data set", "position identifier", "sdk deprecation"]
-summary: "ADR: Meteor Admin SDK component sections and published data sets can be marked deprecated/deprecationMessage; errors in dev, warnings in prod."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-extension-component-section", "Shopware.ExtensionAPI.publishData", "deprecationMessage", "deprecated", "positionIdentifier", "meta.spec.js", "component sections", "data sets", "meteor admin sdk", "position identifier", "sdk deprecation", "admin extension api"]
+summary: "ADR: Meteor Admin SDK component sections and published data sets get deprecated/deprecationMessage options; use logs error in dev, warning in prod."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2024-07-18, area admin) defining how the public API of the Meteor Admin SDK built into the Shopware Administration — component sections and data sets — is monitored and deprecated.
-
-- **Component sections**: the `sw-extension-component-section` component, placed in templates with a position identifier, lets apps render components in place via the SDK.
-- **Data sets**: entities, subsets or scalar values published by core components with `Shopware.ExtensionAPI.publishData(...)`.
+Architecture decision record (2024-07-16) on how the public API that the Shopware Administration exposes to the Meteor Admin SDK can be monitored and deprecated. That public API consists of **component sections** (the `sw-extension-component-section` component placed in templates with a position identifier, where SDK extensions render components) and **data sets** (entities, entity subsets or scalars published from component code via `Shopware.ExtensionAPI.publishData`). Previously neither could be marked deprecated, although the SDK is promised to be the most stable extension tool.
 
 ## When to use
 
-- You maintain Administration code that publishes a data set or places a component section and need to retire it.
-- An app/plugin logs `[CORE] The extension "..." uses a deprecated ...` and you need to know where it comes from.
+- You remove or rename a position identifier or data set id in core/admin code and need a deprecation path.
+- An extension logs a `[CORE] The extension "..." uses a deprecated ...` message and you need to know why.
 
 ## Key steps / config
 
-**Monitoring:** a `meta.spec.ts` test compares committed JSON files listing all data set IDs and component section position identifiers against a run-time computed list, failing if any were removed.
+**Monitoring:** a meta test in the administration (`src/meta/meta.spec.js`) compares committed JSON files listing all data set IDs and component-section position identifiers with a run-time computed list, failing if any were removed.
 
-**Deprecating a component section** — props `deprecated` (Boolean, default `false`) and `deprecationMessage` (String, default `''`) next to the required `positionIdentifier`:
+**Deprecating a component section** — two props on `sw-extension-component-section`: `deprecated` (Boolean, default `false`) and `deprecationMessage` (String, default `''`), next to the required `positionIdentifier`:
 
 ```html
 <sw-extension-component-section
     position-identifier="..."
     deprecated
-    deprecation-message="Use position identifier XYZ instead."
-/>
+    deprecation-message="Use position identifier XYZ instead." />
 ```
 
-**Deprecating a data set** — same two options in the publish options:
+**Deprecating a data set** — the same two options in the publish options:
 
 ```javascript
-createdComponent() {
-    /* @deprecated tag:v6.7.0 - Will be removed, use API instead */
-    Shopware.ExtensionAPI.publishData({
-        id: 'sw-dashboard-detail__todayOrderData',
-        path: 'todayOrderData',
-        scope: this,
-        deprecated: true,
-        deprecationMessage: 'No replacement available, use API instead.',
-    });
-},
+/* @deprecated tag:v6.7.0 - Will be removed, use API instead */
+Shopware.ExtensionAPI.publishData({
+    id: 'sw-dashboard-detail__todayOrderData',
+    path: 'todayOrderData',
+    scope: this,
+    deprecated: true,
+    deprecationMessage: 'No replacement available, use API instead.',
+});
 ```
 
-Best practice: also add a normal `@deprecated` comment so the removal is not missed in the next major.
+Best practice: add the usual `@deprecated` comment annotation as well, so the part is not missed in a major update.
+
+**Resulting messages** (prefix `CORE`; fixed first sentence with extension name and ID, `deprecationMessage` appended):
+
+```shell
+The extension "TestApp" uses a deprecated position identifier "foo_bar". Use position identifier "XYZ" instead.
+The extension "TestApp" uses a deprecated data set "foo_bar". No replacement available, use API instead.
+```
+
+A deprecated section or data set in use throws/logs an error in dev and a warning in prod.
 
 ## Essential identifiers
 
-- `sw-extension-component-section` (props `positionIdentifier`, `deprecated`, `deprecationMessage`)
-- `Shopware.ExtensionAPI.publishData` (options `id`, `path`, `scope`, `deprecated`, `deprecationMessage`)
-- `meta.spec.ts`
+- `sw-extension-component-section` props `positionIdentifier`, `deprecated`, `deprecationMessage`
+- `Shopware.ExtensionAPI.publishData` options `id`, `path`, `scope`, `deprecated`, `deprecationMessage`
+- `src/meta/meta.spec.js`
 
 ## Gotchas
 
-- When a deprecated section/data set is used by an extension, a non-production build throws a `Shopware.Utils.debug.error`; production logs a warning.
-- Message format is fixed; `deprecationMessage` is appended:
+- The message only fires when an extension actually uses the deprecated item: for sections, when sections are registered for that position identifier; for data sets, when an extension requests the data set (the requesting extension is resolved by origin, and an unknown origin throws).
+- In 6.7.15.1 the component section decides error vs warning via `process.env !== 'prod'`, the data set service via `process.env.NODE_ENV !== 'production'`.
 
-```shell
-[CORE] The extension "TestApp" uses a deprecated position identifier "foo_bar". Use position identifier "XYZ" instead.
-[CORE] The extension "TestApp" uses a deprecated data set "foo_bar". No replacement available, use API instead.
-```
-
-- For data sets the check runs when an extension reads the data set (the SDK get handler), not at publish time.
-
-## Code check (6.7.13.0)
-- confirmed `positionIdentifier` — required String prop of sw-extension-component-section — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:27
-- confirmed `deprecated` — Boolean prop, default false — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:35
-- confirmed `deprecationMessage` — String prop, default empty — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:45
-- confirmed `deprecationMessage` — component section message format, error outside prod else warn — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:59
-- confirmed `publishOptions.deprecated` — optional publish option with deprecationMessage — vendor/shopware/administration/Resources/app/administration/src/core/service/extension-api-data.service.ts:26
-- confirmed `deprecationMessage` — data set message logged on get when deprecated — vendor/shopware/administration/Resources/app/administration/src/core/service/extension-api-data.service.ts:140
-- confirmed `publishData` — exported function — vendor/shopware/administration/Resources/app/administration/src/core/service/extension-api-data.service.ts:191
-- confirmed `publishData` — exposed on Shopware.ExtensionAPI — vendor/shopware/administration/Resources/app/administration/src/core/extension-api.ts:56
-- unverified `meta.spec.ts` — not under the administration src root, out of scope
+## Code check (6.7.15.1)
+- confirmed `deprecated` — Boolean prop, default false, on the component section — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:38
+- confirmed `deprecationMessage` — String prop, default empty — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:48
+- confirmed `positionIdentifier` — required String prop — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:30
+- confirmed `uses a deprecated position identifier` — error outside prod, warning in prod — vendor/shopware/administration/Resources/app/administration/src/app/component/extension-api/sw-extension-component-section/index.ts:64
+- confirmed `publishOptions` — publish options carry optional `deprecated`/`deprecationMessage` — vendor/shopware/administration/Resources/app/administration/src/core/service/extension-api-data.service.ts:22
+- confirmed `uses a deprecated data set` — logged when a deprecated data set is requested — vendor/shopware/administration/Resources/app/administration/src/core/service/extension-api-data.service.ts:140
+- unverified `meta.spec.js` — docs name `meta.spec.ts`; the installed file is `src/meta/meta.spec.js` (located by file name, contents not read)

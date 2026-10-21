@@ -6,55 +6,53 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/services-utilities/add-filter.html
 sourceHash: 8f48f334d448a139526ef33d2d5a41370438e2fc
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Filter.register", "Shopware.Filter", "example.filter.js", "administration filter", "text formatting", "custom filter", "app/filter", "main.js", "FilterFactory", "formatter"]
-summary: "Register a custom Administration text-formatting filter with Shopware.Filter.register in a *.filter.js file imported from the plugin's main.js."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-filter.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["Filter.register", "Shopware.Filter", "FilterFactory", "administration filter", "text formatter", "example.filter.js", "main.js", "plugin", "custom filter", "format text"]
+summary: "Register a custom Administration filter (text formatter) in a plugin with Shopware.Filter.register(name, fn) and import it in main.js."
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-filter.md
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
 ---
 ## What it is
 
-How to create a filter for the Shopware 6.7 Administration. A filter is a small helper that formats a value; the example converts text to uppercase and wraps it in underscores.
+How to create a filter for the Shopware Administration from a plugin. A filter is a small helper that formats text; the example filter `example` converts its input to uppercase and wraps it in underscores.
 
 ## When to use
 
-A plugin needs a reusable formatting function in the Administration (for use in templates or code, see platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-filter.md). Requires a working plugin (platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md).
+When Administration templates or components of your plugin need a reusable text-formatting function. It requires a working plugin (see the [Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)); to use the filter afterwards, see [Using filter](platform/dev/6.7/guides/plugins/plugins/administration/services-utilities/using-filter.md).
 
 ## Key steps / config
 
-1. Create the file in `<plugin root>/src/Resources/app/administration/src/app/filter`, named after the filter — for filter `example`: `example.filter.js`.
-2. Register it via `Filter` from the global `Shopware` object. First argument: filter name; second: the formatting function, which receives the value (and optionally further arguments):
+1. Create a file in `<plugin root>/src/Resources/app/administration/src/app/filter`, named after the filter, here `example.filter.js`.
+2. Register the filter via `Filter` from the global `Shopware` object. The first argument is the filter name, the second the formatting function:
 
 ```javascript
-// <plugin root>/src/Resources/app/administration/src/app/filter/example.filter.js
 const { Filter } = Shopware;
 
 Filter.register('example', (value) => {
     if (!value) {
         return '';
     }
+
     return `_${value.toLocaleUpperCase()}_`;
 });
 ```
 
-Multiple arguments: `Filter.register('example', (value, secondValue, thirdValue) => { ... });`
-
-3. Import the filter file in the plugin's `main.js`.
+3. For more arguments, extend the function signature, e.g. `(value, secondValue, thirdValue) => { ... }`.
+4. Import the filter file in your plugin's `main.js`.
 
 ## Essential identifiers
 
-- `Shopware.Filter` / `Filter.register(name, fn)`
-- `example.filter.js`
-- `<plugin root>/src/Resources/app/administration/src/app/filter`
+- `Shopware.Filter`, `Filter.register(name, function)`
+- `<plugin root>/src/Resources/app/administration/src/app/filter/example.filter.js`
+- `main.js`
 
 ## Gotchas
 
-- In the installed code `Filter.register` returns `false` and only logs a warning when the name is empty or already registered — the existing filter is kept, so pick a unique (e.g. plugin-prefixed) name.
-- The filter is not available unless its file is imported from `main.js`.
+- Filter names must be unique: registering a name that already exists only logs a warning and returns `false`, leaving the earlier filter in place. An empty name is rejected the same way.
 
-## Code check (6.7.13.0)
-- confirmed `Shopware.Filter` — global exposes register, getByName, getRegistry — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:178
-- confirmed `Filter.register` — maps to FilterFactory.register — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:179
-- confirmed `register` — signature (filterName, filterFactoryMethod), returns boolean — vendor/shopware/administration/Resources/app/administration/src/core/factory/filter.factory.ts:39
+## Code check (6.7.15.1)
+- confirmed `Filter.register` — global object maps it to `FilterFactory.register` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:192
+- confirmed `FilterFactory.register` — takes filter name and factory method, returns boolean — vendor/shopware/administration/Resources/app/administration/src/core/factory/filter.factory.ts:39
 - confirmed `filterRegistry.has` — duplicate name warns and returns false — vendor/shopware/administration/Resources/app/administration/src/core/factory/filter.factory.ts:45
-- unverified `example.filter.js` — plugin file naming convention, not enforced by vendor code

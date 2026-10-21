@@ -1,59 +1,60 @@
 ---
-id: platform/dev/6.7/guides/development/testing/store/not-allowed-store-behaviors.md
-title: Not allowed store behaviors
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/development/testing/store/not-allowed-store-behaviors.html
+id: platform/dev/6.7/guides/development/testing/store/not-allowed-store-behaviors.md
 sourceHash: 33b9347a7758cf8b0bdceb47c0dd925e1db16b6e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["not allowed behaviors", "store review", "direct sql", "core table changes", "core file manipulation", "DAL", "MigrationStep", "EntityRepository", "decorator pattern", "event subscribers", "csrf", "rights and roles", "legal compliance", "permitted extension patterns"]
-summary: Store rules on forbidden extension behavior - no direct SQL, core table/file edits, API/DAL bypass or security circumvention; use DAL, migrations, events.
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/guides/development/testing/store/not-allowed-store-behaviors.html
+title: Not allowed store behaviors
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["store review", "forbidden behavior", "direct sql", "core files", "core table structure", "DAL", "EntityRepository", "MigrationStep", "decorator pattern", "subscribers", "security", "legal compliance"]
+summary: Shopware Store ban list - no direct SQL from the Admin, core table/file changes or API bypass; extend via DAL, migrations, events, decorators.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Shopware Store's list of prohibited changes for extensions (plugins and apps) and the extension patterns to use instead.
+The Shopware Store's list of prohibited changes for extensions (plugins and apps) and the extension patterns that are permitted instead.
 
 ## When to use
 
-When designing an extension feature that seems to need direct database, file-system or core access, or when a Store review rejects an extension for architecture violations.
+When designing an extension feature for Store distribution, or checking why a review rejected direct database, file-system or core modifications.
 
 ## Key steps / config
 
-**Not allowed — direct changes to the existing Shopware structure**
+Basic rule: an extension must not change the existing Shopware structure directly. Not allowed:
+
 - Direct database manipulation (e.g. executing SQL queries from the Administration).
-- Changing the core table structure.
-- Writing, overwriting or deleting files in the Shopware core or the existing directory structure.
-- Circumventing designated APIs, the DAL, events or services.
+- Changes to the core table structure.
+- Writing, overwriting or deleting files inside the Shopware core or the existing directory structure.
+- Circumventing the designated APIs, DAL, events or services.
 
-**Not allowed — security and law**
-- Undermining protection mechanisms: rights and role concepts, CSRF protection, validations.
-- Enabling uncontrolled system interventions by the shop operator or customer: arbitrary SQL execution, file access, or shell commands via the Administration UI.
-- Circumventing legal requirements: data protection and consent mechanisms; logging, documentation or verification obligations; mandatory information or legally prescribed processes.
+Additional prohibitions (security and law) — extensions must not:
 
-**Permitted**
-- Extending through Shopware mechanisms: DAL (`EntityDefinition`, `EntityRepository`), migrations (`MigrationStep`), events and subscribers, the decorator pattern, services.
+- Undermine security mechanisms (rights and role concepts, CSRF protection, validations).
+- Enable uncontrolled system interventions by the shop operator or end customer (arbitrary SQL execution, file access or shell commands via the Administration UI).
+- Circumvent legal requirements: data protection and consent mechanisms; logging, documentation or verification obligations; mandatory information or legally prescribed processes.
+
+Permitted:
+
+- Extending via Shopware's mechanisms: DAL (`EntityRepository`), migrations (`MigrationStep` subclasses in the plugin's own namespace), events, decorator pattern, subscribers, services.
 - Copying existing structures (templates, configurations, assets) and adapting the copy without changing the original.
-- Creating your own tables, entities, configuration values or directories, clearly assigned to the extension.
+- Creating own tables, entities, configuration values or directories that are clearly assigned to the extension.
 
 ## Essential identifiers
 
-- `EntityDefinition`, `EntityRepository` (DAL)
-- `MigrationStep` (migrations)
-- `DecorationPatternException` (thrown by core services not meant to be decorated)
+- `Shopware\Core\Framework\DataAbstractionLayer\EntityRepository`
+- `Shopware\Core\Framework\Migration\MigrationStep`
 
 ## Gotchas
 
-- Core structures are not a stable contract: direct SQL against core tables or core file edits may break shops after the next update.
-- Unrestricted SQL or file access risks data leaks, manipulation and privilege escalation.
-- If a feature is only possible via direct SQL, core file manipulation or bypassing intended interfaces, the approach must change.
-- The installed Storefront has no form CSRF token mechanism; request forgery protection relies on the session cookie setting `cookie_samesite: lax`.
+- Reasons given: unrestricted SQL/file access enables data leaks and privilege escalation; core structures are not a stable contract and may break after the next update; undermining legal mechanisms creates liability for merchants.
+- If a feature is only possible through direct SQL, core file manipulation or bypassing intended interfaces, the approach has to change.
 
-## Code check (6.7.13.0)
-- confirmed `EntityDefinition` — DAL base class for own entities — vendor/shopware/core/Framework/DataAbstractionLayer/EntityDefinition.php:33
-- confirmed `EntityRepository` — DAL repository for data access instead of raw SQL — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:36
-- confirmed `MigrationStep` — base class for own schema migrations — vendor/shopware/core/Framework/Migration/MigrationStep.php:17
-- confirmed `DecorationPatternException` — core signal for services not to be decorated — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:13
-- confirmed `cookie_samesite` — session cookie SameSite lax in core framework config — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:22
-- unverified `EventSubscriberInterface` — Symfony component, vendor/symfony out of scope
+## Code check (6.7.15.1)
+- confirmed `EntityRepository` — DAL repository class extensions should use for data access — vendor/shopware/core/Framework/DataAbstractionLayer/EntityRepository.php:37
+- confirmed `MigrationStep` — abstract base for schema changes in own tables — vendor/shopware/core/Framework/Migration/MigrationStep.php:17
+- confirmed `MigrationStep::update()` — abstract method every migration declares — vendor/shopware/core/Framework/Migration/MigrationStep.php:33
+- confirmed `MigrationStep::getCreationTimestamp()` — abstract method every migration declares — vendor/shopware/core/Framework/Migration/MigrationStep.php:28
+- confirmed `Plugin` — plugin base class extends `Bundle` — vendor/shopware/core/Framework/Plugin.php:17
+- unverified `CSRF protection` — policy statement, not checked against a specific code path

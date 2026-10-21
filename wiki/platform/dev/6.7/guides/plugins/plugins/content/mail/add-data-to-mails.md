@@ -6,25 +6,25 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/content/mail/add-data-to-mails.html
 sourceHash: 96134fbdb5a76bdafdabf67589ccc8d231e045ca
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["AbstractMailService", "MailService", "MailBeforeValidateEvent", "templateData", "addTemplateData", "getDecorated", "kernel.event_subscriber", "mail.before.send", "mail template variables", "email data", "decorate mail service", "custom mail data"]
-summary: Add custom variables to mail templates by decorating MailService (AbstractMailService::send $templateData) or subscribing to MailBeforeValidateEvent.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["MailService", "AbstractMailService", "MailBeforeValidateEvent", "addTemplateData", "getTemplateData", "templateData", "getDecorated", "decorator", "event subscriber", "mail template variables", "kernel.event_subscriber", "custom mail data"]
+summary: Add custom variables to Shopware mail templates by decorating AbstractMailService::send() or subscribing to MailBeforeValidateEvent.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md"]
 ---
 ## What it is
 
-Two ways for a plugin to make extra data (e.g. a custom entity or array) available as Twig variables inside Shopware mail templates: decorating the mail service, or listening to the event dispatched before a mail is validated and sent.
+How a plugin adds its own data (e.g. a custom entity or an array) to the data set that mail templates can render, so a template can print e.g. `{{ myCustomData }}`. Two options: decorate the mail service, or listen to `MailBeforeValidateEvent`.
 
 ## When to use
 
-A mail template needs data beyond the default set (customer, order, etc.). Prefer the subscriber approach to avoid decoration overhead; decorate when you need to control the whole `send` call. Background on decoration: [Adjusting a service](platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md).
+When an existing mail template (order, customer, etc.) needs extra variables your plugin provides. The subscriber approach avoids the overhead of decorating the mail service and is suitable in many cases. Decoration requires knowing the [decoration pattern](platform/dev/6.7/guides/plugins/plugins/services/adjusting-service.md).
 
 ## Key steps / config
 
-### Option A: decorate `MailService`
+### Option A: decorate the mail service
 
-Extend `Shopware\Core\Content\Mail\Service\AbstractMailService`, declaring both abstract members; enrich `$templateData` (last parameter of `send`) and delegate to the inner service:
+Extend `Shopware\Core\Content\Mail\Service\AbstractMailService`; enrich `$templateData` (last parameter of `send`) and delegate to the inner service:
 
 ```php
 class AddDataToMails extends AbstractMailService
@@ -47,32 +47,45 @@ $services->set(AddDataToMails::class)
     ->args([service('.inner')]);
 ```
 
-Then `{{ myCustomData }}` in any mail template prints "Example data". Any data type works, e.g. arrays.
+`Email` is `Symfony\Component\Mime\Email`; `MailService` is `Shopware\Core\Content\Mail\Service\MailService`.
 
-### Option B: subscriber on `MailBeforeValidateEvent`
+### Option B: subscribe to the event
 
-Implement `EventSubscriberInterface`, subscribe `MailBeforeValidateEvent::class => 'beforeMailValidate'`, and in the listener use `$event->getContext()`, `$event->getData()`, `$event->getTemplateData()` and `$event->addTemplateData('key', 'value')`. Register the class with the tag `kernel.event_subscriber`.
+Listen to `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent` in an `EventSubscriberInterface`:
+
+```php
+public static function getSubscribedEvents(): array
+{
+    return [MailBeforeValidateEvent::class => 'beforeMailValidate'];
+}
+public function beforeMailValidate(MailBeforeValidateEvent $event): void
+{
+    $event->addTemplateData('key', 'value');
+}
+```
+
+Available on the event: `getContext()`, `getData()` (mail data), `getTemplateData()`, `addTemplateData()`, plus `addData()`/`setTemplateData()`. Register the subscriber with `->tag('kernel.event_subscriber')`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Mail\Service\AbstractMailService` (`getDecorated()`, `send(array $data, Context $context, array $templateData = []): ?Email`)
+- `Shopware\Core\Content\Mail\Service\AbstractMailService` (`getDecorated()`, `send()`)
 - `Shopware\Core\Content\Mail\Service\MailService`
-- `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent` (`addTemplateData()`, `addData()`, `getTemplateData()`, `getData()`)
+- `Shopware\Core\Content\MailTemplate\Service\Event\MailBeforeValidateEvent`
+- `MailBeforeValidateEvent::addTemplateData()`, `getTemplateData()`, `getData()`
 - `kernel.event_subscriber`
 
 ## Gotchas
 
-- `MailBeforeValidateEvent`'s event name constant is `mail.before.send`; subscribing by class name (`MailBeforeValidateEvent::class`) as in the docs is what the example uses.
-- The event is created inside `MailService::send()`, so a decorator that never calls the inner service also suppresses the event for subscribers.
+- The core `MailService::getDecorated()` throws `DecorationPatternException`; your decorator must return the inner service.
+- `MailService::send()` dispatches `MailBeforeValidateEvent` before validation and reads back `getData()`/`getTemplateData()` from it; stopping propagation on the event makes `send()` return `null` (no mail sent).
 
-## Code check (6.7.13.0)
-- confirmed `AbstractMailService::getDecorated()` — abstract, must be declared by decorators — vendor/shopware/core/Content/Mail/Service/AbstractMailService.php:12
-- confirmed `AbstractMailService::send()` — abstract; $templateData is last parameter — vendor/shopware/core/Content/Mail/Service/AbstractMailService.php:18
-- confirmed `MailService` — extends AbstractMailService — vendor/shopware/core/Content/Mail/Service/MailService.php:37
-- confirmed `Shopware\Core\Content\Mail\Service\MailService` — registered under its FQCN service id — vendor/shopware/core/Content/DependencyInjection/mail.xml:30
-- confirmed `MailBeforeValidateEvent` — dispatched from MailService::send() with data and templateData — vendor/shopware/core/Content/Mail/Service/MailService.php:67
-- confirmed `MailBeforeValidateEvent::EVENT_NAME` — value mail.before.send — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:20
-- confirmed `MailBeforeValidateEvent::addTemplateData()` — adds a key to template data — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:104
-- confirmed `MailBeforeValidateEvent::getTemplateData()` — returns template data array — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:88
-- confirmed `MailBeforeValidateEvent::getData()` — returns mail data array — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:59
+## Code check (6.7.15.1)
+- confirmed `AbstractMailService::getDecorated()` — abstract, must be declared — vendor/shopware/core/Content/Mail/Service/AbstractMailService.php:15
+- confirmed `AbstractMailService::send()` — signature `send(array $data, Context $context, array $templateData = []): ?Email` — vendor/shopware/core/Content/Mail/Service/AbstractMailService.php:21
+- confirmed `MailService` — service id registered as class name — vendor/shopware/core/Content/DependencyInjection/mail.php:68
+- confirmed `MailService::getDecorated()` — throws DecorationPatternException — vendor/shopware/core/Content/Mail/Service/MailService.php:92
+- confirmed `MailBeforeValidateEvent` — dispatched at start of send, propagation stop returns null — vendor/shopware/core/Content/Mail/Service/MailService.php:99
+- confirmed `MailBeforeValidateEvent::addTemplateData()` — adds a key to template data — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:111
+- confirmed `MailBeforeValidateEvent::getTemplateData()` — returns template data — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:95
+- confirmed `MailBeforeValidateEvent::getData()` — returns mail data — vendor/shopware/core/Content/MailTemplate/Service/Event/MailBeforeValidateEvent.php:65
 - unverified `kernel.event_subscriber` — Symfony tag, vendor/symfony out of scope

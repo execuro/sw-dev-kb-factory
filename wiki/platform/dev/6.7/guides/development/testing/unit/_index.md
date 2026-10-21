@@ -1,33 +1,33 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/guides/development/testing/unit/_index.md
-sourceHash: c8dee6b313843c08ca1a7531197bfd1f0466708d
-sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/
 title: Unit Testing
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["unit testing", "unit tests", "jest", "phpunit", "administration tests", "storefront tests", "javascript testing", "php testing", "test overview"]
-summary: "Entry page for Shopware unit testing: Jest for Administration and Storefront JavaScript, PHPUnit for PHP code."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/guides/development/testing/unit/
+sourceHash: c8dee6b313843c08ca1a7531197bfd1f0466708d
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["unit testing", "unit tests", "jest", "phpunit", "javascript testing", "php testing", "administration tests", "storefront tests", "TestBootstrapper", "spec files", "test overview"]
+summary: Index of Shopware unit testing guides - Jest for Administration and Storefront JavaScript, PHPUnit for PHP plugin code.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/development/testing/unit/jest-admin.md", "platform/dev/6.7/guides/development/testing/unit/jest-storefront.md", "platform/dev/6.7/guides/development/testing/unit/php-unit.md"]
 ---
 ## What it is
 
-Overview page for writing and running unit tests in Shopware, split by language: Jest for JavaScript, PHPUnit for PHP.
+Overview section for writing and executing unit tests in Shopware, split by language and test framework.
 
 ## When to use
 
-When choosing which unit-testing guide applies to the code you changed.
+Entry point when you need to pick the right unit-testing guide for the code you are changing.
 
 ## Key steps / config
 
-- JavaScript (Jest), Administration: [Jest unit tests in Shopware's Administration](platform/dev/6.7/guides/development/testing/unit/jest-admin.md)
-- JavaScript (Jest), Storefront: [Jest unit tests in Shopware's Storefront](platform/dev/6.7/guides/development/testing/unit/jest-storefront.md) — the Storefront package runs them with `jest --config jest.config.js`.
-- PHP (PHPUnit): [PHP unit testing](platform/dev/6.7/guides/development/testing/unit/php-unit.md)
+- JavaScript testing with Jest:
+  - Administration components and services: [Jest unit tests in Shopware's Administration](platform/dev/6.7/guides/development/testing/unit/jest-admin.md)
+  - Storefront helpers and JavaScript plugins: [Jest unit tests in Shopware's Storefront](platform/dev/6.7/guides/development/testing/unit/jest-storefront.md)
+- PHP testing with PHPUnit: [PHP unit testing](platform/dev/6.7/guides/development/testing/unit/php-unit.md)
 
-## Code check (6.7.13.0)
-- confirmed `jest --config jest.config.js` — Storefront `unit` npm script — vendor/shopware/storefront/Resources/app/storefront/package.json:27
-- confirmed `KernelTestBehaviour` — core PHPUnit test trait — vendor/shopware/core/Framework/Test/TestCaseBase/KernelTestBehaviour.php:8
-- unverified `jest` (Administration) — Admin Jest config lives outside the scanned `src` root
+## Code check (6.7.15.1)
+- confirmed `src/core/helper/sanitizer.helper` — Administration Jest specs sit next to the file under test and import it directly — vendor/shopware/administration/Resources/app/administration/src/core/helper/sanitizer.helper.spec.js:7
+- confirmed `testMatch` — Storefront Jest config picks up `**/test/**/*.test.js` — vendor/shopware/storefront/Resources/app/storefront/jest.config.js:88
+- confirmed `TestBootstrapper` — PHPUnit bootstrap helper used by plugin tests — vendor/shopware/core/TestBootstrapper.php:48

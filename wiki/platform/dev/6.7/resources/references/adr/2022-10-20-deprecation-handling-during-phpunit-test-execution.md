@@ -6,55 +6,56 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-10-20-deprecation-handling-during-phpunit-test-execution.html
 sourceHash: 1ed521d545127823c4c7aa3e46894f4e3eaa6812
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["SYMFONY_DEPRECATIONS_HELPER", "ignoreFile", "@DisableFeatures", "@ActiveFeatures()", "Feature::triggerDeprecationOrThrow()", "TESTS_RUNNING", "phpunit bridge", "deprecation", "major feature flag", "unit tests", "forward compatibility", "phpunit"]
-summary: "ADR: PHPUnit reports external deprecations via SYMFONY_DEPRECATIONS_HELPER + ignoreFile; tests run with major flags on, legacy ones use @DisableFeatures."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["SYMFONY_DEPRECATIONS_HELPER", "ignoreFile", "@DisableFeatures", "@ActiveFeatures", "phpunit bridge", "deprecation", "feature flags", "major feature flag", "Feature::triggerDeprecationOrThrow", "unit tests", "forward compatibility", "adr"]
+summary: "ADR: PHPUnit fails on external deprecations via SYMFONY_DEPRECATIONS_HELPER + ignoreFile; unit tests run with all major flags on, @DisableFeatures opts out."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2022-10-20, area core) on how the Shopware PHPUnit suite detects use of deprecated functionality, with separate handling for external (library) and internal (Shopware) deprecations, so the code base stays forward compatible.
+An architecture decision record (2022-10-20, area core) defining how the Shopware PHPUnit test suite detects usage of deprecated functionality, so deprecations are removed as they appear and the code base stays forward compatible. External (library) and internal (Shopware) deprecations are handled by two different mechanisms.
 
 ## When to use
 
-When writing or maintaining Shopware PHPUnit tests that touch deprecated code paths, when a dependency update introduces new deprecation notices, or when you need to understand why tests run with major feature flags enabled.
+When a test fails because a deprecation was triggered, when you add a dependency update that introduces many new deprecations, or when you write tests that intentionally cover deprecated code paths and must keep them running until the deprecation is removed.
 
 ## Key steps / config
 
-External deprecations (Symfony PHPUnit Bridge):
+### External deprecations — Symfony PHPUnit Bridge
 
-1. Enable `SYMFONY_DEPRECATIONS_HELPER` for the test suite so that triggered deprecations are reported.
-2. Use the bridge's `ignoreFile` option (regex per line) to ignore deprecations that cannot be fixed immediately:
-   - all internal Shopware deprecations (handled by feature flags, below);
-   - deprecations triggered inside external dependencies — comment each ignore with the triggering package so it can be removed after updating it;
-   - large batches from a library update (e.g. DBAL API renames) — ignore **temporarily** and create a ticket.
+- Enable the `SYMFONY_DEPRECATIONS_HELPER` of Symfony's PHPUnit Bridge for the test suite, so encountered deprecations are reported and fail the run.
+- Previously impossible, because the helper also reported internal deprecations and deprecations triggered inside external dependencies that Shopware cannot fix. The bridge's `ignoreFile` option (regex list) solves this. Use it to ignore:
+  1. all internal deprecations (handled by feature flags, see below);
+  2. deprecations triggered inside external dependencies — each ignore commented with the package that triggers it, so it can be dropped once that dependency is updated;
+  3. deprecations too numerous to fix immediately (e.g. a library such as DBAL renaming a large part of its public API) — ignored **temporarily**, with a ticket to remove them.
 
-Internal deprecations (feature flag system):
+### Internal deprecations — feature flag system
 
-1. Internal deprecations go through `Feature::triggerDeprecationOrThrow($majorFlag, $message)`: it throws a `FeatureException` when the major flag is active, otherwise emits a deprecation notice.
-2. All unit tests run with all major feature flags activated, so the default test behaviour is the new, non-deprecated one.
-3. The previous `@ActiveFeatures()` annotation is replaced by `@DisableFeatures`, which disables the passed feature flags for a test case.
-4. Tests that cover legacy behaviour are marked with `@DisableFeatures`, making them easy to find and delete once the deprecation is removed.
+- Internally, deprecations are emitted through the feature flag system: a deprecation message is triggered, or an exception thrown when the major feature flag is active (see the consistent deprecation notices ADR of 2022-02-28). In 6.7 that is `Shopware\Core\Framework\Feature::triggerDeprecationOrThrow($majorFlag, $message, ...)`.
+- The old unit-test annotation `@ActiveFeatures()` required flags to be enabled explicitly. Problems: tests that rely on deprecated behaviour already fail once deprecations are removed; forward compatibility cannot be checked automatically because tests ran without major flags by default; tests that exist only for legacy behaviour were hard to spot.
+- New workflow:
+  1. All unit tests run with **all major feature flags activated**.
+  2. `@ActiveFeatures()` is removed; `@DisableFeatures` does the opposite — it disables the passed feature flags for that test.
+- Result: the default test behaviour is the new, non-deprecated behaviour; deprecated code paths are the exception, and every test marked `@DisableFeatures` can simply be deleted when the underlying deprecation is removed.
 
 ## Essential identifiers
 
-- `SYMFONY_DEPRECATIONS_HELPER`, `ignoreFile`
-- `Feature::triggerDeprecationOrThrow()`, `Feature::isActive()`
-- `@DisableFeatures`
+- `SYMFONY_DEPRECATIONS_HELPER` (env var), `ignoreFile` (PHPUnit Bridge option)
+- `@DisableFeatures` (test annotation), formerly `@ActiveFeatures()`
+- `Feature::triggerDeprecationOrThrow()`, `Feature::isActive()`, `Feature::skipTestIfActive()`, `Feature::skipTestIfInActive()`
 
 ## Gotchas
 
-- Before `ignoreFile` existed, enabling `SYMFONY_DEPRECATIONS_HELPER` was impractical because it also reported internal deprecations and ones from dependencies Shopware could not fix.
-- Without flags activated by default, some tests only passed because they relied on deprecated behaviour, and forward compatibility could not be checked automatically.
-- `Feature::triggerDeprecationOrThrow()` does not trigger a PHP deprecation when the `TESTS_RUNNING` environment variable is set; the flag behaviour itself is covered by tests.
-- The plugin scaffolding `phpunit.xml` stub sets `SYMFONY_DEPRECATIONS_HELPER` to `weak`, which does not fail tests on deprecations.
+- Internal deprecated code paths must keep working and stay covered by tests — that is why they are excluded from the Symfony helper and handled through feature flags instead.
+- Ignores for vendor deprecations should name the triggering package; ignores for bulk library deprecations are meant to be temporary.
+- The plugin scaffolding's generated `phpunit.xml` sets `SYMFONY_DEPRECATIONS_HELPER` to `weak`, which does not fail on deprecations — tighten it in your own plugin if you want this ADR's behaviour.
 
-## Code check (6.7.13.0)
-- confirmed `Feature::triggerDeprecationOrThrow()` — signature (majorFlag, message, introducedIn) — vendor/shopware/core/Framework/Feature.php:267
-- confirmed `FeatureException` — thrown when the major flag is active — vendor/shopware/core/Framework/Feature.php:274
-- confirmed `TESTS_RUNNING` — skips trigger_deprecation during tests — vendor/shopware/core/Framework/Feature.php:281
-- confirmed `Feature::isActive()` — flag check used by the deprecation helper — vendor/shopware/core/Framework/Feature.php:128
-- confirmed `SYMFONY_DEPRECATIONS_HELPER` — plugin scaffold phpunit stub sets value weak — vendor/shopware/core/Framework/Plugin/Command/Scaffolding/stubs/phpunit-xml.stub:16
-- unverified `@DisableFeatures` — test-suite annotation, core test code is not shipped in vendor/shopware
-- unverified `@ActiveFeatures()` — test-suite annotation, not shipped in vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `SYMFONY_DEPRECATIONS_HELPER` — set to weak in the plugin phpunit.xml scaffold stub — vendor/shopware/core/Framework/Plugin/Command/Scaffolding/stubs/phpunit-xml.stub:16
+- confirmed `Feature::triggerDeprecationOrThrow()` — triggers deprecation or throws under the major flag — vendor/shopware/core/Framework/Feature.php:281
+- confirmed `Feature::isActive()` — feature flag state lookup — vendor/shopware/core/Framework/Feature.php:139
+- confirmed `Feature::skipTestIfActive()` — test helper for flag-dependent tests — vendor/shopware/core/Framework/Feature.php:261
+- confirmed `Feature::skipTestIfInActive()` — test helper for flag-dependent tests — vendor/shopware/core/Framework/Feature.php:252
+- unverified `@DisableFeatures` — defined in the test suite, outside the checked vendor roots
+- unverified `@ActiveFeatures` — removed per ADR; test suite is outside the checked vendor roots
 - unverified `ignoreFile` — Symfony PHPUnit Bridge option, vendor/symfony out of scope

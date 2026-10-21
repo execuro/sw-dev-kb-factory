@@ -6,30 +6,26 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-09-06-make-core-mail-templates-independent-from-storefront-urls.html
 sourceHash: 935d8c1e31f1e3fe5459dbc9a884c59bb731de34
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["mail templates", "headless", "rawUrl", "raw_url", "domain", "core.newsletter.subscribeUrl", "core.loginRegistration.pwdRecoverUrl", "core.loginRegistration.confirmationUrl", "NewsletterSubscribeUrlEvent", "deepLinkCode", "double opt-in", "password recovery", "email links", "adr"]
-summary: "ADR: core mail links should be built in templates from a domain variable and fixed public paths, not rawUrl; 6.7 still uses system-config URL templates."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["mail templates", "headless", "storefront urls", "rawUrl", "raw_url", "domain twig variable", "core.loginRegistration.pwdRecoverUrl", "core.loginRegistration.confirmationUrl", "core.newsletter.subscribeUrl", "PasswordRecoveryUrlEvent", "NewsletterSubscribeUrlEvent", "CustomerConfirmRegisterUrlEvent", "double opt-in", "deepLinkCode"]
+summary: "ADR: core mail templates build links via string concatenation and public default URLs, not storefront routes, so mails work headless."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (2021-09-06) about making core mail templates (newsletter, registration, password recovery, order status) work without the Storefront bundle, i.e. in headless setups, by defining a fixed set of public URL paths.
+An architecture decision record (2021-09-06, area storefront) deciding that core mail templates (newsletter, registration, password recovery, order status mails) must not depend on Storefront routes, because those routes do not exist when Shopware runs headless without the Storefront bundle.
 
 ## When to use
 
-When building a custom frontend (e.g. PWA/headless) that must handle links in Shopware's core mails, or when customising the URLs those mails contain.
+Read this when building a custom/headless frontend (e.g. PWA) that must handle links contained in Shopware's core mails, or when overriding mail templates to point to custom URLs.
 
 ## Key steps / config
 
-Problem: some core mails depend on Storefront routes, which do not exist headless. The newsletter subscription, double opt-in and password recovery URLs were made configurable via system config and the Administration, with Storefront paths as defaults; this does not scale and it is unclear where to apply them since mails can be triggered from different entry points (business events, Flow Builder).
+Decisions in the ADR:
 
-Decision (planned):
-- Generate links in the mail templates by string concatenation instead of PHP-side generation or Twig URL functions, so links work even when the route is not registered.
-- Add a domain variable to the Twig mail context (domain of the sales channel context, order, etc.).
-- The paths used in core mail templates become public API; custom frontends provide the same paths or redirects, or override the mail templates.
-- Deprecate the system-config values and URL events for PHP-side link generation.
-
-Default public paths:
+1. No links should be generated on the PHP side (hard to override per sales channel, not changeable by apps). Links are built inside mail templates by string concatenation instead of the `raw_url` Twig function, so they render even if the route is not registered.
+2. A `{{ domain }}` variable is to be added to the Twig context, holding the domain of the current sales channel context / order.
+3. The URLs used in core mail templates become public API. Custom frontends should serve the same paths or redirect them:
 
 ```
 /account/order/{deepLinkCode}
@@ -38,32 +34,34 @@ Default public paths:
 /registration/confirm?em={emailHash}&hash={subscribeHash}
 ```
 
-What the installed 6.7 code does: the URLs are still built PHP-side from system-config templates with placeholders, and the newsletter URL passes through `NewsletterSubscribeUrlEvent`:
-- `core.newsletter.subscribeUrl` — default `/newsletter-subscribe?em=%%HASHEDEMAIL%%&hash=%%SUBSCRIBEHASH%%`
-- `core.loginRegistration.pwdRecoverUrl` — default `/account/recover/password?hash=%%RECOVERHASH%%`
-- `core.loginRegistration.confirmationUrl` — default `/registration/confirm?em=%%HASHEDEMAIL%%&hash=%%SUBSCRIBEHASH%%`
+4. Frontends that cannot use these defaults override the mail templates, or extend a core template and branch with `IF/ELSE` on sales channel or domain.
 
-Third-party clients either adhere to the default paths, add their own mail templates, or extend the core template and branch per sales channel or domain.
+What the installed code (6.7.15.1) does today: the password recovery, double opt-in and newsletter links are still built in PHP. Each route reads a system config URL template (`core.loginRegistration.pwdRecoverUrl`, `core.loginRegistration.confirmationUrl`, `core.newsletter.subscribeUrl`), falls back to the default path above with `%%RECOVERHASH%%` / `%%HASHEDEMAIL%%` / `%%SUBSCRIBEHASH%%` placeholders, dispatches a URL event, and prefixes the storefront URL.
 
 ## Essential identifiers
 
-- `core.newsletter.subscribeUrl`, `core.loginRegistration.pwdRecoverUrl`, `core.loginRegistration.confirmationUrl`
-- `NewsletterSubscribeUrlEvent`
-- Twig function `rawUrl`; route `frontend.account.order.single.page` with `deepLinkCode`
+- `core.loginRegistration.pwdRecoverUrl`, `core.loginRegistration.confirmationUrl`, `core.newsletter.subscribeUrl` (system config URL templates)
+- `PasswordRecoveryUrlEvent`, `CustomerConfirmRegisterUrlEvent`, `NewsletterSubscribeUrlEvent` (PHP-side URL events)
+- `rawUrl` Twig function (`raw_url` in the ADR)
+- `deepLinkCode` (order deep link)
 
 ## Gotchas
 
-- The ADR calls the Twig function `raw_url`; the registered name is `rawUrl`.
-- The planned deprecation was not carried out as of 6.7.13.0: the config keys and the URL event are active and not marked deprecated, and the order-state mail fixtures in core still call `rawUrl('frontend.account.order.single.page', ...)`.
-- No `{{ domain }}` mail variable was found in the core mail code checked.
+- The listed URLs are public API and are maintained backward compatibly; a custom frontend must keep them reachable or override templates.
+- The ADR plans unit tests asserting no `raw_url` functions in default templates. In the installed fixtures the order mails still call `rawUrl('frontend.account.order.single.page', { 'deepLinkCode': order.deepLinkCode }, salesChannel.domains|first.url)`, so order-link mails still depend on the Storefront route name.
+- The `{{ domain }}` variable could not be located in the installed code by search; do not rely on it without checking your version.
 
-## Code check (6.7.13.0)
-- corrected `core.newsletter.subscribeUrl` — docs: to be deprecated; still read with this default path — vendor/shopware/core/Content/Newsletter/SalesChannel/NewsletterSubscribeRoute.php:363
-- confirmed `NewsletterSubscribeUrlEvent` — still dispatched when building the subscribe URL — vendor/shopware/core/Content/Newsletter/SalesChannel/NewsletterSubscribeRoute.php:370
-- corrected `core.loginRegistration.pwdRecoverUrl` — docs: to be deprecated; still read — vendor/shopware/core/Checkout/Customer/SalesChannel/SendPasswordRecoveryMailRoute.php:242
-- corrected `core.loginRegistration.confirmationUrl` — docs: to be deprecated; still read by double opt-in — vendor/shopware/core/Checkout/Customer/Service/DoubleOptInService.php:118
-- confirmed `/newsletter-subscribe?em=` — default path in system config — vendor/shopware/core/System/Resources/config/newsletter.xml:12
-- confirmed `/account/recover/password?hash=` — default path in system config — vendor/shopware/core/System/Resources/config/loginRegistration.xml:200
-- corrected `rawUrl` — docs: `raw_url`; registered Twig function name — vendor/shopware/core/Framework/Adapter/Twig/Extension/RawUrlFunctionExtension.php:29
-- corrected `deepLinkCode` — docs: templates avoid URL functions; order mail fixture still uses rawUrl — vendor/shopware/core/Migration/Fixtures/mails/order.state.cancelled/de-html.html.twig:9
-- unverified `{{ domain }}` — no mail-context domain variable found in core
+## Version notes
+
+The ADR announced deprecating the system-config URL values and the PHP-side URL events and removing them in the next major. In 6.7.15.1 the config keys and the three events are still used and their classes carry no `@deprecated` marker.
+
+## Code check (6.7.15.1)
+- confirmed `rawUrl` — Twig function still registered — vendor/shopware/core/Framework/Adapter/Twig/Extension/RawUrlFunctionExtension.php:28
+- corrected `frontend.account.order.single.page` — docs: core templates use string concatenation, no raw_url; order mail fixture still calls rawUrl with this route — vendor/shopware/core/Migration/Fixtures/mails/order_confirmation_mail/en-plain.html.twig:10
+- confirmed `core.loginRegistration.pwdRecoverUrl` — still read on PHP side for the recovery link — vendor/shopware/core/Checkout/Customer/SalesChannel/SendPasswordRecoveryMailRoute.php:242
+- confirmed `PasswordRecoveryUrlEvent` — still dispatched — vendor/shopware/core/Checkout/Customer/SalesChannel/SendPasswordRecoveryMailRoute.php:249
+- confirmed `core.loginRegistration.confirmationUrl` — double opt-in confirm URL template — vendor/shopware/core/Checkout/Customer/Service/DoubleOptInService.php:120
+- confirmed `CustomerConfirmRegisterUrlEvent` — still dispatched — vendor/shopware/core/Checkout/Customer/Service/DoubleOptInService.php:126
+- confirmed `core.newsletter.subscribeUrl` — newsletter subscribe URL template — vendor/shopware/core/Content/Newsletter/SalesChannel/NewsletterSubscribeRoute.php:366
+- confirmed `NewsletterSubscribeUrlEvent` — still dispatched — vendor/shopware/core/Content/Newsletter/SalesChannel/NewsletterSubscribeRoute.php:373
+- unverified `domain` — Twig context variable not found by search in the installed code

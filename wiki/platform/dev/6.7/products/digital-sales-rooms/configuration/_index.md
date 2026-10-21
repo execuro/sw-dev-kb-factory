@@ -1,23 +1,27 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/digital-sales-rooms/configuration/_index.md
-sourceHash: 1930ac47cec4c5f2d3d20a30c7830944024bcf65
-sourceUrl: https://developer.shopware.com/docs/products/digital-sales-rooms/configuration/
 title: Configuration
+docType: developer
 version: "6.7"
 versions: ["6.7"]
-keywords: ["digital sales rooms", "dsr", "configuration", "plugin configuration", "settings", "setup", "section index", "guided shopping"]
-summary: "Section index for configuring the Digital Sales Rooms plugin; child pages give the detailed configuration procedure."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/digital-sales-rooms/configuration/
+sourceHash: 1930ac47cec4c5f2d3d20a30c7830944024bcf65
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["digital sales rooms", "dsr", "dsr configuration", "plugin configuration", "domain configuration", "configuration with cli", "sales channel domain", "appointments", "daily.co", "mercure", "setup"]
+summary: Section index for configuring the Digital Sales Rooms (DSR) plugin - domain setup, plugin settings and the CLI-based configuration.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section index for configuring the *Digital Sales Rooms* (DSR) plugin. The source page only states that this section shows how to configure the plugin and that the following child pages give the detailed configuration procedure; it has no configuration keys of its own.
+The entry page of the *Digital Sales Rooms* configuration section. It only states that the following sub-pages describe, step by step, how to configure the Digital Sales Rooms plugin; it contains no configuration values itself.
 
 ## When to use
 
-After installing DSR (or, on SaaS, after deploying the frontend app and setting up 3rd parties), when you need the step-by-step plugin configuration.
+Start here when setting up Digital Sales Rooms after installation and pick the sub-page for the part you need: assigning the frontend app's domains to a sales channel, filling the plugin's configuration page (appointments, video/audio, realtime service), or running the combined CLI setup.
 
-## Code check (6.7.13.0)
-- unverified `Digital Sales Rooms` — commercial plugin; no DSR configuration code in vendor/shopware core, storefront or administration
+## Gotchas
+
+- Digital Sales Rooms is a separate plugin, not part of `shopware/core`; nothing named Digital Sales Rooms exists in the core, storefront or administration packages of the installed version, so its settings cannot be verified against that code.
+
+## Code check (6.7.15.1)
+- unverified `Digital Sales Rooms` — separate plugin; no matching code in vendor/shopware core, storefront or administration

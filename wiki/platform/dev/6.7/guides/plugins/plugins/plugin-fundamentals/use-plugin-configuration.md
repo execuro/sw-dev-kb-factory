@@ -1,31 +1,35 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/use-plugin-configuration.md
-title: Use Plugin Configuration
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/plugin-fundamentals/use-plugin-configuration.html
+id: platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/use-plugin-configuration.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-plugin-configuration.md
+  - platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md
+  - platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md
 sourceHash: e46b5da98d01174d951a4f9c303f6322996685fc
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["plugin configuration", "read config", "SystemConfigService", "SystemConfigService::get", "SwagBasicExample.config.example", "systemConfigApiService", "getValues", "config() twig function", "system_config:read", "config.xml", "product.loaded", "sales channel config", "system config"]
-summary: Reading plugin config values via SystemConfigService::get in PHP, systemConfigApiService.getValues in Admin JS and config() in Storefront Twig.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-plugin-configuration.md", "platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/plugin-fundamentals/use-plugin-configuration.html
+title: Use Plugin Configuration
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["SystemConfigService", "systemConfigApiService", "getValues", "config()", "SwagBasicExample.config.example", "system_config:read", "product.loaded", "ProductEvents::PRODUCT_LOADED_EVENT", "plugin configuration", "read config value", "config.xml", "sales channel config", "twig config function"]
+summary: "Read plugin config values via SystemConfigService::get() in PHP, systemConfigApiService.getValues() in Admin JS, and config() in Storefront Twig."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to read values of a plugin's `config.xml` fields at runtime: in PHP via `SystemConfigService`, in Administration JavaScript via `systemConfigApiService`, and in Storefront Twig via the `config()` function. Defining the fields is covered in [Add plugin configuration](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-plugin-configuration.md).
+How to read values defined in a plugin's `config.xml` from PHP (services, subscribers), Administration JavaScript and Storefront Twig/JS. Plugin config keys are always prefixed: `<BundleName>.config.<configName>`, e.g. `SwagBasicExample.config.example`.
 
 ## When to use
 
-When plugin code (a subscriber or service, a custom Admin module, or a Storefront template/JS plugin) must behave according to a configuration value the merchant set.
+You have defined a config field (see [Add plugin configuration](platform/dev/6.7/guides/plugins/plugins/plugin-fundamentals/add-plugin-configuration.md)) and need its value at runtime. The guide's example reads it inside a subscriber on `product.loaded` (see [Listening to events](platform/dev/6.7/guides/plugins/plugins/framework/event/listening-to-events.md)).
 
 ## Key steps / config
 
-Example config field with technical name `example` (schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/System/SystemConfig/Schema/config.xsd`):
+Minimal `src/Resources/config/config.xml` (schema `https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/System/SystemConfig/Schema/config.xsd`):
 
 ```xml
-<config>
+<config xsi:noNamespaceSchemaLocation=".../SystemConfig/Schema/config.xsd">
     <card>
         <title>Minimal configuration</title>
         <input-field><name>example</name></input-field>
@@ -33,60 +37,51 @@ Example config field with technical name `example` (schema `https://raw.githubus
 </config>
 ```
 
-**Key format.** Plugin config keys are prefixed `<BundleName>.config.<configName>`, here `SwagBasicExample.config.example`. A bare `get('example')` would be ambiguous between plugins.
+**PHP**
 
-**PHP.** Inject `Shopware\Core\System\SystemConfig\SystemConfigService` into your service (the example uses a subscriber on `ProductEvents::PRODUCT_LOADED_EVENT` = `product.loaded`):
+1. Inject `Shopware\Core\System\SystemConfig\SystemConfigService` in `src/Resources/config/services.php`:
+   ```php
+   $services->set(MySubscriber::class)
+       ->args([service(SystemConfigService::class)])
+       ->tag('kernel.event_subscriber');
+   ```
+2. Store it in a constructor property, then read with the prefixed key:
+   `$this->systemConfigService->get('SwagBasicExample.config.example', $salesChannelId);`
+   Pass `null` as `salesChannelId` for the value valid across all sales channels, or a specific sales channel ID. Typed variants `getString()`, `getInt()`, `getBool()` share the same signature.
 
-```php
-$services->set(MySubscriber::class)
-    ->args([service(SystemConfigService::class)])
-    ->tag('kernel.event_subscriber');
+**Administration (JS)**
 
-// in the subscriber
-$exampleConfig = $this->systemConfigService->get('SwagBasicExample.config.example', $salesChannelId);
-```
+- Inject `systemConfigApiService` (`inject: ['systemConfigApiService']` in a component) or fetch it with `Shopware.ApiService.getByName('systemConfigApiService')`.
+- `await systemConfigApiService.getValues('SwagBasicExample.config')` returns an object keyed by full key: `config['SwagBasicExample.config.example']`. Optional second argument: `salesChannelId` (default `null`).
+- The underlying endpoint is `GET /api/_action/system-config` and requires the `system_config:read` permission.
 
-The second argument `?string $salesChannelId` defaults to `null` (value for all sales channels); pass an ID for a channel-specific value. Typed variants `getString()`, `getInt()`, `getFloat()`, `getBool()` exist with the same signature.
+**Storefront**
 
-**Administration JS.** Inject `systemConfigApiService` (`inject: ['systemConfigApiService']`) or fetch it with `Shopware.ApiService.getByName('systemConfigApiService')`, then:
-
-```javascript
-const config = await this.systemConfigApiService.getValues('SwagBasicExample.config');
-const exampleValue = config['SwagBasicExample.config.example'];
-```
-
-`getValues(domain, salesChannelId = null, ...)` calls `GET /api/_action/system-config`, which requires the `system_config:read` ACL privilege.
-
-**Storefront Twig.**
-
-```twig
-{% set exampleValue = config('SwagBasicExample.config.example') %}
-```
-
-`config()` reads through `SystemConfigService::get()` using the sales channel from the template context. For Storefront JS plugins (extending `PluginBaseClass`), pass the value from Twig into the page yourself (the source reads it back as `window.pluginConfig?.example`).
+- Twig: `{% set exampleValue = config('SwagBasicExample.config.example') %}` — no API call; the sales channel is taken from the template context.
+- Storefront JS plugins (extending `PluginBaseClass`) cannot read system config directly; pass the value from Twig into the JS (the guide reads it from `window.pluginConfig?.example`).
 
 ## Essential identifiers
 
-- `Shopware\Core\System\SystemConfig\SystemConfigService`, `get()`
-- `SwagBasicExample.config.example` (`<BundleName>.config.<configName>`)
-- `systemConfigApiService`, `getValues()`
-- `config()` Twig function
-- `system_config:read`
-- `ProductEvents::PRODUCT_LOADED_EVENT` / `product.loaded`
+- `Shopware\Core\System\SystemConfig\SystemConfigService` — `get()`, `getString()`, `getInt()`, `getBool()`
+- Key pattern `<BundleName>.config.<configName>`
+- `systemConfigApiService.getValues(domain, salesChannelId)`
+- Twig function `config()`
+- ACL privilege `system_config:read`
+- `ProductEvents::PRODUCT_LOADED_EVENT` (`product.loaded`), `EntityLoadedEvent`
 
 ## Gotchas
 
-- Always use the full prefixed key; the technical field name alone is not unique.
-- The Admin API call fails without the `system_config:read` privilege.
-- The source's Twig-to-JS handover snippet is empty; `window.pluginConfig` is not defined anywhere in the Storefront package, so your template must set it.
+- Calling `get('example')` without the prefix does not find the value; field names are only unique per bundle.
+- The Admin `getValues()` call takes the domain (`SwagBasicExample.config`), not a single key, and returns the full keys.
 
-## Code check (6.7.13.0)
-- confirmed `SystemConfigService::get()` — `(string $key, ?string $salesChannelId = null)` — vendor/shopware/core/System/SystemConfig/SystemConfigService.php:59
-- confirmed `.config.` — plugin key prefix is bundle name plus `.config.` — vendor/shopware/core/System/SystemConfig/SystemConfigService.php:381
+## Code check (6.7.15.1)
+- confirmed `SystemConfigService::get()` — signature `get(string $key, ?string $salesChannelId = null)` — vendor/shopware/core/System/SystemConfig/SystemConfigService.php:60
+- confirmed `SystemConfigService::getString()` — same key/salesChannelId signature, returns string — vendor/shopware/core/System/SystemConfig/SystemConfigService.php:87
+- confirmed `.config.` — plugin keys are prefixed with the bundle name plus `.config.` — vendor/shopware/core/System/SystemConfig/SystemConfigService.php:371
 - confirmed `PRODUCT_LOADED_EVENT` — value `product.loaded` — vendor/shopware/core/Content/Product/ProductEvents.php:35
+- confirmed `EntityLoadedEvent` — class exists in DAL Event namespace — vendor/shopware/core/Framework/DataAbstractionLayer/Event/EntityLoadedEvent.php:19
+- confirmed `config` — Twig function backed by `SystemConfigService::get()` with the context's sales channel — vendor/shopware/core/Framework/Adapter/Twig/Extension/ConfigExtension.php:54
 - confirmed `systemConfigApiService` — Admin API service name — vendor/shopware/administration/Resources/app/administration/src/core/service/api/system-config.api.service.js:17
-- confirmed `getValues` — calls `_action/system-config` with domain and salesChannelId — vendor/shopware/administration/Resources/app/administration/src/core/service/api/system-config.api.service.js:44
-- confirmed `system_config:read` — ACL on the values route — vendor/shopware/core/System/SystemConfig/Api/SystemConfigController.php:70
-- confirmed `config` — Twig function, reads via SystemConfigService with context sales channel — vendor/shopware/core/Framework/Adapter/Twig/Extension/ConfigExtension.php:54
-- confirmed `card` — config.xsd root `config` element takes `card` children — vendor/shopware/core/System/SystemConfig/Schema/config.xsd:6
-- unverified `window.pluginConfig` — not found in vendor/shopware/storefront; plugin-defined per source
+- confirmed `getValues()` — `getValues(domain, salesChannelId = null, ...)` calls `_action/system-config` — vendor/shopware/administration/Resources/app/administration/src/core/service/api/system-config.api.service.js:44
+- confirmed `system_config:read` — ACL on the system-config read routes — vendor/shopware/core/System/SystemConfig/Api/SystemConfigController.php:37
+- confirmed `getByName` — exposed on `Shopware.ApiService` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:235

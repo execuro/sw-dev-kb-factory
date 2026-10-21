@@ -6,91 +6,85 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/script-reference/script-hooks-reference.html
 sourceHash: 8d51b03550f866de6050be38fc5707092e66514f
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["script hooks", "app scripts", "HOOK_NAME", "PageLoadedHook", "product-page-loaded", "checkout-cart-page-loaded", "CartHook", "ApiHook", "StoreApiResponseHook", "StoreApiCacheKeyHook", "StorefrontHook", "ProductPricingHook", "AppInstalledHook", "cache-invalidation", "available services"]
-summary: "List of app script hook names, hook classes, available data and services: page/pagelet loaded, cart, api/store-api/storefront endpoints, app lifecycle, pricing."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["script hooks", "app scripts", "product-page-loaded", "cart", "store-api-{hook}", "api-{hook}", "storefront-{hook}", "cache_key", "cache-invalidation", "product-pricing", "document-generation", "cookie-group-collect", "app-installed", "hook names"]
+summary: List of all app script hook names in 6.7 (page loaded, cart, custom endpoints, app lifecycle, product pricing) with classes, data and available services.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The full list of hook points app scripts can attach to, grouped by use case (data loading, cart manipulation, custom API endpoints, app lifecycle, product). For each hook: its name (the `HOOK_NAME` constant), the hook class, the data exposed to the script, the available `services.*`, and whether it is stoppable.
+The complete list of hook points where app scripts can run, grouped into Data Loading, Cart Manipulation, Custom API endpoint, App Lifecycle and Product. For each hook the source gives the name, hook class, data available on `hook`, the injectable `services.*`, and whether it is stoppable.
 
 ## When to use
 
-Look up which hook name to use for a script, which variables (`page`, `cart`, `hook.*`) and which services (`repository`, `store`, `config`, `request`, `writer`, `response`, `cache`, `price`, `cart`, `acl`) are available inside it.
+Look up which hook name a script must use, what data it exposes (`page`, `cart`, `products`, ...), and which services (`repository`, `store`, `config`, `request`, `acl`, `cart`, `price`, `writer`, `response`, `cache`) it can call.
 
 ## Key steps / config
 
-### Data loading (not stoppable)
+### Data Loading
 
-Storefront page/pagelet hooks expose `context`, `page` (or `pagelet`), `salesChannelContext`; services: `repository`, `config`, `store`, `request`, `acl`. Classes live under `Shopware\Storefront\Page\...` / `Shopware\Storefront\Pagelet\...`:
+Storefront page/pagelet hooks: data `context`, `page` (or `pagelet`), `salesChannelContext`; services `repository`, `config`, `store`, `request`, `acl`; not stoppable. Since 6.4.8.0 unless noted.
 
-- Account: `customer-group-registration-page-loaded`, `account-guest-login-page-loaded`, `account-login-page-loaded`, `account-edit-order-page-loaded`, `account-order-page-loaded`, `account-overview-page-loaded`, `account-profile-page-loaded`, `account-recover-password-page-loaded` (since 6.4.13.0), `account-register-page-loaded`
+- Account: `customer-group-registration-page-loaded`, `account-guest-login-page-loaded`, `account-login-page-loaded`, `account-edit-order-page-loaded`, `account-order-page-loaded`, `account-overview-page-loaded`, `account-profile-page-loaded`, `account-recover-password-page-loaded` (6.4.13.0), `account-register-page-loaded`
 - Address: `address-detail-page-loaded`, `address-book-widget-loaded`, `address-listing-page-loaded`
 - Checkout: `checkout-cart-page-loaded`, `checkout-confirm-page-loaded`, `checkout-finish-page-loaded`, `checkout-info-widget-loaded`, `checkout-offcanvas-widget-loaded`, `checkout-register-page-loaded`
-- Content: `cms-page-loaded` (page is `Shopware\Core\Content\Cms\CmsPageEntity`), `landing-page-loaded`, `maintenance-page-loaded`, `navigation-page-loaded`, `product-page-loaded`, `product-quick-view-widget-loaded`, `search-page-loaded`, `search-widget-loaded`, `sitemap-page-loaded`, `suggest-page-loaded`, `guest-wishlist-page-loaded`, `wishlist-page-loaded`, `wishlist-widget-loaded`
-- Pagelets: `country-state-data-pagelet-loaded`, `footer-pagelet-loaded` and `header-pagelet-loaded` (both since 6.7.0.0), `menu-offcanvas-pagelet-loaded`, `guest-wishlist-pagelet-loaded`
+- Content: `cms-page-loaded`, `landing-page-loaded`, `maintenance-page-loaded`, `navigation-page-loaded`, `product-page-loaded`, `product-quick-view-widget-loaded`, `search-page-loaded`, `search-widget-loaded`, `sitemap-page-loaded`, `suggest-page-loaded`
+- Wishlist: `guest-wishlist-page-loaded`, `wishlist-page-loaded`, `wishlist-widget-loaded`, `guest-wishlist-pagelet-loaded`
+- Pagelets: `country-state-data-pagelet-loaded`, `footer-pagelet-loaded` (6.7.0.0), `header-pagelet-loaded` (6.7.0.0), `menu-offcanvas-pagelet-loaded`
 
-Core data-loading hooks:
+Other data loading hooks (no `request` service; `document-generation` also has no `store`):
 
-- `payment-method-route-request` — `Shopware\Core\Checkout\Payment\Hook\PaymentMethodRouteHook`; data `collection`, `onlyAvailable`, `salesChannelContext`.
-- `shipping-method-route-request` — `Shopware\Core\Checkout\Shipping\Hook\ShippingMethodRouteHook`; same shape.
-- `product-reviews-widget-loaded` — `Shopware\Core\Content\Product\SalesChannel\Review\ProductReviewsWidgetLoadedHook` (since 6.6.9.0); data `reviews` (`ProductReviewResult`); no `request` service.
+- `document-generation` (6.7.14.0, `DocumentGenerationHook`) — once per document, after order load and number allocation, before renderers; data `documentNumber`, `documentType`, `formats`, `orderId`, `orderVersionId`, `salesChannelId`.
+- `payment-method-route-request` / `shipping-method-route-request` (6.5.0.0) — data `collection`, `onlyAvailable`.
+- `cookie-group-collect` (6.7.14.0) — data `cookieGroups`; modify or remove cookie groups per sales channel.
+- `product-reviews-widget-loaded` (6.6.9.0) — data `reviews`.
 
-### Cart manipulation
+### Cart Manipulation
 
-- `cart` — `Shopware\Core\Checkout\Cart\Hook\CartHook`; data `cart`, `salesChannelContext`; services `cart`, `price`, `config`, `acl`.
+- `cart` (`Shopware\Core\Checkout\Cart\Hook\CartHook`) — during cart calculation; data `cart`; services `cart`, `price`, `config`, `acl`.
 
-### Custom API endpoints
+### Custom API endpoint
 
-| Name | Class | Services | Stoppable |
-|---|---|---|---|
-| `cache-invalidation` | `Shopware\Core\Framework\Adapter\Cache\Script\CacheInvalidationHook` (data `event`) | `cache`, `acl` | no |
-| `api-{hook}` | `Shopware\Core\Framework\Script\Api\ApiHook` (called on `/api/script/{hook}`) | `repository`, `writer`, `config`, `response`, `acl` | yes |
-| `response` | `Shopware\Core\Framework\Script\Api\ResponseHook` (every response; since 6.6.10.0; data `response`, `routeName`, `routeScopes`) | `acl` | no |
-| `store-api-{hook}` | interface hook for `/store-api/script/{hook}` | see functions | yes |
-| `storefront-{hook}` | `Shopware\Storefront\Framework\Script\Api\StorefrontHook` (`/storefront/script/{hook}`) | `repository`, `config`, `store`, `writer`, `response`, `request`, `acl` | yes |
+- `cache-invalidation` — on every entity write; data `event`; services `cache`, `acl`.
+- `api-{hook}` (`Shopware\Core\Framework\Script\Api\ApiHook`) — `/api/script/{hook}`; stoppable; services `repository`, `writer`, `config`, `response`, `acl`.
+- `response` (6.6.10.0) — on every response; data `response`, `routeName`, `routeScopes`; service `acl`.
+- `storefront-{hook}` (`Shopware\Storefront\Framework\Script\Api\StorefrontHook`) — `/storefront/script/{hook}`; stoppable; services `repository`, `config`, `store`, `writer`, `response`, `request`, `acl`.
+- `store-api-{hook}` — interface hook for `/store-api/script/{hook}` with two functions:
+  - `cache_key` (optional) — provides a cache key from the request; implement it when the route should be cached; service `acl`.
+  - `response` (required) — provides the HTTP response; only called when nothing is cached for the key or no `cache_key` exists; services as `storefront-{hook}`.
 
-`store-api-{hook}` is an interface hook with two script functions:
+### App Lifecycle
 
-- `cache_key` (optional) — `Shopware\Core\Framework\Script\Api\StoreApiCacheKeyHook`; needed when the Store-API route should be cached; data `cacheKey`, `query`, `request`; service `acl` only.
-- `response` (required) — `Shopware\Core\Framework\Script\Api\StoreApiResponseHook`; only called when no cached response exists for the cache key or no `cache_key` is implemented; services `repository`, `config`, `store`, `writer`, `response`, `request`, `acl`.
-
-### App lifecycle (not stoppable)
-
-`app-activated`, `app-deactivated`, `app-deleted`, `app-installed`, `app-updated` — classes `Shopware\Core\Framework\App\Event\Hooks\AppActivatedHook` etc.; data `event` (e.g. `AppInstalledEvent`); services `repository`, `config`, `writer`, `acl`.
+`app-activated`, `app-deactivated`, `app-deleted`, `app-installed`, `app-updated` — data `event`; services `repository`, `config`, `writer`, `acl`.
 
 ### Product
 
-- `product-pricing` — `Shopware\Core\Content\Product\Hook\Pricing\ProductPricingHook` (since 6.5.1.0); data `products`, `salesChannelContext`; services `repository`, `price`, `config`, `store`, `acl`.
+- `product-pricing` (6.5.1.0, `Shopware\Core\Content\Product\Hook\Pricing\ProductPricingHook`) — when product prices are calculated; data `products`; services `repository`, `price`, `config`, `store`, `acl`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Checkout\Cart\Hook\CartHook`
-- `Shopware\Core\Framework\Script\Api\ApiHook`, `StoreApiCacheKeyHook`, `StoreApiResponseHook`, `ResponseHook`
-- `Shopware\Storefront\Framework\Script\Api\StorefrontHook`
-- `Shopware\Core\Framework\Adapter\Cache\Script\CacheInvalidationHook`
-- `Shopware\Core\Content\Product\Hook\Pricing\ProductPricingHook`
-- `Shopware\Core\Framework\App\Event\Hooks\AppInstalledHook`
+- Hook names above (used as the script directory name)
+- `Shopware\Core\Framework\Script\Api\ApiHook`, `Shopware\Core\Framework\Script\Api\StoreApiCacheKeyHook`, `Shopware\Core\Framework\Script\Api\StoreApiResponseHook`
+- `Shopware\Storefront\Framework\Script\Api\StorefrontHook`, `Shopware\Core\Checkout\Cart\Hook\CartHook`
 
 ## Gotchas
 
-- `account-register-page-loaded` exposes `page` as `AccountLoginPage` per the source (description also says "AccountLoginPage").
-- The `account-order-detail-page-loaded` hook (`Shopware\Storefront\Page\Account\Order\AccountOrderDetailPageLoadedHook`, page `Shopware\Storefront\Page\Account\Order\AccountOrderDetailPage`) is still listed in the docs but is deprecated in the installed code and will be removed in 6.8.0 without replacement.
-- Only `api-{hook}`, `store-api-{hook}` and `storefront-{hook}` are stoppable.
+- `account-register-page-loaded` exposes an `AccountLoginPage` as `page`, per the source.
+- `account-order-detail-page-loaded` (`Shopware\Storefront\Page\Account\Order\AccountOrderDetailPageLoadedHook`, page `Shopware\Storefront\Page\Account\Order\AccountOrderDetailPage`) is still listed by the docs but deprecated in code, to be removed in v6.8.0 without replacement.
+- Only `api-{hook}`, `storefront-{hook}` and the `store-api-{hook}` functions are stoppable.
 
 ## Version notes
 
-- The docs list `document-generation` (`Shopware\Core\Checkout\DocumentV2\Event\Hooks\DocumentGenerationHook`) and `cookie-group-collect` (`Shopware\Core\Content\Cookie\Hook\CookieGroupCollectHook`) as since 6.7.14.0; neither exists in the installed 6.7.13.0.
+6.7.0.0 added `footer-pagelet-loaded` and `header-pagelet-loaded`; 6.7.14.0 added `document-generation` and `cookie-group-collect`.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Checkout\DocumentV2\Event\Hooks\DocumentGenerationHook` — documented as since 6.7.14.0; no `document-generation` hook in the installed code
-- absent `Shopware\Core\Content\Cookie\Hook\CookieGroupCollectHook` — documented as since 6.7.14.0; no `cookie-group-collect` hook in the installed code
+## Code check (6.7.15.1)
 - deprecated `Shopware\Storefront\Page\Account\Order\AccountOrderDetailPageLoadedHook` — `@deprecated tag:v6.8.0`, removed without replacement — vendor/shopware/storefront/Page/Account/Order/AccountOrderDetailPageLoadedHook.php:20
-- deprecated `Shopware\Storefront\Page\Account\Order\AccountOrderDetailPage` — `@deprecated tag:v6.8.0` — vendor/shopware/storefront/Page/Account/Order/AccountOrderDetailPage.php:12
+- deprecated `Shopware\Storefront\Page\Account\Order\AccountOrderDetailPage` — `@deprecated tag:v6.8.0`, removed without replacement — vendor/shopware/storefront/Page/Account/Order/AccountOrderDetailPage.php:12
+- confirmed `DocumentGenerationHook::HOOK_NAME` — `document-generation`, since 6.7.14.0 — vendor/shopware/core/Checkout/DocumentV2/Event/Hooks/DocumentGenerationHook.php:25
+- confirmed `CookieGroupCollectHook::HOOK_NAME` — `cookie-group-collect` — vendor/shopware/core/Content/Cookie/Hook/CookieGroupCollectHook.php:30
 - confirmed `CartHook::HOOK_NAME` — `cart` — vendor/shopware/core/Checkout/Cart/Hook/CartHook.php:25
-- confirmed `ApiHook::HOOK_NAME` — `api-{hook}` — vendor/shopware/core/Framework/Script/Api/ApiHook.php:30
-- confirmed `StoreApiCacheKeyHook::FUNCTION_NAME` — `cache_key` — vendor/shopware/core/Framework/Script/Api/StoreApiCacheKeyHook.php:27
+- confirmed `ApiHook::HOOK_NAME` — `api-{hook}`, implements `StoppableHook` — vendor/shopware/core/Framework/Script/Api/ApiHook.php:30
+- confirmed `StoreApiCacheKeyHook::FUNCTION_NAME` — `cache_key`, an `OptionalFunctionHook` — vendor/shopware/core/Framework/Script/Api/StoreApiCacheKeyHook.php:27
+- confirmed `StoreApiResponseHook::FUNCTION_NAME` — `response`, a required `FunctionHook` — vendor/shopware/core/Framework/Script/Api/StoreApiResponseHook.php:34
 - confirmed `StorefrontHook::HOOK_NAME` — `storefront-{hook}` — vendor/shopware/storefront/Framework/Script/Api/StorefrontHook.php:34
-- confirmed `FooterPageletLoadedHook::HOOK_NAME` — `footer-pagelet-loaded` — vendor/shopware/storefront/Pagelet/Footer/FooterPageletLoadedHook.php:26
 - confirmed `ProductPricingHook::HOOK_NAME` — `product-pricing` — vendor/shopware/core/Content/Product/Hook/Pricing/ProductPricingHook.php:26

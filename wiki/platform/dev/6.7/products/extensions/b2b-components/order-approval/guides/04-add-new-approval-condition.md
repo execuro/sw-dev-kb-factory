@@ -1,47 +1,45 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md
-title: How to add a new approval condition
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.html
+id: platform/dev/6.7/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md
+  - platform/dev/6.7/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md
 sourceHash: 7813915ad1bd503dd9c173ac8e97114e33101a84
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["approval rule condition", "order approval", "shopware.approval_rule.definition", "Rule", "RuleConfig", "RuleScope", "CartRuleScope", "rule-condition", "approval-rule-conditions", "app script", "manifest.xml", "custom condition", "b2b"]
-summary: "B2B approval rule conditions: plugin Rule tagged shopware.approval_rule.definition, or app rule-condition with an approval-rule-conditions script."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md", "platform/dev/6.7/guides/plugins/apps/rule-builder/add-custom-rule-conditions.md"]
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-components/order-approval/guides/04-add-new-approval-condition.html
+title: How to add a new approval condition
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["approval rule condition", "order approval", "b2b components", "shopware.approval_rule.definition", "Rule", "RuleConfig", "RuleConstraints", "RuleComparison", "CartRuleScope", "approval-rule-conditions", "rule-condition", "manifest.xml", "app script", "custom condition"]
+summary: "Add a B2B order approval condition: a plugin Rule tagged shopware.approval_rule.definition, or an app rule-condition plus Twig script."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to add a custom condition for B2B Order Approval rules (Shopware Commercial), either from a plugin (a PHP `Rule` class tagged for approval rules) or from an app (a manifest `rule-condition` plus a Twig app script).
+How to extend the B2B Components order approval feature with your own condition for approval rules, either from a plugin (a PHP `Rule` subclass registered with a dedicated tag) or from an app (a `rule-condition` in `manifest.xml` plus a Twig app script).
 
 ## When to use
 
-The built-in approval rule conditions do not cover a criterion you need on the Storefront Approval Rule detail/create page.
+The built-in approval conditions do not cover a criterion you need on the Storefront Approval Rule detail/create page (for example cart total, customer first name, cart tax status, cart currency).
 
 ## Key steps / config
 
 ### Plugin
 
-1. Write a rule as in [Add custom rule](platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md): extend `Shopware\Core\Framework\Rule\Rule`, set `RULE_NAME`, implement `match()` and `getConstraints()`, optionally override `getConfig()`.
+1. Write a rule class as for any custom rule (see [Add custom rule](platform/dev/6.7/guides/plugins/plugins/framework/rule/add-custom-rules.md)). It extends `Shopware\Core\Framework\Rule\Rule`, overrides `RULE_NAME`, and implements the abstract `match()` and `getConstraints()`; `getConfig()` is optional.
 
 ```php
 class CartAmountRule extends Rule
 {
     final public const RULE_NAME = 'totalCartAmount';
-    protected float $amount;
-
-    public function match(RuleScope $scope): bool { /* return false unless $scope instanceof CartRuleScope; compare cart total */ }
-    public function getConstraints(): array { /* 'amount' => [...], 'operator' => [...] */ }
-    public function getConfig(): RuleConfig
-    {
-        return (new RuleConfig())->operatorSet(RuleConfig::OPERATOR_SET_NUMBER)->numberField('amount');
-    }
+    public function match(RuleScope $scope): bool { /* CartRuleScope + RuleComparison::numeric(...) */ }
+    public function getConstraints(): array { /* 'amount' => RuleConstraints::float(), 'operator' => RuleConstraints::numericOperators(false) */ }
+    public function getConfig(): RuleConfig { /* operatorSet(RuleConfig::OPERATOR_SET_NUMBER)->numberField('amount') */ }
 }
 ```
 
-2. Register it in `services.php` with the approval tag:
+2. Register it in `services.php` and tag it `shopware.approval_rule.definition`:
 
 ```php
 $services->set(YourPluginNameSpace\CartAmountRule::class)
@@ -51,21 +49,22 @@ $services->set(YourPluginNameSpace\CartAmountRule::class)
 
 ### App (Commercial plugin 6.4.0+)
 
-- Define the condition in `manifest.xml` (`identifier`, `name`, `group`, `script`, `constraints`); `name` is translatable and shown in the condition selection.
-- Scripts must live in `Resources/scripts/approval-rule-conditions/`; the `script` value must include the `/approval-rule-conditions/` prefix.
-- `constraints` fields render `operator` and value fields; value fields support `float`, `int`, `text`, `single-select`, `multi-select`.
+1. Declare the condition in `manifest.xml` under `rule-conditions` > `rule-condition` with `identifier`, a translatable `name`, `group`, a `script` element and `constraints`. The `script` value is the path of the Twig file and must include the `/approval-rule-conditions/` prefix (for example `/approval-rule-conditions/custom-condition.twig`); it sits between `group` and `constraints` in the skeleton below.
+2. Put the script file in `Resources/scripts/approval-rule-conditions/` in the app root; the file name is free but must match the `script` value.
 
 ```xml
 <rule-condition>
-    <identifier>cart_currency_rule_script</identifier>
-    <name>Cart currency</name>
+    <identifier>...</identifier>
+    <name>...</name>
     <group>cart</group>
     <constraints>
         <single-select name="operator">...</single-select>
-        <multi-select name="isoCode">...</multi-select>
+        <float name="amount">...</float>
     </constraints>
 </rule-condition>
 ```
+
+3. The script returns a boolean; the constraint field names (`operator`, `amount`, ...) are available as variables:
 
 ```twig
 {% if scope.cart is not defined %}
@@ -74,35 +73,31 @@ $services->set(YourPluginNameSpace\CartAmountRule::class)
 {% return compare(operator, scope.cart.price.totalPrice, amount) %}
 ```
 
-Constraint field names (e.g. `amount`, `firstName`, `taxStatus`, `isoCode`) become Twig variables in the script.
+Other source examples: `scope.salesChannelContext.customer.firstName` with a `text` field, `scope.cart.price.taxStatus` with a `single-select` (`net`/`gross`), `scope.salesChannelContext.currency.isoCode` with a `multi-select`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Rule\Rule`, `RULE_NAME`, `match()`, `getConstraints()`, `getConfig()`
-- `Shopware\Core\Framework\Rule\RuleConfig`, `RuleConfig::OPERATOR_SET_NUMBER`, `numberField()`
-- `Shopware\Core\Framework\Rule\RuleScope`, `CartRuleScope`
-- `shopware.approval_rule.definition`
+- `shopware.approval_rule.definition` (DI tag)
+- `Shopware\Core\Framework\Rule\Rule`, `RuleScope`, `RuleComparison`, `RuleConstraints`, `RuleConfig`, `CartRuleScope`
 - `Resources/scripts/approval-rule-conditions`
+- manifest elements `rule-conditions`, `rule-condition`, `identifier`, `name`, `group`, `script`, `constraints`
 
 ## Gotchas
 
-- The source example uses `RuleComparison::numeric()` and `RuleConstraints::float()` / `RuleConstraints::numericOperators(false)`; both helper classes are marked `@deprecated tag:v6.8.0 - reason:becomes-final` in 6.7.13.0 (still callable, but must not be extended).
-- `Rule::getName()` throws if `RULE_NAME` is not set.
-- In core, every `Rule` subclass is autoconfigured with the `shopware.rule.definition` tag; the approval tag `shopware.approval_rule.definition` is added explicitly and comes from the Commercial plugin.
-- App approval conditions are not supported before Commercial plugin 6.4.0.
+- App value fields support only `float`, `int`, `text`, `single-select` and `multi-select`.
+- App approval conditions require Commercial plugin 6.4.0 or later.
+- Approval-rule scripts live in `approval-rule-conditions`, not in the Rule Builder's `rule-conditions` script folder.
+- `Rule::getName()` throws when `RULE_NAME` is not overridden (the base value is `null`).
+- The tag `shopware.approval_rule.definition` belongs to the commercial plugin, not to the core.
 
-## Version notes
-
-- Approval rule conditions for apps: introduced in Commercial plugin 6.4.0.
-
-## Code check (6.7.13.0)
-- deprecated `Shopware\Core\Framework\Rule\RuleComparison` — @deprecated tag:v6.8.0 becomes-final — vendor/shopware/core/Framework/Rule/RuleComparison.php:13
-- deprecated `Shopware\Core\Framework\Rule\RuleConstraints` — @deprecated tag:v6.8.0 becomes-final — vendor/shopware/core/Framework/Rule/RuleConstraints.php:19
+## Code check (6.7.15.1)
 - confirmed `Rule::match()` — abstract, must be implemented — vendor/shopware/core/Framework/Rule/Rule.php:62
 - confirmed `Rule::getConstraints()` — abstract, must be implemented — vendor/shopware/core/Framework/Rule/Rule.php:74
-- confirmed `Rule::getConfig()` — optional override returning ?RuleConfig — vendor/shopware/core/Framework/Rule/Rule.php:79
-- confirmed `RULE_NAME` — defaults to null; getName() throws when unset — vendor/shopware/core/Framework/Rule/Rule.php:12
+- confirmed `Rule::getConfig()` — optional, base returns null — vendor/shopware/core/Framework/Rule/Rule.php:79
+- confirmed `Rule::RULE_NAME` — base null, getName() throws if not set — vendor/shopware/core/Framework/Rule/Rule.php:12
+- confirmed `RuleComparison::numeric()` — takes item value, rule value, operator — vendor/shopware/core/Framework/Rule/RuleComparison.php:15
+- confirmed `RuleConstraints::numericOperators()` — accepts an `$emptyAllowed` bool — vendor/shopware/core/Framework/Rule/RuleConstraints.php:123
 - confirmed `RuleConfig::OPERATOR_SET_NUMBER` — constant exists — vendor/shopware/core/Framework/Rule/RuleConfig.php:15
-- confirmed `RuleConfig::numberField()` — builder method exists — vendor/shopware/core/Framework/Rule/RuleConfig.php:111
-- confirmed `CartRuleScope` — extends CheckoutRuleScope — vendor/shopware/core/Checkout/Cart/Rule/CartRuleScope.php:11
-- unverified `shopware.approval_rule.definition` — Commercial plugin tag, not in installed vendor/shopware roots
+- confirmed `CartRuleScope::getCart()` — returns the Cart — vendor/shopware/core/Checkout/Cart/Rule/CartRuleScope.php:20
+- confirmed `rule-condition` — manifest type with a string script element — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:606
+- unverified `shopware.approval_rule.definition` — commercial B2B plugin tag, not in core/storefront/administration

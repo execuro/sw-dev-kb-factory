@@ -6,28 +6,23 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/checkout/order/
 sourceHash: d3cd375fe06bcba0e266b4fa0a4d03a4769b2a41
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["order", "orders", "checkout", "order management", "order status", "order state", "order history", "order notifications", "OrderDefinition", "OrderEvents", "StateMachineRegistry", "plugin order extension"]
-summary: Section index for plugin guides on Shopware 6.7 orders - placement, management, status tracking, customization, notifications and history.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["order", "orders", "OrderEntity", "OrderDefinition", "order management", "order placement", "order status", "order history", "order notifications", "checkout", "plugin order extension"]
+summary: Index of plugin guides on orders - placement, management, status tracking, customization, notifications and history, extended via plugins.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Section landing page for the plugin guides about orders in Shopware 6.7. Orders cover the capabilities for managing and processing orders in the platform: order placement, order management, order status tracking, order customization, order notifications and order history.
+Section index for plugin-developer guides about orders in Shopware. Orders cover order placement, order management, order status tracking, order customization, order notifications and order history. These functions are available in the Shopware core; plugins extend or customize them for specific business needs.
 
 ## When to use
 
-Start here when a plugin has to extend or customize order handling beyond what the Shopware core provides for a specific business need. The concrete how-to pages in this section cover reacting to order changes via events and changing order, transaction and delivery states through the state machine.
+When a plugin needs to change or extend how orders are placed, managed, tracked or communicated, and you are looking for the order-specific guides under the checkout plugin section.
 
 ## Essential identifiers
 
-Core entry points in the installed code that the section's guides build on (confirmed in vendor, not named on this index page itself):
+- `order` entity (`OrderDefinition`, `OrderEntity` in `Shopware\Core\Checkout\Order`)
 
-- `Shopware\Core\Checkout\Order\OrderDefinition` — the `order` entity (`OrderDefinition::ENTITY_NAME`)
-- `Shopware\Core\Checkout\Order\OrderEvents` — order entity event names, e.g. `OrderEvents::ORDER_WRITTEN_EVENT`
-- `Shopware\Core\System\StateMachine\StateMachineRegistry` — state transitions for orders, transactions, deliveries
-
-## Code check (6.7.13.0)
-- confirmed `OrderDefinition::ENTITY_NAME` — value `order` — vendor/shopware/core/Checkout/Order/OrderDefinition.php:58
-- confirmed `OrderEvents::ORDER_WRITTEN_EVENT` — value `order.written` — vendor/shopware/core/Checkout/Order/OrderEvents.php:11
-- confirmed `StateMachineRegistry::transition()` — takes `Transition` and `Context` — vendor/shopware/core/System/StateMachine/StateMachineRegistry.php:117
+## Code check (6.7.15.1)
+- confirmed `OrderDefinition::ENTITY_NAME` — entity name `order` — vendor/shopware/core/Checkout/Order/OrderDefinition.php:58
+- confirmed `OrderEntity` — core order entity class — vendor/shopware/core/Checkout/Order/OrderEntity.php:30

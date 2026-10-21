@@ -6,31 +6,42 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/sales-agent/testing.html
 sourceHash: b98c299eedb1305c5e5475d3754137d393267300
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["sales agent", "testing", "unit tests", "vitest", "pnpm run test", "pnpm run test:coverage", "coverage", "tests directory", "swagsalesagent"]
-summary: "Sales Agent app unit tests use Vitest in the tests directory; run with pnpm run test, coverage report with pnpm run test:coverage."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sales agent", "testing", "unit tests", "vitest", "pnpm run test", "pnpm run test:coverage", "coverage", "tests directory", "test runner", "javascript tests"]
+summary: Sales Agent unit tests use Vitest, live in the tests directory, and run with pnpm run test; pnpm run test:coverage produces a coverage report.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How unit tests are organised and run for the Shopware Sales Agent app: Vitest is the test runner and tests live in the `tests` directory.
+This page covers how unit tests work in the Shopware Sales Agent project. Tests use Vitest and live in the project's `tests` directory.
 
 ## When to use
 
-When running or adding unit tests, or generating a coverage report, in the Sales Agent app repository.
+Use it to run or extend the Sales Agent's unit tests, or to get a coverage report before you submit a change.
 
 ## Key steps / config
 
-- Run unit tests: `pnpm run test`
-- Run with coverage: `pnpm run test:coverage`
+1. Put unit tests in the `tests` directory. Vitest is the test runner.
+2. Run the unit tests:
+
+   ```bash
+   pnpm run test
+   ```
+
+3. Run the tests and generate a coverage report:
+
+   ```bash
+   pnpm run test:coverage
+   ```
 
 ## Essential identifiers
 
-- Test runner: Vitest
-- Test location: `tests` directory
-- Commands: `pnpm run test`, `pnpm run test:coverage`
+- `pnpm run test`: runs the unit tests
+- `pnpm run test:coverage`: runs the tests with coverage
+- `tests`: the directory that holds the tests
+- Vitest: the unit test framework
 
-## Code check (6.7.13.0)
-- unverified `pnpm run test` — script of the separate Sales Agent app repository, not in vendor/shopware
-- unverified `pnpm run test:coverage` — app repository script, out of scope
-- unverified `tests` — app repository directory, out of scope
+## Code check (6.7.15.1)
+- unverified `pnpm run test` — script of the standalone Sales Agent project, not part of vendor/shopware core, storefront or administration
+- unverified `pnpm run test:coverage` — script of the standalone Sales Agent project, outside the checked package roots
+- unverified `tests` — directory of the Sales Agent repository, outside the checked package roots

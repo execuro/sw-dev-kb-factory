@@ -6,31 +6,33 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/concept/
 sourceHash: 513293764d57e3d25bfab101397ed3eae1544fb8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite migration", "b2b commercial", "migration concept", "message queue", "sequential migration", "entity sequencing", "xml configuration", "mapping tables", "error log", "data integrity"]
-summary: B2B Suite to B2B Commercial migration concept - message queue processing, three tracking tables, XML field mappings and sequential component order.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite migration", "migration concept", "message queue", "sequential migration", "entity sequencing", "xml configuration", "configurator", "migration tables", "b2b components", "employee", "budget", "quote", "shopping list"]
+summary: B2B Suite to B2B Components migration concept - message-queue processing, XML-defined field/table mappings, sequential component and entity order.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The concept behind migrating data from the B2B Suite to B2B Commercial. The process is built for large datasets while keeping data integrity: it uses three dedicated tables to track status, map records and log errors, runs in a message queue, and migrates components and entities in dependency order.
+The design of the B2B Suite to B2B Components migration: how it processes large datasets while keeping data integrity, using three tracking tables, a message queue and a fixed migration order.
 
 ## When to use
 
-Read before executing or customizing a B2B Suite migration, especially when the dataset is large or when custom entities depend on employees, budgets or quotes.
+Before executing or extending the B2B Suite migration, to understand ordering, mapping configuration and how progress/errors are tracked.
 
 ## Key steps / config
 
-- Message queue: the whole migration is executed in a message queue, so large volumes of data are processed scalably.
-- XML configuration: all mapping fields and tables are defined in XML configuration files, processed by a configurator. This modular approach is the extension point for customizing the migration.
-- Sequential migration: components (for example Employee, Budget, Quote, Shopping List) are migrated one after another to respect entity relationships — employee records before budgets, employees before quotes.
-- Entity-level sequencing: within each component, entities (for example business partners, employees, roles) are migrated in the correct order.
-- Tracking: three dedicated tables track the migration status, the mapping between source and target records, and errors.
+- **Message queue** — the whole migration runs as queued messages, so large data volumes are processed scalably.
+- **XML mapping** — all mapped fields and tables are defined in XML configuration files, processed by a configurator; this modular setup is what allows customising or extending the migration.
+- **Sequential migration by component** — components such as Employee, Budget, Quote and Shopping List are migrated one after another so that dependencies exist first (e.g. employee records before budgets, employees before quotes).
+- **Entity-level sequencing** — inside each component, entities (e.g. business partners, employees, roles) are migrated in dependency order.
+- **Tracking tables** — three dedicated tables track status, map old to new records, and log errors (see the Migration Table page of this section).
 
 ## Gotchas
 
-- Proper sequencing is critical to avoid dependency issues; verify the migration order for your dataset before running it.
+- Wrong sequencing causes dependency failures; verify the migration order for your dataset.
 
-## Code check (6.7.13.0)
-- unverified `B2B Suite migration configurator` — part of the Shopware Commercial extension, not in vendor/shopware core, storefront or administration
-- unverified `migration tracking tables` — table names are not given by the source and are defined in the Commercial extension, out of scope
+## Code check (6.7.15.1)
+- unverified `XML configuration files` — mapping definitions ship with the B2B Suite Migration Commercial extension, out of scope of the checked roots
+- unverified `configurator` — part of the B2B Suite Migration extension, out of scope
+- unverified `b2b_components_migration_state` — migration tracking table of the extension, not present in the core/storefront/administration roots
+- confirmed `b2b_components_shopping_list` — B2B Components target entity known to core usage-data allow-list — vendor/shopware/core/System/UsageData/usage-data-allow-list.json:2092

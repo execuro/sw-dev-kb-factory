@@ -1,46 +1,59 @@
 ---
-id: platform/dev/6.7/resources/references/adr/2022-05-12-remove-static-analysis-with-psalm.md
-title: Remove static analysis with psalm
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-05-12-remove-static-analysis-with-psalm.html
+id: platform/dev/6.7/resources/references/adr/2022-05-12-remove-static-analysis-with-psalm.md
 sourceHash: 8043f6405ba0404d3bb905d61e1cd630e8c18c00
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["psalm", "phpstan", "static analysis", "static-analyse", "custom phpstan rules", "ci pipeline", "code quality", "php linting", "adr"]
-summary: "ADR 2022-05-12: Shopware removes psalm and keeps phpstan as its only PHP static analysis tool in the repository and CI."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-05-12-remove-static-analysis-with-psalm.html
+title: Remove static analysis with psalm
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["psalm", "phpstan", "static analysis", "static-analyse", "ci pipeline", "custom phpstan rules", "shopware/phpstan-extension", "rules.neon", "extension.neon", "core-rules.neon", "code quality", "adr"]
+summary: "ADR: Shopware dropped psalm and kept phpstan as its only PHP static analyser in CI, because custom phpstan rules and extensions were easier to maintain."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2022-05-12, area core) deciding to stop running both `phpstan` and `psalm` over Shopware's PHP code and to keep only `phpstan`. `psalm` is removed completely from the repository and the CI.
+An architecture decision record (2022-05-12). Shopware used to run two PHP static analysers in CI, `phpstan` and `psalm`. This record removes `psalm` from the repository and the CI and keeps `phpstan` as the only one.
 
 ## When to use
 
-When setting up static analysis for Shopware core contributions or for a plugin aligned with core tooling, or when wondering why core ships no psalm configuration or annotations tooling.
+- You are choosing a static analyser for Shopware core or plugin code and want to match the core toolchain.
+- You come across old `psalm` annotations or configuration and wonder whether they are still maintained.
 
 ## Key steps / config
 
-Decision rationale from the ADR:
+Reasons given for the decision:
 
-- Running both tools slowed the pipeline and produced mutually incompatible error reports.
-- The tools converged to a common feature set, so running both is no longer needed.
-- `phpstan` was chosen because custom `phpstan` rules are easier to write than psalm extensions, Shopware already had custom `phpstan` rules, and more extensions exist for it (e.g. for `symfony` or `phpunit`).
+- Running both tools slowed the pipeline, and the two could report errors that contradicted each other.
+- The tools had largely converged on a common feature set since Shopware 6 began.
+- Custom `phpstan` rules are easier to write than `psalm` extensions, and Shopware already had custom `phpstan` rules.
+- `phpstan` has more extensions, for example for `symfony` and `phpunit`.
 
-In the installed core, the custom rules live under `Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\` and are registered in `DevOps/StaticAnalyze/PHPStan/rules.neon` (for example `RuleConditionHasRuleConfigRule`, `RouteScopeRule`).
+The installed code ships Shopware's rules under `Shopware\Core\DevOps\StaticAnalyze\PHPStan`, packaged as `shopware/phpstan-extension` (`composer require --dev shopware/phpstan-extension`). With `phpstan/extension-installer` the extension is enabled automatically. To configure it by hand, add the files to the project's `phpstan.neon`:
+
+```neon
+includes:
+    - vendor/shopware/phpstan-extension/extension.neon
+    - vendor/shopware/phpstan-extension/rules.neon
+```
+
+`core-rules.neon` holds rules for core development. It is not included automatically and has to be added by hand.
 
 ## Essential identifiers
 
-- `phpstan`
-- `Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\`
-- `rules.neon`
+- `phpstan`, `shopware/phpstan-extension`
+- `extension.neon` (type extensions), `rules.neon` (Shopware rules), `core-rules.neon` (core-only rules)
+- Namespace `Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules`
 
 ## Gotchas
 
-- `psalm` is not used by core any more; configure analysis with `phpstan` only.
+- `psalm` no longer appears in the Shopware core, storefront or administration sources, so do not expect psalm-specific annotations or configuration from core to be maintained.
 
-## Code check (6.7.13.0)
-- confirmed `rules` — phpstan rules list with Shopware custom rule classes — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/rules.neon:1
-- confirmed `RuleConditionHasRuleConfigRule` — custom phpstan rule registered in core — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/rules.neon:5
-- confirmed `RouteScopeRule` — custom phpstan rule registered in core — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/rules.neon:13
-- unverified `psalm` — no match in vendor/shopware/core or storefront; CI configuration is out of scope
+## Code check (6.7.15.1)
+- unverified `psalm` — no occurrence in the three package roots; repository CI config is out of scope
+- confirmed `shopware/phpstan-extension` — composer package for the phpstan rules — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/README.md:9
+- confirmed `rules.neon` — include path for Shopware rules — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/README.md:25
+- confirmed `extension.neon` — include path for type extensions — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/README.md:24
+- confirmed `core-rules.neon` — not auto-included — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/README.md:60
+- confirmed `RuleConditionHasRuleConfigRule` — example custom phpstan rule — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/rules.neon:5

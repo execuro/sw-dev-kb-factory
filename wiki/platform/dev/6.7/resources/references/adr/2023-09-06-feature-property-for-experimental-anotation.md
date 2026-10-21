@@ -6,31 +6,24 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-09-06-feature-property-for-experimental-anotation.html
 sourceHash: b8c3fc60870b20f252b4c64f4d44e4b4bc5d685b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["@experimental", "stableVersion", "feature property", "experimental feature", "feature flag", "feature.yaml", "Feature::isActive", "shopware.feature.flags", "backwards compatibility", "bc promise", "ALL_CAPS feature name", "twig experimental block"]
-summary: "ADR: every @experimental annotation (PHP, JS, Twig) needs feature:<ALL_CAPS_NAME> next to stableVersion; matching feature flag names link code to the flag."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["@experimental", "feature", "stableVersion", "experimental feature", "annotation", "feature flag", "feature.yaml", "ALL_CAPS", "AnnotationTagTester", "backwards compatibility", "adr", "twig experimental block"]
+summary: "ADR: @experimental annotations carry stableVersion plus a feature:<ALL_CAPS> name linking code to one experimental feature and its feature flag."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (areas core, administration, storefront; 2023-09-06) that makes a `feature` property mandatory on every `@experimental` annotation, so all code belonging to one experimental feature can be found by name.
+An architecture decision record (2023-09-06, areas core/administration/storefront) that extends the `@experimental` annotation with a `feature` property naming the experimental feature a piece of code belongs to. It builds on the earlier "Experimental features" ADR, which introduced `@experimental` with a `stableVersion` property.
 
 ## When to use
 
-Apply it when marking PHP classes, Administration components or Twig blocks/templates as experimental, when prolonging an experiment (updating `stableVersion` everywhere), or when deprecating a killed experimental feature before the next major.
+- You add or maintain experimental code in PHP, JS (Administration components) or Twig and need to annotate it.
+- An experiment is prolonged and every `stableVersion` belonging to it has to be updated, or a feature is killed and all its code must be found and marked deprecated (the "Killing Feature" rule keeps it until the next major).
+- You gate experimental code with a feature flag and want the flag and annotation linked.
 
 ## Key steps / config
 
-Problem addressed: without a feature name, finding every piece of code for one experiment (to bump `stableVersion` or to deprecate a killed feature, which must stay until the next major) was impractical, especially with several experiments in parallel.
-
-Rules:
-
-1. Every `@experimental` annotation carries a mandatory string property `feature`.
-2. All code of one feature uses the same feature name.
-3. Feature names contain no spaces and are written in `ALL_CAPS`.
-4. A static analysis rule / unit test checks that each `@experimental` annotation has `feature` (stated in the ADR).
-
-Annotation formats:
+1. Annotate experimental code with both properties; the feature name is shared by every piece of code of that feature:
 
 ```php
 /**
@@ -39,17 +32,21 @@ Annotation formats:
 class Foo {}
 ```
 
+The same docblock form is used above JS code such as `Component.register('sw-new-component', { ... })`.
+
+2. Twig: wrap a block, or mark the whole template by placing the comment before `sw_extends`:
+
 ```twig
 {# @experimental stableVersion:v6.6.0 feature:WISHLIST #}
 {% block awesome_new_feature %}...{% endblock %}
+
+{# @experimental stableVersion:v6.6.0 feature:WISHLIST #}
+{% sw_extends '@Storefront/storefront/page/product-detail/index.html.twig' %}
 ```
 
-The same docblock form is used above `Component.register('sw-new-component', {...})` in Administration JS; a Twig comment before `{% sw_extends '@Storefront/storefront/page/product-detail/index.html.twig' %}` marks the whole template.
+3. Naming conventions for the feature name: no spaces, written in `ALL_CAPS`.
 
-Combining with a feature flag (the two are separate: `@experimental` affects only BC promises, a flag controls visibility):
-
-1. Name the flag exactly like the annotation's `feature` value.
-2. Put the annotation text (`stableVersion` and `feature`) in the flag's `description`.
+4. When a feature flag is also needed (e.g. at integration points), give the flag the same name as the annotation's `feature` value, and put the annotation properties into the flag's `description` in `feature.yaml`:
 
 ```yaml
 shopware:
@@ -61,25 +58,26 @@ shopware:
         description: "experimental stableVersion:v6.6.0 feature:WISHLIST"
 ```
 
-At the connection point, branch with `Feature::isActive('WISHLIST')`.
+The connection point then branches on whether `WISHLIST` is active (new implementation vs. old/current implementation).
 
 ## Essential identifiers
 
-- `@experimental stableVersion:<version> feature:<NAME>`
-- `shopware.feature.flags` (`name`, `default`, `major`, `description`) in `feature.yaml`
-- `Shopware\Core\Framework\Feature::isActive()`
+- `@experimental` annotation, properties `stableVersion` and `feature`
+- `feature.yaml` key `shopware.feature.flags` (`name`, `default`, `major`, `description`)
+- `Shopware\Core\DevOps\Test\AnnotationTagTester` — validates annotation format
 
 ## Gotchas
 
-- The source's connection-point snippet writes `Feature.isActive('WISHLIST')`; in PHP it is the static call `Feature::isActive()`.
-- The source's class example `class testClass()` is not valid PHP; the annotation format is what matters.
-- In 6.7.13.0 core flags also list `toggleable`, and flag descriptions do not follow the recommended "experimental stableVersion… feature…" text (e.g. `MCP_SERVER`), though flag names do match annotation feature names.
+- The `@experimental` annotation and a feature flag are separate concepts: the annotation only affects BC promises for the marked code, the flag controls visibility. The ADR neither forbids nor regulates combining them.
+- The ADR calls `feature` mandatory, but the installed validator only requires `stableVersion`; `feature` is optional and, when present, must match `^(?:[A-Z]+(_[A-Z]+)*)+$` — uppercase letters and underscores only (no digits, no spaces).
+- Only `stableVersion` and `feature` are accepted; any other `key:value` property in the annotation is rejected by the validator.
+- The connection-point snippet in the source (`Feature.isActive('WISHLIST')`) is pseudo-code; in PHP the check is a static call on `Shopware\Core\Framework\Feature`.
 
-## Code check (6.7.13.0)
-- confirmed `@experimental stableVersion:v6.8.0 feature:MCP_SERVER` — PHP docblock uses the feature property — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolAttributeReader.php:10
-- confirmed `@experimental stableVersion:v6.8.0 feature:ADMIN_COMPOSITION_API_EXTENSION_SYSTEM` — Administration TS docblock form — vendor/shopware/administration/Resources/app/administration/src/app/adapter/composition-extension-system.ts:18
-- confirmed `{# @experimental stableVersion:v6.8.0 feature:SPATIAL_BASES #}` — Twig comment form — vendor/shopware/storefront/Resources/views/storefront/utilities/ar-overlay.html.twig:1
-- confirmed `shopware.feature.flags` — flag list with `name`/`default`/`major` — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:3
-- corrected `MCP_SERVER` — docs: flag description holds the experimental annotation; code uses free text — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:90
-- corrected `Feature::isActive()` — docs: `Feature.isActive`; static PHP method — vendor/shopware/core/Framework/Feature.php:128
-- unverified `static analysis rule` — rule enforcing the `feature` property lives in dev tooling, not in the checked package roots
+## Code check (6.7.15.1)
+- confirmed `@experimental stableVersion:v6.8.0 feature:CONSENT_MANAGEMENT` — annotation format with `feature` in use in core PHP — vendor/shopware/core/System/Consent/Api/ConsentController.php:18
+- confirmed `@experimental stableVersion:v6.8.0 feature:SPATIAL_BASES` — Twig comment form used on a whole storefront template — vendor/shopware/storefront/Resources/views/storefront/utilities/qr-code-modal.html.twig:1
+- confirmed `@experimental stableVersion:v6.8.0 feature:SPATIAL_BASES` — JS docblock form used in Administration — vendor/shopware/administration/Resources/app/administration/src/module/sw-media/component/sidebar/sw-media-quickinfo/index.js:91
+- confirmed `AnnotationTagTester::validateExperimentalAnnotations()` — test helper validating `@experimental` annotations — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:65
+- corrected `feature` — docs: mandatory property; code: optional, only `stableVersion` required — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:186
+- confirmed `ALL_CAPS` — feature value must match uppercase/underscore pattern — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:190
+- confirmed `stableVersion` — only `stableVersion` and `feature` properties allowed — vendor/shopware/core/DevOps/Test/AnnotationTagTester.php:177

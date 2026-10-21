@@ -5,67 +5,66 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/tools/cli/project-commands/remote-extension-management.html
-sourceHash: 31f41441d8590125d40c7e1dc1004880f5eb8c0d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli project extension", "shopware-cli project extension upload", "shopware-cli project extension install", "shopware-cli project extension activate", "shopware-cli project extension outdated", "/api/_action/extension/upload", "shopware.deployment.runtime_extension_management", "system.plugin_upload", "-e/--env", "extension manager cli", "shopware saas", "plugin lifecycle remote"]
-summary: "shopware-cli project extension commands: list, install, update, upload, activate etc. of extensions on a remote shop via the Admin API; meant for SaaS."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md", "platform/dev/6.7/guides/development/dev-environment.md", "platform/dev/6.7/guides/development/tooling/fixture-bundle.md"]
+sourceHash: 325d481f2ac2d47bf84229a93a5d08b5668a8261
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware-cli project extension", "project extension install", "project extension upload", "project extension list", "project extension outdated", "remote extension management", "plugin install via api", "saas extensions", "--env", "environments", ".config/shopware-project.yml", "runtime_extension_management", "/api/_action/extension"]
+summary: shopware-cli project extension list/install/uninstall/update/upload/delete/activate/deactivate manages extensions on a remote shop via the Admin API.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md", "platform/dev/6.7/guides/development/tooling/fixture-bundle.md", "platform/dev/6.7/guides/development/dev-environment.md"]
 ---
 ## What it is
 
-`shopware-cli project extension` wraps Shopware's extension management Admin API so extensions can be uploaded, installed and lifecycle-managed on a remote shop from the CLI, with the same capabilities as the Administration's Extension Manager.
+`shopware-cli project extension ...` is a CLI wrapper around Shopware's extension management through the Admin API — the same capabilities as the Administration's Extension Manager, but scriptable. It is widely used by Shopware SaaS customers to upload extensions and drive their lifecycle on hosted shops without the Admin UI.
 
 ## When to use
 
-Automating extension uploads and lifecycle on hosted Shopware SaaS shops. For self-hosted installations the source recommends the [Deployment Helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md) with Composer-installed plugins instead.
+Automating extension upload, install, update and activation on a Shopware SaaS instance. For self-hosted installations the source recommends the [Deployment Helper](platform/dev/6.7/guides/hosting/installation-updates/deployments/deployment-helper/_index.md) with all plugins installed via Composer instead.
 
 ## Key steps / config
 
-1. Provide connection data via `.shopware-project.yml` or environment variables, and log in with **username and password** (the extension API can be used only by users).
-2. Optionally target a named environment from the `environments` section with `-e`/`--env` (uses that environment's `url` and `admin_api`; an unknown name fails instead of falling back):
-
-```bash
-shopware-cli project extension list -e staging
-```
-
+1. Provide the connection in `.config/shopware-project.yml` or environment variables (see [Fixture Bundle](platform/dev/6.7/guides/development/tooling/fixture-bundle.md)). Log in with a username and password — the extension API is usable only by users.
+2. Optionally target a named environment from the `environments` section with the global `-e`/`--env` flag (see [Development Environment](platform/dev/6.7/guides/development/dev-environment.md)); its `url` and `admin_api` credentials are used:
+   ```bash
+   shopware-cli project extension list -e staging
+   ```
 3. Commands:
 
-```bash
-shopware-cli project extension list
-shopware-cli project extension install <extension-name>
-shopware-cli project extension uninstall <extension-name>
-shopware-cli project extension update <extension-name>
-shopware-cli project extension outdated
-shopware-cli project extension upload <path-to-extension-zip>
-shopware-cli project extension delete <extension-name>
-shopware-cli project extension activate <extension-name>
-shopware-cli project extension deactivate <extension-name>
-```
+| Command | Action |
+|---|---|
+| `shopware-cli project extension list` | List all extensions |
+| `shopware-cli project extension install <extension-name>` | Install |
+| `shopware-cli project extension uninstall <extension-name>` | Uninstall |
+| `shopware-cli project extension update <extension-name>` | Update |
+| `shopware-cli project extension outdated` | Show extensions with an available update |
+| `shopware-cli project extension upload <path-to-extension-zip>` | Upload a zip to the instance |
+| `shopware-cli project extension delete <extension-name>` | Delete from the instance |
+| `shopware-cli project extension activate <extension-name>` | Activate an installed extension |
+| `shopware-cli project extension deactivate <extension-name>` | Deactivate an installed extension |
 
-Core-side Admin API routes backing these operations: `/api/_action/extension/installed` (GET), `/api/_action/extension/upload` (POST, file field `file`, must be `application/zip`), `/api/_action/extension/install|uninstall|remove|update/{type}/{technicalName}` (POST), `/api/_action/extension/activate|deactivate/{type}/{technicalName}` (PUT).
+The shop side is served by the core `/api/_action/extension/...` routes (`upload`, `install/{type}/{technicalName}`, `uninstall/...`, `remove/...`, `activate/...`, `deactivate/...`, `update/...`, `installed`).
 
 ## Essential identifiers
 
 - `shopware-cli project extension list|install|uninstall|update|outdated|upload|delete|activate|deactivate`
-- `-e`/`--env`, `environments`, `.shopware-project.yml`
-- `/api/_action/extension/upload`, ACL privilege `system.plugin_upload`
+- `-e` / `--env`, `environments`, `.config/shopware-project.yml`
 - `shopware.deployment.runtime_extension_management`
+- Core routes `api.extension.upload`, `api.extension.install`, `api.extension.activate`
 
 ## Gotchas
 
-- Not intended for self-hosted shops (source info box).
-- Log in with a user's username and password; the extension API is user-only.
-- Core rejects upload/install/uninstall/remove/activate/deactivate/update calls when `shopware.deployment.runtime_extension_management` is `false` (default `true`); upload additionally requires the `system.plugin_upload` privilege.
+- An unknown `--env` name makes the command fail rather than silently falling back to the default configuration.
+- Integration credentials do not work for the extension API; use user login.
+- The installed core rejects these actions when `shopware.deployment.runtime_extension_management` is `false` (default `true`), so a deployment-helper style setup with runtime management disabled blocks them.
+- Upload must be a zip (`application/zip` MIME type) and requires the `system.plugin_upload` ACL privilege.
 
-## Code check (6.7.13.0)
-- confirmed `/api/_action/extension/upload` — POST, ACL `system.plugin_upload`, zip only — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:58
-- confirmed `/api/_action/extension/install/{type}/{technicalName}` — POST — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:122
-- confirmed `/api/_action/extension/uninstall/{type}/{technicalName}` — POST, optional `keepUserData` — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:136
-- confirmed `/api/_action/extension/remove/{type}/{technicalName}` — POST, core counterpart of delete — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:155
-- confirmed `/api/_action/extension/activate/{type}/{technicalName}` — PUT — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:174
-- confirmed `/api/_action/extension/deactivate/{type}/{technicalName}` — PUT — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:188
-- confirmed `/api/_action/extension/update/{type}/{technicalName}` — POST, optional `allowNewPermissions` — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:202
-- confirmed `/api/_action/extension/installed` — GET list of installed extensions — vendor/shopware/core/Framework/Store/Api/ExtensionStoreDataController.php:42
-- confirmed `runtime_extension_management` — `shopware.deployment` boolean, default true; false blocks the action routes — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:331
-- unverified `shopware-cli project extension` — Go shopware-cli commands, `-e`/`--env` and user-only login check, out of scope
+## Code check (6.7.15.1)
+- confirmed `/api/_action/extension/upload` — upload route, ACL `system.plugin_upload` — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:58
+- confirmed `/api/_action/extension/install/{type}/{technicalName}` — install route — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:122
+- confirmed `/api/_action/extension/uninstall/{type}/{technicalName}` — uninstall route — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:136
+- confirmed `/api/_action/extension/remove/{type}/{technicalName}` — removal route behind the CLI `delete` — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:155
+- confirmed `/api/_action/extension/activate/{type}/{technicalName}` — activate route (PUT) — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:174
+- confirmed `/api/_action/extension/deactivate/{type}/{technicalName}` — deactivate route (PUT) — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:188
+- confirmed `/api/_action/extension/update/{type}/{technicalName}` — update route — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:202
+- confirmed `/api/_action/extension/installed` — list of installed extensions — vendor/shopware/core/Framework/Store/Api/ExtensionStoreDataController.php:42
+- confirmed `runtime_extension_management` — boolean, default true; actions throw when disabled — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:352
+- unverified `shopware-cli project extension` — Go CLI, not part of the Shopware core/storefront/administration packages

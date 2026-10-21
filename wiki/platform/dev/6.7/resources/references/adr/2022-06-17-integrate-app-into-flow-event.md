@@ -6,25 +6,25 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-06-17-integrate-app-into-flow-event.html
 sourceHash: 1804186959bda05065ff4e03e4cf0b35efdb4553
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["flow builder", "custom trigger", "app flow event", "CustomAppEvent", "CustomAppAware", "CustomAppStorer", "FlowEventAware", "BusinessEventCollector", "app_flow_event", "flow.xml", "api.action.trigger_event", "/api/_action/trigger-event/{eventName}", "sw-flow-custom-event", "adr"]
-summary: "ADR: apps declare custom Flow Builder trigger events in flow.xml (app_flow_event) and fire them via POST /api/_action/trigger-event/{eventName}."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["CustomAppAware", "CustomAppEvent", "CustomAppStorer", "FlowEventAware", "BusinessEventCollector", "api.action.trigger_event", "flow.xml", "app_flow_event", "custom trigger", "flow builder", "app flow event", "sw-flow-custom-event"]
+summary: "ADR: apps add custom Flow Builder triggers via flow.xml flow-event entries, CustomAppEvent, CustomAppStorer and the trigger-event Admin API route."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (area services-settings) letting apps add their own Flow Builder trigger events. Apps declare events in `flow.xml`; core stores them in `app_flow_event`, lists them as triggers, and dispatches a `CustomAppEvent` when the app calls an Admin API endpoint with the event name and data.
+An architecture decision record (2022-10-11) describing how apps extend the list of trigger events in the Flow Builder. An app declares custom flow events in `flow.xml`; the core stores them in the `app_flow_event` table, lists them as triggers, and dispatches a `CustomAppEvent` when the app calls an Admin API route with the event name and a data payload.
 
 ## When to use
 
-When an app needs a custom Flow Builder trigger whose payload is usable in flow actions and mail templates, or when an app trigger is missing from the trigger list.
+When building an app that needs its own Flow Builder trigger (for example `swag.before.open.the.doors`) and wants to pass arbitrary data into flow actions and mail templates.
 
 ## Key steps / config
 
-1. Declare events in the app's `Resources/flow.xml` (schema: core `Framework/App/Flow/Schema/flow-1.0.xsd`). `<name>` is unique and vendor-prefixed; each repeatable `<aware>` decides which actions are offered: `orderAware`, `customerAware`, `mailAware`, `userAware`, `salesChannelAware`, `productAware`, `customerGroupAware`.
+1. Declare events in the app's `Resources/flow.xml` (loaded relative to the app root). `<name>` is the unique technical name, prefixed with the app vendor prefix; one or more `<aware>` elements decide which flow actions are offered after the trigger. Several events can be defined in one file.
 
 ```xml
-<flow-extensions>
+<flow-extensions xmlns:xsi="..." xsi:noNamespaceSchemaLocation="https://test-flow.com/flow-1.0.xsd">
     <flow-events>
         <flow-event>
             <name>swag.before.open.the.doors</name>
@@ -35,37 +35,57 @@ When an app needs a custom Flow Builder trigger whose payload is usable in flow 
 </flow-extensions>
 ```
 
-2. On app install/update the events are persisted to `app_flow_event` (`id`, `appId`, `name` max 255, `aware` list, `customFields`).
-3. `BusinessEventCollector` adds every `app_flow_event` of an active app as a trigger backed by `CustomAppEvent`.
-4. Trigger: `POST /api/_action/trigger-event/{eventName}` (route `api.action.trigger_event`), body = data such as `{ "customerId": "...", "shopName": "...", "url": "..." }`. The controller requires an `app_flow_event` with that `name` on an active app, then dispatches `new CustomAppEvent($eventName, $data, $context)`.
-5. `CustomAppStorer` copies each key of `getCustomAppData()` into the stored flow data (also under `ScalarValuesAware::STORE_VALUES`), so actions read it via `$flow->getData(...)` and mail templates via `{{ shopName }}`.
-6. Admin snippets: key `sw-flow-custom-event` with fixed sub-keys `event-tree` (name segments, e.g. `openTheDoors`) and `flow-list` (e.g. `swag_before_open_the_doors`).
+   Aware values listed by the ADR: `orderAware`, `customerAware`, `mailAware`, `userAware`, `salesChannelAware`, `productAware`, `customerGroupAware`. `orderAware` unlocks e.g. `action.add.order.tag`, `action.generate.document`, `action.set.order.state`; `customerAware` unlocks e.g. `action.add.customer.tag`, `action.change.customer.group`; `action.stop.flow` is available in both.
+
+2. Trigger the event: `POST /api/_action/trigger-event/{eventName}` (route `api.action.trigger_event`, ACL privilege `flow:dispatch`). The request body is the data, e.g. `{"customerId": "...", "salesChannelId": "...", "shopName": "...", "url": "..."}`. The controller looks up an `app_flow_event` row with that `name` whose app is active, then dispatches `new CustomAppEvent($eventName, $data, $context)`; unknown names raise a not-found error.
+
+3. `CustomAppStorer` copies each body key into the flow store (both under `ScalarValuesAware::STORE_VALUES` and at the top level), so actions read it via the `StorableFlow` and mail templates can use `{{ shopName }}`, `{{ url }}`.
+
+4. Translate trigger names in an admin snippet file under the app's `src/Resources/app/administration/snippet/`:
+
+```json
+{ "sw-flow-custom-event": {
+    "event-tree": { "swag": "Swag", "before": "Before", "openTheDoors": "Open the doors" },
+    "flow-list": { "swag_before_open_the_doors": "Before open the doors" } } }
+```
+
+Shape of the storer (per installed `FlowStorer`):
+
+```php
+class CustomAppStorer extends FlowStorer
+{
+    public function store(FlowEventAware $event, array $stored): array { /* ... */ }
+    public function restore(StorableFlow $storable): void { /* no-op */ }
+}
+```
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\App\Event\CustomAppEvent`
-- `Shopware\Core\Content\Flow\Dispatching\Aware\CustomAppAware::getCustomAppData()`
+- `Shopware\Core\Content\Flow\Dispatching\Aware\CustomAppAware` — `CUSTOM_DATA = 'customAppData'`, `getCustomAppData(): ?array`
+- `Shopware\Core\Framework\App\Event\CustomAppEvent` (implements `CustomAppAware`, `FlowEventAware`)
 - `Shopware\Core\Content\Flow\Dispatching\Storer\CustomAppStorer`
-- `BusinessEventCollector`, `TriggerFlowController`
-- `app_flow_event`, `api.action.trigger_event`
+- `Shopware\Core\Framework\Event\BusinessEventCollector::collect()` — merges active app events from `app_flow_event`
+- `Shopware\Core\Content\Flow\Controller\TriggerFlowController::trigger()` — `api.action.trigger_event`
+- Table `app_flow_event`: `id`, `app_id`, `name` (unique), `aware` (JSON), `custom_fields`, `created_at`, `updated_at`
 
 ## Gotchas
 
-- The ADR pseudocode is outdated: the constant is `CUSTOM_DATA` (not `APP_DATA`), `getCustomAppData()` returns `?array`, the storer is `CustomAppStorer` (not `CustomAppStore`), and the controller looks events up by `name`, not `flowAppEventId`/`flowId`.
-- The ADR's XML sample uses a placeholder schema location.
+- The ADR's pseudocode names the constant `APP_DATA`, the storer `CustomAppStore`, and the controller method `flowCustomTrigger` filtering by `flowAppEventId`/`flowId`; the installed code uses `CUSTOM_DATA`, `CustomAppStorer`, and `trigger()` filtering by `name` and `app.active`.
+- The XSD restricts `<name>` to the pattern `[a-z][a-z._]*[a-z]`; at least one `<aware>` is required.
+- App events are only listed while the app is active.
 
 ## Version notes
 
-`app_flow_event` and the trigger API exist since `6.5.2.0`.
+The ADR pseudocode annotates the trigger route with `@Since("6.5.2.0")`; the `app_flow_event` table is created by a `V6_5` migration.
 
-## Code check (6.7.13.0)
-- corrected `CustomAppAware::CUSTOM_DATA` — docs: APP_DATA constant — vendor/shopware/core/Content/Flow/Dispatching/Aware/CustomAppAware.php:12
-- corrected `CustomAppAware::getCustomAppData()` — docs: returns array; code returns ?array — vendor/shopware/core/Content/Flow/Dispatching/Aware/CustomAppAware.php:17
-- corrected `CustomAppStorer` — docs: CustomAppStore — vendor/shopware/core/Content/Flow/Dispatching/Storer/CustomAppStorer.php:12
-- confirmed `FlowStorer` — abstract store() and restore() — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:10
-- confirmed `FlowEventAware` — requires getAvailableData() and getName() — vendor/shopware/core/Framework/Event/FlowEventAware.php:9
-- confirmed `CustomAppEvent` — extends Event, implements CustomAppAware, FlowEventAware — vendor/shopware/core/Framework/App/Event/CustomAppEvent.php:13
-- corrected `api.action.trigger_event` — docs: lookup by flowAppEventId; code filters by name and app.active — vendor/shopware/core/Content/Flow/Controller/TriggerFlowController.php:37
-- confirmed `BusinessEventCollector::fetchAppEvents()` — reads app_flow_event of active apps — vendor/shopware/core/Framework/Event/BusinessEventCollector.php:88
-- confirmed `app_flow_event` — entity name, since 6.5.2.0 — vendor/shopware/core/Framework/App/Aggregate/FlowEvent/AppFlowEventDefinition.php:24
-- corrected `Resources/flow.xml` — docs: src/Resources/flow.xml; read relative to app filesystem — vendor/shopware/core/Framework/App/Lifecycle/Handler/FlowEventLifecycleHandler.php:91
+## Code check (6.7.15.1)
+- corrected `CustomAppAware::CUSTOM_DATA` — docs: constant `APP_DATA`, `getCustomAppData(): array`; code returns `?array` — vendor/shopware/core/Content/Flow/Dispatching/Aware/CustomAppAware.php:12
+- corrected `CustomAppStorer` — docs: `CustomAppStore`; store() returns `$stored` — vendor/shopware/core/Content/Flow/Dispatching/Storer/CustomAppStorer.php:12
+- confirmed `FlowStorer` — abstract `store()` and `restore()` — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:10
+- confirmed `CustomAppEvent` — extends Event, implements CustomAppAware and FlowEventAware — vendor/shopware/core/Framework/App/Event/CustomAppEvent.php:16
+- corrected `api.action.trigger_event` — docs: method `flowCustomTrigger` filtering by flowId; code `trigger()` filters by name, ACL `flow:dispatch` — vendor/shopware/core/Content/Flow/Controller/TriggerFlowController.php:37
+- confirmed `BusinessEventCollector::fetchAppEvents()` — reads active app events from `app_flow_event` — vendor/shopware/core/Framework/Event/BusinessEventCollector.php:88
+- corrected `app_flow_event` — docs omit `custom_fields` JSON column — vendor/shopware/core/Migration/V6_5/Migration1655697288AppFlowEvent.php:23
+- corrected `Resources/flow.xml` — docs: `<appRoot>/src/Resources/flow.xml`; loaded as `Resources/flow.xml` from the app filesystem — vendor/shopware/core/Framework/App/Lifecycle/Handler/FlowEventLifecycleHandler.php:91
+- confirmed `flow-event` — XSD element with `name` and repeatable `aware` — vendor/shopware/core/Framework/App/Flow/Schema/flow-1.0.xsd:153
+- confirmed `sw-flow-custom-event` — admin snippet key for event-tree labels — vendor/shopware/administration/Resources/app/administration/src/module/sw-flow/component/sw-flow-trigger/index.js:743

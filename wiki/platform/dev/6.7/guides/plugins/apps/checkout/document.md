@@ -6,75 +6,77 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/apps/checkout/document.html
 sourceHash: 82b3bdc05605ae94eb953cf8e42f953c52da0ba0
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["document system v2", "DOCUMENT_GENERATION_REWORK", "document-type", "document-generation", "zugferd_xml", "zugferd_embedded_pdf", "addArrayExtension", "document_headline", "app document type", "invoice pdf", "document number range", "manifest documents", "app script"]
-summary: "Apps and Document System v2 (experimental, DOCUMENT_GENERATION_REWORK): manifest document types, Twig templates, document-generation script data."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["DOCUMENT_GENERATION_REWORK", "document-type", "document-generation", "DocumentGenerationHook", "app documents", "document system v2", "zugferd_xml", "zugferd_embedded_pdf", "number range", "document_<identifier>", "app script", "twig document template", "invoice", "manifest documents"]
+summary: Apps register Document System v2 types in the manifest documents block, ship Twig templates and supply data via the document-generation script hook.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Describes how apps extend the reworked Document System (v2): the manifest registers a document type, Twig templates shipped with the app render it, and an app script provides data. The v2 system is experimental behind the `DOCUMENT_GENERATION_REWORK` feature flag and may change until it becomes the default in Shopware 6.8.
+How apps extend the experimental Document System (v2): the manifest declares a document type, Twig templates render it, and an app script hook supplies data. Requires the `DOCUMENT_GENERATION_REWORK` feature flag (default `false`); the API may change until it becomes default in Shopware 6.8.
 
 ## When to use
 
-When an app needs its own document type (e.g. a warranty certificate) or wants to add data to built-in documents under Document System v2. Check the Gotchas first: the app-side parts are not present in the installed core 6.7.13.0.
+When an app needs its own document type (e.g. a warranty certificate) or wants to add data to built-in documents generated under the v2 system.
 
 ## Key steps / config
 
-1. Enable the `DOCUMENT_GENERATION_REWORK` feature flag (default `false`).
-2. Declare the type in the manifest; `identifier`, `label`, `formats` are required, `config` is optional:
+1. Enable `DOCUMENT_GENERATION_REWORK` and declare the type in the manifest (`manifest-3.0.xsd`). `identifier` (pattern `[a-z0-9_]+`), `label` and `formats` are required; `config` is optional and falls back to defaults:
 
 ```xml
 <documents>
     <document-type>
         <identifier>swag_warranty</identifier>
         <label>Warranty</label>
+        <label lang="de-DE">Garantie</label>
         <formats><format>html</format><format>pdf</format></formats>
         <config>
-            <page-size/><page-orientation/><items-per-page/>
-            <display-header/><display-footer/>
+            <page-size>a4</page-size>
+            <page-orientation>portrait</page-orientation>
+            <items-per-page>10</items-per-page>
+            <display-header>true</display-header>
+            <display-footer>true</display-footer>
         </config>
     </document-type>
 </documents>
 ```
 
-   Allowed formats are the built-in ones only: `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`. Installing seeds a number range of type `document_<identifier>`; updates sync declarations, removed ones are deleted. The identifier must be globally unique across apps.
-3. Templates: `Resources/views/documents/<identifier>.html.twig` (renders `html`, `pdf`, `zugferd_embedded_pdf`), typically `{% sw_extends '@Framework/documents/base.html.twig' %}` overriding blocks like `document_headline`; for ZUGFeRD formats also `Resources/views/documents/zugferd/<identifier>.xml.twig`. Templates get `order`, the shared document meta data (e.g. `meta.documentNumber`) and order extensions; there is no typed render data.
-4. Data: a script in `Resources/scripts/document-generation/` runs once per generation (after order load and number allocation, before rendering) with `hook.order`, `hook.documentType`, `hook.documentNumber`, `formats`, `context` plus `repository` and `config` facades:
+   Allowed `format` values: `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`. The schema's `config` also accepts keys such as `display-page-count`, `display-prices`, `filename-prefix`, `filename-suffix`.
+2. On install the type is stored and a global number range `document_<identifier>` is seeded (pattern `{n}`, start `1000`). On update, changed declarations are synchronized; removed ones are deleted.
+3. Add templates in the plugin locations:
+   - `Resources/views/documents/<identifier>.html.twig` — renders `html`, `pdf`, `zugferd_embedded_pdf`; typically `{% sw_extends '@Framework/documents/base.html.twig' %}` overriding blocks like `document_headline`.
+   - `Resources/views/documents/zugferd/<identifier>.xml.twig` — needed for `zugferd_xml` / `zugferd_embedded_pdf`.
+4. Add a script under `Resources/scripts/document-generation/`. The `document-generation` hook runs once per generation, after the order is loaded and the document number allocated, before any renderer runs. In 6.7.15.1 it exposes `orderId`, `orderVersionId`, `salesChannelId`, `documentType`, `documentNumber`, `formats` and the context, plus the `repository` and `config` facades.
 
-```twig
-{% do hook.order.addArrayExtension('swag_warranty_data', { 'warrantyEnd': ... }) %}
-```
-
-   Read it in the template via `order.extensions.swag_warranty_data.get('warrantyEnd')`.
-5. Built-in documents: same script (check `hook.documentType`) plus a normal Twig override of the built-in template.
+Templates get the loaded `order` and shared document meta data (e.g. `meta.documentNumber`); app types have no typed render data.
 
 ## Essential identifiers
 
-- Feature flag `DOCUMENT_GENERATION_REWORK`
-- Formats `html`, `pdf`, `zugferd_xml`, `zugferd_embedded_pdf`
-- Number range type prefix `document_`
-- `@Framework/documents/base.html.twig`, block `document_headline`
-- `addArrayExtension()`
+- `DOCUMENT_GENERATION_REWORK`
+- `<documents>` / `<document-type>` / `identifier` / `label` / `formats` / `config`
+- `document-generation` script hook (`DocumentGenerationHook`)
+- `document_<identifier>` number range
+- `@Framework/documents/base.html.twig`
 
 ## Gotchas
 
-- In installed core 6.7.13.0 no manifest `<documents>`/`<document-type>` schema element and no `document-generation` script hook were found; `Shopware\Core\Checkout\DocumentV2\DocumentType` is an `@internal` enum of only `invoice`, `delivery_note`, `credit_note`, `cancellation_invoice`. Treat the app registration and script steps as not yet available on this version.
-- No custom formats or renderers; no typed data providers (the plugin-side `AbstractDocumentDataProvider`, itself `@internal`, is not available to apps); no configuration UI beyond the manifest `config` block.
-- Uninstalling deletes the app's document types but never their number ranges, so reinstalling does not reuse document numbers.
+- The identifier is globally unique: install fails if another app already claimed it, if it equals a core document type, or if it is the reserved `app_provided`.
+- The docs' script reads `hook.order` and calls `order.addArrayExtension('swag_warranty_data', {...})`, the template then reading `order.extensions.swag_warranty_data`. The installed `DocumentGenerationHook` has no order getter (only ids), so this hand-off could not be confirmed against 6.7.15.1.
+- To enrich built-in documents, check `hook.documentType` in the script and override the built-in Twig template.
+- Limits: no custom formats or renderers; no typed data providers (replaces the plugin-side `AbstractDocumentDataProvider`); the manifest `config` block is the only configuration surface; uninstalling deletes the app's document types but never their number ranges.
 
 ## Version notes
 
-- Experimental in 6.7 behind `DOCUMENT_GENERATION_REWORK`; planned default in 6.8.
+- `DocumentGenerationHook` is `@since 6.7.14.0` and `@experimental stableVersion:v6.8.0`.
 
-## Code check (6.7.13.0)
-- confirmed `DOCUMENT_GENERATION_REWORK` — major, toggleable, default false; read by the admin settings module — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
-- confirmed `zugferd_embedded_pdf` — DocumentFormat enum has html, pdf, zugferd_xml, zugferd_embedded_pdf — vendor/shopware/core/Checkout/DocumentV2/DocumentFormat.php:18
-- confirmed `NUMBER_RANGE_DOCUMENT_TYPE_PREFIX` — value `document_` in DocumentNumberGenerator — vendor/shopware/core/Checkout/DocumentV2/Config/DocumentNumberGenerator.php:21
-- confirmed `DocumentType` — internal enum with four built-in types only — vendor/shopware/core/Checkout/DocumentV2/DocumentType.php:13
-- confirmed `documents` — allowed app template directory under Resources/views — vendor/shopware/core/Framework/App/Template/TemplateLoader.php:21
-- confirmed `document_headline` — block exists in core document templates — vendor/shopware/core/Framework/Resources/views/documents/includes/table_open.html.twig:17
-- confirmed `ExtendableTrait::addArrayExtension()` — public method taking name and array — vendor/shopware/core/Framework/Struct/ExtendableTrait.php:32
-- confirmed `AbstractDocumentDataProvider` — @internal abstract provider class — vendor/shopware/core/Checkout/DocumentV2/Provider/AbstractDocumentDataProvider.php:23
-- unverified `document-type` — no manifest XSD element or app-side registration found under core Framework/App in 6.7.13.0
-- unverified `document-generation` — no script hook with this name found in core, storefront or administration src
+## Code check (6.7.15.1)
+- confirmed `DOCUMENT_GENERATION_REWORK` — feature flag, default false, toggleable — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:39
+- confirmed `document-type` — manifest `documents` child — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:636
+- confirmed `identifier` — restricted to `[a-z0-9_]+` — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:641
+- confirmed `zugferd_embedded_pdf` — one of four allowed formats with html, pdf, zugferd_xml — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:661
+- confirmed `display-footer` — optional config key; schema allows more keys — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:673
+- confirmed `DocumentGenerationHook::HOOK_NAME` — `document-generation` — vendor/shopware/core/Checkout/DocumentV2/Event/Hooks/DocumentGenerationHook.php:25
+- corrected `DocumentGenerationHook::getOrderId()` — docs: hook exposes `order`; code exposes only order/version/sales-channel ids — vendor/shopware/core/Checkout/DocumentV2/Event/Hooks/DocumentGenerationHook.php:49
+- confirmed `DocumentNumberGenerator::NUMBER_RANGE_DOCUMENT_TYPE_PREFIX` — `document_` prefix — vendor/shopware/core/Checkout/DocumentV2/Config/DocumentNumberGenerator.php:21
+- confirmed `DocumentV2Exception::documentTypeAlreadyRegistered()` — identifier claimed by another app fails install — vendor/shopware/core/Checkout/DocumentV2/App/DocumentAppFeatureDefinition.php:155
+- confirmed `DocumentV2Exception::documentTypeShadowsCoreType()` — core type names are also rejected — vendor/shopware/core/Checkout/DocumentV2/App/DocumentAppFeatureDefinition.php:151

@@ -6,23 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/
 sourceHash: 8d98ddb5d92273d4302c3ebd407325cdbf8185bd
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "b2b", "business to business", "shopware extension", "b2b installation", "b2b architecture", "b2b conventions", "b2b example plugins", "b2b storefront", "b2b administration", "shopware 5 b2b"]
-summary: Entry page of the Shopware 6 B2B Suite docs - installation, architecture, conventions, example plugins, Core, Administration and Storefront components.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "b2b", "business to business", "shopware 6 b2b", "b2b installation", "b2b architecture", "b2b conventions", "example plugins", "storefront components", "administration components"]
+summary: Entry page for the Shopware 6 B2B Suite docs - installation, architecture, conventions, example plugins, Core, Administration and Storefront components.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Landing page for the B2B Suite section of the Shopware 6 developer documentation. The section describes the B2B Suite from scratch: installation, system architecture, basic conventions, example plugins, and how its Core, Administration and Storefront components operate.
+The entry page of the B2B Suite documentation for Shopware 6. The section explains every concept needed to build a B2B solution in the Shopware ecosystem from scratch: installation, system architecture, basic conventions, example plugins, and how the Core, Administration and Storefront components operate.
 
 ## When to use
 
-Start here when building a B2B solution on Shopware 6 with the B2B Suite extension and you need to find the sub-topic (concepts, conventions, components) that covers your task.
+When you are building or extending a B2B shop on Shopware 6 with the B2B Suite and need the starting point for its installation, architecture and component documentation.
 
-## Gotchas
+## Version notes
 
-- This section covers Shopware 6 only. The Shopware 5 B2B Suite has its own, separate documentation on the legacy Shopware 5 developer site.
-- The B2B Suite is a separate extension; its code is not part of `shopware/core`, `shopware/storefront` or `shopware/administration`.
+This section covers Shopware 6 only. B2B Suite information for Shopware 5 lives in a separate Shopware 5 B2B Suite documentation on the developers.shopware.com site.
 
-## Code check (6.7.13.0)
-- unverified `B2B Suite` — the extension is not installed; no B2B Suite code exists under vendor/shopware/core, storefront or administration
+## Code check (6.7.15.1)
+- unverified `b2b suite` — the B2B Suite is a separate extension, not part of vendor/shopware/core, storefront or administration

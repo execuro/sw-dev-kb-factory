@@ -6,23 +6,24 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-05-25-exception-log-levels.html
 sourceHash: 10894a5dc1e50980939ae3223eb2058032913eed
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["exception log level", "framework.exceptions", "log_level", "shopware.logger.error_code_log_levels", "ErrorCodeLogLevelHandler", "ShopwareHttpException", "error code", "notice", "monolog", "logging noise", "observability", "adr"]
-summary: "ADR: 4xx client exceptions are logged as notice via Symfony framework.exceptions (by FQCN) and shopware.logger.error_code_log_levels (by error code)."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["framework.exceptions", "log_level", "shopware.logger.error_code_log_levels", "ErrorCodeLogLevelHandler", "ShopwareHttpException", "error code", "monolog", "log level", "notice", "exception logging", "log noise", "adr"]
+summary: "ADR: uncaught client-error exceptions (HTTP 40x) are logged as notice via Symfony framework.exceptions and Shopware's error-code-based log level map."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2023-05-25, area core, tags core/devops/observability): Shopware ships configuration that downgrades the log level of expected client-error exceptions from `error` to `notice`, both per exception class and per Shopware error code.
+Architecture decision record (2023): by default `symfony/monolog-bridge` logs every uncaught exception at `error` level. Exceptions caused by malformed client requests (a `ShopwareHttpException` with a 40x status) are expected, not errors, and flood the logs. The platform therefore ships configuration that downgrades specific exceptions to `notice`, which projects can adjust.
 
 ## When to use
 
-When logs are flooded with `error` entries caused by malformed API requests, when a project wants to change which exceptions are logged at which level (for example logging every client error while debugging your own clients), or when wondering why a 40x exception shows up as a notice.
+- Your logs are full of `error` entries for 404s, missing fields or other client mistakes.
+- You control all API clients and want every client error logged at a higher level for debugging (override the shipped mapping).
+- You need to change the log level of a single Shopware domain-exception case.
 
 ## Key steps / config
 
-- Uncaught PHP exceptions are logged by `symfony/monolog-bridge` at `error` level by default. A `ShopwareHttpException` with a 40x status signals a malformed request, not an error worth analysing.
-- Per exception class (FQCN), the platform uses Symfony's `framework.exceptions` configuration, shipped in core's `framework.yaml`:
+1. **By exception class** — Symfony's `framework.exceptions` configuration, keyed by FQCN:
 
 ```yaml
 framework:
@@ -31,40 +32,33 @@ framework:
             log_level: notice
 ```
 
-- Domain exceptions bundle several cases in one class, so an FQCN key is not precise enough. For these, Shopware adds a mapping keyed by the exception's error code (`getErrorCode()`), shipped in core's `shopware.yaml`:
+2. **By Shopware error code** — domain exceptions bundle several cases in one class, so the FQCN is not specific enough. Shopware adds a map keyed by the exception's unique error code (`ShopwareHttpException::getErrorCode()`):
 
 ```yaml
 shopware:
     logger:
         error_code_log_levels:
-            CHECKOUT__CUSTOMER_NOT_LOGGED_IN: notice
+            CHECKOUT__CART_HASH_MISMATCH: notice
 ```
 
-- `Shopware\Core\Framework\Log\Monolog\ErrorCodeLogLevelHandler` decorates `monolog.handler.main`. For any `ShopwareHttpException` whose error code is in the map, it rewrites the record's level. It also unwraps a messenger `HandlerFailedException` to inspect the original exception.
-- Projects override either list in their own package config to adjust the classification.
+`ErrorCodeLogLevelHandler` (a Monolog handler wrapper) rewrites the record level when the logged exception is a `ShopwareHttpException` whose error code is in the map; it also unwraps a Messenger `HandlerFailedException` to check the original exception.
 
 ## Essential identifiers
 
 - `framework.exceptions.<FQCN>.log_level`
 - `shopware.logger.error_code_log_levels`
 - `Shopware\Core\Framework\Log\Monolog\ErrorCodeLogLevelHandler`
-- `Shopware\Core\Framework\ShopwareHttpException`
+- `ShopwareHttpException::getErrorCode()`
 
 ## Gotchas
 
-- Adding this configuration changes the error logging of existing projects: exceptions that used to log as `error` now log as `notice`.
-- Log-level configuration inside the exception class itself (attributes or a method) was rejected because it would make per-project overrides harder.
+- Adding this configuration changes the log levels in existing projects; the ADR considers that an improvement.
+- Configuring the level inside the exception class (attribute or method) was rejected because it makes per-project overrides harder.
 
-## Version notes
-
-The ADR expects most of the cloud-specific exception-logging mapping to become unnecessary once this configuration ships in the platform.
-
-## Code check (6.7.13.0)
-- confirmed `framework.exceptions` — shipped in core package config — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:98
-- confirmed `log_level` — NotFoundHttpException mapped to notice — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:101
-- confirmed `error_code_log_levels` — Shopware error-code map under shopware.logger — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:520
-- confirmed `error_code_log_levels` — declared in bundle configuration tree — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:671
-- confirmed `ErrorCodeLogLevelHandler` — decorates monolog.handler.main with the map — vendor/shopware/core/Framework/DependencyInjection/services.xml:675
-- confirmed `ShopwareHttpException` — handler only matches ShopwareHttpException by getErrorCode() — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:47
-- confirmed `ShopwareHttpException` — abstract base class exists — vendor/shopware/core/Framework/ShopwareHttpException.php:29
+## Code check (6.7.15.1)
+- confirmed `framework.exceptions` — core ships per-FQCN log_level: notice entries — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:100
+- confirmed `shopware.logger.error_code_log_levels` — prototype map under the logger section — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:707
+- confirmed `error_code_log_levels` — default map sets error codes to notice — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:558
+- confirmed `ErrorCodeLogLevelHandler` — Monolog handler applying the error-code map — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:15
+- confirmed `ShopwareHttpException::getErrorCode()` — lookup key for the level map — vendor/shopware/core/Framework/Log/Monolog/ErrorCodeLogLevelHandler.php:48
 - unverified `symfony/monolog-bridge` — default error-level logging lives in vendor/symfony, out of scope

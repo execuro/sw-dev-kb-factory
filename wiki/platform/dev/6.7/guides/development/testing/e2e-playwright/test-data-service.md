@@ -6,43 +6,51 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/e2e-playwright/test-data-service.html
 sourceHash: 3dff5f638afb64b9d2531b5278c570ab33b6f88b
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["TestDataService", "@shopware-ag/acceptance-test-suite", "addCreatedRecord", "setCleanUp", "cleanUp", "priorityDeleteOperations", "createBasicProduct", "AdminApiContext", "playwright fixture", "test data", "acceptance tests", "e2e cleanup"]
-summary: TestDataService of the Shopware Playwright acceptance test suite - create*/assign*/get* helpers, automatic cleanup, extending it via a custom fixture.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["TestDataService", "createBasicProduct", "addCreatedRecord", "cleanUp", "setCleanUp", "priorityDeleteOperations", "AdminApiContext", "CustomTestDataService", "test data", "fixtures", "test cleanup", "acceptance test suite"]
+summary: ATS TestDataService - create*/assign*/get* helpers, automatic cleanup via addCreatedRecord, and extending it as a custom Playwright fixture.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-`TestDataService` is a service in the Shopware Acceptance Test Suite (`@shopware-ag/acceptance-test-suite`, TypeScript/Playwright) that creates, assigns and fetches test data through the Admin API and deletes everything it created after each test. Method docs live in the suite's `src/services/TestDataService.ts` (https://github.com/shopware/acceptance-test-suite/blob/trunk/src/services/TestDataService.ts).
+`TestDataService` is the Acceptance Test Suite (ATS) service that creates, links, fetches and afterwards deletes Shopware test data through the Admin API, keeping acceptance/API tests isolated. Method docs live in the ATS class `src/services/TestDataService.ts`.
 
 ## When to use
 
-- A Playwright acceptance/API test needs a basic product, customer, order, category, media, promotion, rule, payment or shipping method.
-- You need to link entities (product to category/manufacturer/media) or fetch existing ones (currency, country, payment method).
-- A project/plugin adds new entity types or special creation/cleanup logic that should be reused across tests — extend the service.
+- A test needs common entities: products, customers, orders, categories, media, promotions, rules, payment/shipping methods.
+- You need helper lookups (`getCurrency()`, `getShippingMethod()`) or relations (product to category).
+- Extend it when a project adds new entity types, needs specialised creation logic, reusable setups, or special cleanup.
 
 ## Key steps / config
 
-Use in a test (injected as a Playwright fixture):
+### Common methods
 
-```typescript
-test('...', async ({ TestDataService }) => {
-    const product = await TestDataService.createBasicProduct();
-    const customer = await TestDataService.createCustomer();
-});
-```
-
-Common methods (more exist; use IDE auto-completion):
 - `create*`: `createBasicProduct(): Promise<Product>`, `createVariantProducts(parentProduct, propertyGroups)`, `createCustomer()`, `createCustomerGroup()`, `createOrder(lineItems: SimpleLineItem[], customer)`, `createCategory()`, `createColorPropertyGroup()`, `createBasicPaymentMethod()`, `createBasicShippingMethod()`
 - `assign*`: `assignProductCategory(productId, categoryIds[])`, `assignProductManufacturer(productId, manufacturerId)`, `assignProductMedia(productId, mediaId)`
 - `get*`: `getCountry(iso2)`, `getCurrency(isoCode)`, `getCustomerGroups()`, `getPaymentMethod(name = 'Invoice')`
 
-Writing a new method: decide create/assign/get; call the Admin API via `AdminApiContext`; name it `createBasic*` (defaults), `create*With*` (variations), `assign*`, `get*`; always declare a `Promise<...>` return type; register the entity for cleanup with `this.addCreatedRecord('<entity>', id)`; add a test in `/tests/TestDataService.spec.ts`.
+```typescript
+const product = await TestDataService.createBasicProduct();
+```
 
-Extending in an external project:
+### Writing a new method
+
+1. Decide the pattern: `create*`, `assign*` or `get*`.
+2. Implement it with `AdminApiContext` against the Admin API.
+3. Naming: `createBasic*` for default setups, `create*With*` for variations (e.g. `createProductWithImage`), `assign*`, `get*`.
+4. Always declare a return type (`Promise<...>`).
+5. Register cleanup: `this.addCreatedRecord('rule', rule.id);` — the first argument is the entity name.
+6. Test it in `/tests/TestDataService.spec.ts`.
+
+### Cleanup
+
+Each `create*` call registers the entity via `addCreatedRecord()`; the queue is processed at the end of each test. Deletion runs `priorityDeleteOperations` first (dependent entities such as orders, customers), then system config changes are reset, then `deleteOperations`. Add entities to the `priorityDeleteOperations` array when they must be deleted first. Skip cleanup with `TestDataService.setCleanUp(false)`.
+
+### Extending in an external project
+
+Subclass the service:
 
 ```typescript
-import { TestDataService } from '@shopware-ag/acceptance-test-suite';
 export class CustomTestDataService extends TestDataService {
     async createCustomCustomerGroup(data: Partial<CustomerGroup>) {
         const response = await this.adminApi.post('customer-group?_response=true', { data: { /* ... */ } });
@@ -53,7 +61,7 @@ export class CustomTestDataService extends TestDataService {
 }
 ```
 
-Override the fixture (e.g. in `AcceptanceTest.ts`):
+Then override the fixture (e.g. in `AcceptanceTest.ts`):
 
 ```typescript
 export const test = base.extend<FixtureTypes & CustomTestDataServiceType>({
@@ -65,28 +73,28 @@ export const test = base.extend<FixtureTypes & CustomTestDataServiceType>({
 });
 ```
 
+All tests using `TestDataService` then get the base plus your methods, with cleanup intact.
+
 ## Essential identifiers
 
-- `TestDataService`, `@shopware-ag/acceptance-test-suite`
+- `TestDataService`, `CustomTestDataService`, `AdminApiContext`, `DefaultSalesChannel`
 - `addCreatedRecord()`, `cleanUp()`, `setCleanUp(false)`
 - `priorityDeleteOperations`, `deleteOperations`
-- `AdminApiContext`, `DefaultSalesChannel`
+- `customer-group?_response=true`
 
 ## Gotchas
 
-- Cleanup runs at the end of each test: records in `priorityDeleteOperations` (entities with dependents such as orders, customers) are deleted first, then modified system config is reset, then `deleteOperations`. To add an entity to the priority list, add it to the `priorityDeleteOperations` array in the class.
-- Entities created without `addCreatedRecord()` are not cleaned up.
-- `TestDataService.setCleanUp(false)` skips cleanup (debugging, performance tests).
-- The source text calls the cleanup method both `cleanup()` and `cleanUp()`; the fixture example uses `service.cleanUp()`.
-- Entity names passed to the Admin API and `addCreatedRecord` are kebab-case (`customer-group`), derived from core entity names like `customer_group`.
+- The prose calls the method `cleanup()`, but the fixture example calls `service.cleanUp()`.
+- Admin API paths use hyphenated entity names (`customer-group` for `customer_group`); `_response` makes write calls return the entity body.
 
-## Code check (6.7.13.0)
-- unverified `TestDataService` — lives in the external npm package @shopware-ag/acceptance-test-suite, out of scope
-- unverified `addCreatedRecord()` — acceptance-test-suite package, out of scope
-- unverified `priorityDeleteOperations` — acceptance-test-suite package, out of scope
-- unverified `setCleanUp()` — acceptance-test-suite package, out of scope
-- confirmed `customer_group` — core entity behind the `customer-group` Admin API route — vendor/shopware/core/Checkout/Customer/Aggregate/CustomerGroup/CustomerGroupDefinition.php:27
-- confirmed `_response` — Admin API write returns the entity only when the `_response` query parameter is present — vendor/shopware/core/Framework/Api/Controller/ApiController.php:637
-- confirmed `product` — entity created by `createBasicProduct` — vendor/shopware/core/Content/Product/ProductDefinition.php:85
-- confirmed `rule` — entity registered in the `createBasicRule` cleanup example — vendor/shopware/core/Content/Rule/RuleDefinition.php:49
-- confirmed `shipping_method` — entity created by `createBasicShippingMethod` — vendor/shopware/core/Checkout/Shipping/ShippingMethodDefinition.php:41
+## Code check (6.7.15.1)
+- unverified `TestDataService` — ATS class in an external npm package, outside vendor/shopware
+- unverified `TestDataService::setCleanUp()` — ATS API, out of scope
+- unverified `priorityDeleteOperations` — ATS property, out of scope
+- confirmed `customer_group` — entity behind the `customer-group` Admin API resource — vendor/shopware/core/Checkout/Customer/Aggregate/CustomerGroup/CustomerGroupDefinition.php:30
+- confirmed `str_replace('_', '-'` — Admin API route names hyphenate entity names — vendor/shopware/core/Framework/Api/Route/ApiRouteLoader.php:69
+- confirmed `_response` — write requests return content only when this query param is present — vendor/shopware/core/Framework/Api/Controller/ApiController.php:637
+- confirmed `rule` — entity name used in `addCreatedRecord('rule', ...)` — vendor/shopware/core/Content/Rule/RuleDefinition.php:52
+- confirmed `product` — entity name used in `addCreatedRecord('product', ...)` — vendor/shopware/core/Content/Product/ProductDefinition.php:85
+- confirmed `order` — priority-deleted dependent entity — vendor/shopware/core/Checkout/Order/OrderDefinition.php:58
+- confirmed `system_config` — system config entries reset by cleanup — vendor/shopware/core/System/SystemConfig/SystemConfigDefinition.php:24

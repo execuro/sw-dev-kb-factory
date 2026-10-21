@@ -6,88 +6,102 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/javascript/add-custom-javascript.html
 sourceHash: 8a2f7d9d051e0055b327c54ae7d568dd00f3ebc6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["storefront javascript plugin", "js plugin", "PluginBaseClass", "PluginManager", "PluginManager.register", "main.js", "init", "static options", "data-options", "replace_recursive", "async plugin", "dynamic import", "shopware-cli project storefront-build", "build:js:storefront"]
-summary: Write a Storefront JS plugin extending PluginBaseClass, register it in main.js via PluginManager.register (sync/async, selector), pass data-*-options, build.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md", "platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md", "platform/dev/6.7/guides/plugins/plugins/storefront/templates/customize-templates.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["PluginBaseClass", "PluginManager.register", "main.js", "init()", "static options", "data-example-plugin", "data-example-plugin-options", "replace_recursive", "async plugin", "dynamic import", "shopware-cli project storefront-build", "composer run build:js:storefront", "storefront js plugin", "custom javascript"]
+summary: Write a Storefront JS plugin extending PluginBaseClass, register it in main.js (sync, selector-bound or async), configure it via data-*-options, build it.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/templates/customize-templates.md", "platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md", "platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md"]
 ---
 ## What it is
 
-How to write a Storefront JavaScript plugin (an ES6 class extending the Storefront plugin base class), register it with the `PluginManager`, bind it to DOM elements, configure it from Twig, and build/ship it.
+How to write and register your own Storefront JavaScript plugin: a vanilla ES6 class extending the Storefront plugin base class, registered in the global `PluginManager`, optionally bound to a DOM selector, loaded async, and configured from Twig via data options. The example plugin alerts when the user scrolls to the bottom of the page.
 
 ## When to use
 
-You need custom interactive behaviour in the Storefront from a Shopware plugin. Requires a running plugin, command-line access to build the Storefront, and ES6 knowledge. Follow-ups: [reacting to JavaScript events](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/reacting-to-javascript-events.md), [overriding existing JavaScript](platform/dev/6.7/guides/plugins/plugins/storefront/javascript/override-existing-javascript.md).
+You need custom interactivity in the Storefront from a Shopware plugin. Requires a running plugin, file access and the command line to build the Storefront.
 
 ## Key steps / config
 
-1. **Create the plugin class** under `<plugin root>/src/Resources/app/storefront/src/`, e.g. `example-plugin/example-plugin.plugin.js`. The base class is exposed globally as `window.PluginBaseClass`:
-   ```javascript
-   const { PluginBaseClass } = window;
-   export default class ExamplePlugin extends PluginBaseClass {
-       static options = { text: 'Seems like there\'s nothing more to see here.' };
-       init() {
-           window.addEventListener('scroll', this.onScroll.bind(this));
-       }
-       onScroll() { /* ... alert(this.options.text) ... */ }
-   }
-   ```
-   Implement `init()` — the base class calls it once on construction; without an override it only logs a warning. An optional `update()` hook exists. `this.el` is the bound DOM element, `this.options` the merged options.
-2. **Register in the entry file** `<plugin root>/src/Resources/app/storefront/src/main.js` (a `main.ts` there takes precedence if both exist):
-   ```javascript
-   import ExamplePlugin from './example-plugin/example-plugin.plugin';
-   const PluginManager = window.PluginManager;
-   PluginManager.register('ExamplePlugin', ExamplePlugin, '[data-example-plugin]');
-   ```
-   Signature: `register(pluginName, pluginClass, selector = document, options = {})`. Without a selector the plugin runs on `document` on every page; with one, only where a matching element exists.
-3. **Async plugin**: pass a dynamic import instead of the class:
-   `PluginManager.register('ExamplePlugin', () => import('./example-plugin/example-plugin.plugin'), '[data-example-plugin]');`
-   A value without a `prototype` (an arrow function) is treated as async; it is not bundled into the main JS and is downloaded only when the selector matches on the page.
-4. **Add the DOM element** in a template (see [customizing templates](platform/dev/6.7/guides/plugins/plugins/storefront/templates/customize-templates.md)), e.g. `<plugin root>/src/Resources/views/storefront/page/content/index.html.twig` extending `@Storefront/storefront/page/content/index.html.twig`, block `base_main_inner`: after `{{ parent() }}` add `<template data-example-plugin></template>`. Active on content pages such as home and category listings.
-5. **Override options from Twig** with `data-{plugin-name-in-kebab-case}-options` (here `data-example-plugin-options`) containing JSON. Use a Twig variable so other plugins can extend it. For product detail pages extend `@Storefront/storefront/page/content/product-detail.html.twig`:
-   ```twig
-   {% sw_extends '@Storefront/storefront/page/content/product-detail.html.twig' %}
-   {% set examplePluginOptions = { text: "Are you not interested in this product?" } %}
-   {% block base_main_inner %}
-       {{ parent() }}
-       <template data-example-plugin data-example-plugin-options="{{ examplePluginOptions|json_encode|escape('html_attr') }}"></template>
-   {% endblock %}
-   ```
-   Options are deep-merged in order: static `options`, constructor options, `data-*-config`, `data-*-options`.
-6. **Modify existing options** of a core template variable with the `replace_recursive` Twig filter, inside the block before `{{ parent() }}`:
-   ```twig
-   {% block element_product_slider_slider %}
-       {% set productSliderOptions = productSliderOptions|replace_recursive({ slider: { mouseDrag: true } }) %}
-       {{ parent() }}
-   {% endblock %}
-   ```
-7. **Build**: `shopware-cli project storefront-build` (project template) or `composer run build:js:storefront` (platform contribution setup). The compiled file is expected at `<plugin root>/src/Resources/app/storefront/dist/storefront/js/<plugin-name>/<plugin-name>.js` and is picked up automatically if it exists — ship it with the plugin.
+1. **Plugin class** in `<plugin root>/src/Resources/app/storefront/src/example-plugin/example-plugin.plugin.js`. Take the base class from the window and implement `init()` (entry point; plugins initialize on `DOMContentLoaded`):
+
+```javascript
+const { PluginBaseClass } = window;
+
+export default class ExamplePlugin extends PluginBaseClass {
+    static options = { text: 'Seems like there\'s nothing more to see here.' };
+
+    init() {
+        window.addEventListener('scroll', this.onScroll.bind(this));
+    }
+
+    onScroll() { /* ... alert(this.options.text) ... */ }
+}
+```
+
+2. **Register** in the entry file `<plugin root>/src/Resources/app/storefront/src/main.js` (loaded automatically):
+
+```javascript
+import ExamplePlugin from './example-plugin/example-plugin.plugin';
+const PluginManager = window.PluginManager;
+PluginManager.register('ExamplePlugin', ExamplePlugin);                           // every page
+PluginManager.register('ExamplePlugin', ExamplePlugin, '[data-example-plugin]');  // bound to selector
+PluginManager.register('ExamplePlugin', () => import('./example-plugin/example-plugin.plugin'), '[data-example-plugin]'); // async
+```
+
+   With a selector, the plugin runs only if at least one matching element exists; `this.el` is the bound element. A dynamic import makes the plugin async automatically: it is not bundled into the main JS and is downloaded on demand when the selector is found on the page.
+
+3. **Place the selector in markup** by overriding a block, e.g. `base_main_inner` of `@Storefront/storefront/page/content/index.html.twig` in `<plugin root>/src/Resources/views/storefront/page/content/index.html.twig`; after `{{ parent() }}` add a `template` element with the `data-example-plugin` attribute. This activates it on every content page (homepage, category listings).
+
+4. **Configure via data options**: defaults live in `static options`; templates override them with `data-{plugin-name-in-kebab-case}-options` (here `data-example-plugin-options`) holding a JSON object. Product detail pages are rendered from `@Storefront/storefront/page/content/product-detail.html.twig`, whose `base_main_inner` block can be extended:
+
+```twig
+{% sw_extends '@Storefront/storefront/page/content/product-detail.html.twig' %}
+{% set examplePluginOptions = { text: "Are you not interested in this product?" } %}
+{% block base_main_inner %}
+    {{ parent() }}
+    <template data-example-plugin data-example-plugin-options="{{ examplePluginOptions|json_encode|escape('html_attr') }}"></template>
+{% endblock %}
+```
+
+   Best practice: keep options in a Twig variable so other plugins can extend them.
+
+5. **Modify existing options** of a core plugin with the `replace_recursive` Twig filter inside the overridden block, then call `{{ parent() }}`:
+
+```twig
+{% block element_product_slider_slider %}
+    {% set productSliderOptions = productSliderOptions|replace_recursive({ slider: { mouseDrag: true } }) %}
+    {{ parent() }}
+{% endblock %}
+```
+
+6. **Build**: `shopware-cli project storefront-build` (project template) or `composer run build:js:storefront` (platform contribution setup). The compiled file lands in `<plugin root>/src/Resources/app/storefront/dist/storefront/js/<plugin-name>/<plugin-name>.js` and is detected automatically; ship it with the plugin.
 
 ## Essential identifiers
 
-- `window.PluginBaseClass`, `window.PluginManager`
-- `PluginManager.register(pluginName, pluginClass, selector, options)`
-- `init()`, `update()`, `static options`, `this.el`, `this.options`
-- `data-<plugin-name>-options`, `data-<plugin-name>-config`
-- Entry `src/Resources/app/storefront/src/main.js`; output `dist/storefront/js/<plugin-name>/<plugin-name>.js`
-- Twig filter `replace_recursive`; blocks `base_main_inner`, `element_product_slider_slider`
+- `window.PluginBaseClass`, `window.PluginManager`, `PluginManager.register(name, classOrImportFn, selector)`
+- `init()`, `this.el`, `static options`, `this.options`
+- `<plugin root>/src/Resources/app/storefront/src/main.js`
+- `data-example-plugin`, `data-example-plugin-options`
+- `replace_recursive`
+- `shopware-cli project storefront-build`, `composer run build:js:storefront`
 
 ## Gotchas
 
-- `<plugin-name>` in the dist path is the plugin's technical name converted camelCase to snake_case with `_` replaced by `-`, e.g. `SwagExample` -> `swag-example`.
-- The docs extend `@Storefront/storefront/page/product-detail/index.html.twig`, block `page_product_detail_content`; neither exists in the installed 6.7.13 Storefront (product detail uses `page/content/product-detail.html.twig`).
-- Registering the same name + selector twice only logs "already registered" and is ignored.
-- Invalid JSON in `data-*-options` is logged as an error and ignored.
+- The docs extend `@Storefront/storefront/page/product-detail/index.html.twig` and its block `page_product_detail_content`; neither exists in 6.7 - use `page/content/product-detail.html.twig` instead.
+- `<plugin-name>` in the dist path is the plugin technical name converted to kebab-case (e.g. `SwagExample` to `swag-example`); the file is only registered if it exists.
+- The entry file may also be `main.ts`; if both exist, `main.ts` wins.
+- A plugin without its own `init()` logs a warning and does nothing.
+- Registering the same plugin name and selector twice logs "already registered" and is ignored.
+- A normal (static) import always includes the plugin in the JS on all pages; use the dynamic import to load it only where its selector appears.
 
-## Code check (6.7.13.0)
-- confirmed `PluginBaseClass` — exposed on window — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:799
-- confirmed `register` — (pluginName, pluginClass, selector = document, options = {}) — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:74
-- confirmed `prototype` — class without prototype registered as async — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:81
-- confirmed `init` — default only warns; must be overridden — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:36
-- confirmed `_getOptionsFromDataAttribute` — reads data-<dashed-name>-options as JSON — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:130
-- confirmed `main.js` — entry file detected, main.ts checked first — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:186
-- confirmed `dist/storefront/js` — script path used if file exists — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:131
-- confirmed `getAssetName` — snake_case with dashes — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfiguration.php:243
-- confirmed `replace_recursive` — Twig filter — vendor/shopware/core/Framework/Adapter/Twig/Filter/ReplaceRecursiveFilter.php:18
-- corrected `base_main_inner` — docs: page_product_detail_content in page/product-detail/index.html.twig — vendor/shopware/storefront/Resources/views/storefront/page/content/product-detail.html.twig:7
+## Code check (6.7.15.1)
+- confirmed `PluginBaseClass` — exposed as window.PluginBaseClass — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:972
+- confirmed `PluginManager::register()` — signature (pluginName, pluginClass, selector = document, options) — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:839
+- confirmed `PluginManagerSingleton::register()` — class without prototype (import fn) is stored as async; duplicate name+selector warns — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.manager.js:79
+- confirmed `Plugin::init()` — base implementation only warns that init is not defined — vendor/shopware/storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:36
+- confirmed `app/storefront/src/main.js` — entry file, checked after main.ts — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:187
+- confirmed `/Resources/app/storefront/dist/storefront/js/%s/%s.js` — compiled script path keyed by kebab-case asset name — vendor/shopware/storefront/Theme/StorefrontPluginConfiguration/StorefrontPluginConfigurationFactory.php:131
+- confirmed `replace_recursive` — used by core templates to merge plugin options — vendor/shopware/storefront/Resources/views/storefront/element/cms-element-image-gallery.html.twig:139
+- confirmed `base_main_inner` — block in content/product-detail.html.twig — vendor/shopware/storefront/Resources/views/storefront/page/content/product-detail.html.twig:7
+- absent `page_product_detail_content` — block not defined in any installed template
+- absent `@Storefront/storefront/page/product-detail/index.html.twig` — template not present; product-detail folder only has meta.html.twig

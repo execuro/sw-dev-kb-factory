@@ -6,65 +6,75 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2026-07-13-app-feature-storage.html
 sourceHash: 2a79c635891780bb4531d52bd63533ec24ea4da4
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["app_feature", "AppFeatureStorage", "AppFeatureDefinition", "AppFeatureConfig", "shopware.app_feature.definition", "shopware.app_lifecycle.handler", "AppCookieCollectListener", "PaymentMethodLifecycleHandler", "keepUserData", "manifest", "app storage", "app system", "adr"]
-summary: "ADR: one generic app_feature table plus AppFeatureStorage/AppFeatureDefinition for manifest-declared app items; not present in installed 6.7.13.0."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["app_feature", "AppFeatureDefinition", "AppFeatureConfig", "AppFeatureStorage", "AppFeatureLifecycleHandler", "shopware.app_feature.definition", "shopware.app_lifecycle.handler", "keepUserData", "Shopware\\Core\\Framework\\App\\Feature", "manifest", "app capabilities", "app update reconciliation"]
+summary: "ADR: one app_feature table for manifest-declared app items, typed via AppFeatureDefinition subclasses and read through AppFeatureStorage (internal API)."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2026-07-13) proposing one generic `app_feature` table and a typed PHP API for manifest-declared app capabilities that are a list of named items read back as a whole, instead of adding a JSON column to the `app` table or a dedicated `app_*` table per capability. None of the proposed table or classes exist in core 6.7.13.0.
+An ADR (2026-07-13, area: framework) introducing one generic `app_feature` table plus an `@internal` PHP API in `Shopware\Core\Framework\App\Feature` for simple manifest-declared app capabilities. Previously each capability added a JSON column to `app` (`modules`, `main_module`, `cookies`, `allowed_hosts`, `requested_privileges`, `source_config`) or its own `app_*` table, each with ad-hoc persistence and reads, and app updates discarded shop-side changes.
 
 ## When to use
 
-When designing or reviewing a new manifest-declared app capability, or when checking how the installed app system currently stores manifest data (e.g. cookies) versus what the ADR plans.
+- Adding a new manifest-declared app capability whose items are read back as "all items of one type" with shop-side changes living in the payload.
+- Not for features needing foreign keys to core entities, state outside the payload, or indexed lookups by payload content — those stay in a dedicated table (as payment methods do).
 
 ## Key steps / config
 
-How manifest data is stored and read in installed 6.7.13.0:
+Table (one row per declared item):
 
-1. JSON/list columns on the `app` row: `modules`, `main_module`, `cookies`, `allowed_hosts`, `requested_privileges`, `source_config`. Readers query them ad hoc; `Shopware\Core\Framework\App\Cookie\AppCookieCollectListener` searches active apps with `app.cookies` not null and reads `AppEntity::getCookies()`.
-2. Dedicated tables such as `app_action_button`, `app_flow_action`, `app_payment_method`, `app_mcp_tool` for content that needs foreign keys, indexed lookups, per-item mutable state or translations.
-3. Manifest persistence during install/update runs through services tagged `shopware.app_lifecycle.handler` (each with a priority), e.g. `PaymentMethodLifecycleHandler`, which re-links payment methods to a reinstalled app.
-4. Translatable values can be resolved via `Context::getLanguageIdChain()` and `LanguageLocaleCodeProvider` (the mechanism the ADR plans to reuse).
+```sql
+CREATE TABLE `app_feature` (
+  `id` BINARY(16), `app_id` BINARY(16) NULL, `app_name` VARCHAR(255),
+  `type` VARCHAR(64), `name` VARCHAR(255), `payload` JSON,
+  `created_at` DATETIME(3), `updated_at` DATETIME(3) NULL,
+  KEY `idx.app_feature.type` (`type`),
+  CONSTRAINT `fk.app_feature.app_id` FOREIGN KEY (`app_id`) REFERENCES `app` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `uniq.app_feature.app_name_type_name` UNIQUE (`app_name`, `type`, `name`)
+);
+```
+
+To add a capability: manifest XSD section and XML class, a config DTO implementing `AppFeatureConfig` (`getName(): string`, stable across updates), and an `AppFeatureDefinition` subclass tagged `shopware.app_feature.definition`:
+
+```php
+/** @extends AppFeatureDefinition<Cookie> */
+class CookieFeatureDefinition extends AppFeatureDefinition
+{
+    public function getType(): string { return 'cookie'; }
+    public function getConfigClass(): string { return Cookie::class; }
+    public function fromApp(Manifest $manifest, Filesystem $appFilesystem, string $defaultLocale): array { /* list<Cookie> */ }
+    public function toPayload(AppFeatureConfig $declared, ?AppFeatureConfig $stored): array { /* keep shop-owned values from $stored */ }
+    public function fromPayload(array $payload): AppFeatureConfig { /* rebuild Cookie */ }
+}
+```
+
+Optional hooks: `validate(array $configs, AppPersistContext $context)` (throw to abort install/update) and `persisted(...)` (provision related resources).
+
+Reading and writing via `AppFeatureStorage`: `forActiveApps(Cookie::class)` (joins `app.active = 1`), `forApp($appId, Cookie::class)` (any active state), each returning `AppFeature` objects with `appName` and typed `config`; `save($appId, $config)` stores a shop-side change as is and throws if the app did not declare that item. `syncForApp()` is driven by `AppFeatureLifecycleHandler`, registered as `shopware.app_lifecycle.handler`.
 
 ## Essential identifiers
 
-- `app` table columns `modules`, `main_module`, `cookies`, `allowed_hosts`, `requested_privileges`, `source_config`
-- `AppCookieCollectListener`, `AppEntity::getCookies()`, `Manifest::getCookies()`
-- `shopware.app_lifecycle.handler`, `PaymentMethodLifecycleHandler`
-- `Context::getLanguageIdChain()`, `LanguageLocaleCodeProvider`
+- `AppFeatureDefinition`, `AppFeatureConfig`, `AppFeatureStorage`, `AppFeatureLifecycleHandler`, `AppFeatureDefinitionRegistry`
+- DI tags `shopware.app_feature.definition`, `shopware.app_lifecycle.handler`
 
 ## Gotchas
 
-- The ADR API lives in the `Shopware\Core\Framework\App\Feature` namespace, which does not exist in 6.7.13.0; do not code against it. All its classes are planned as `@internal`.
-- Planned schema: `app_feature` with `id`, nullable `app_id` (FK to `app`, `ON DELETE SET NULL`), `app_name`, `type` (VARCHAR 64), `name`, `payload` JSON, timestamps; unique `(app_name, type, name)`, index on `type`. `app_name` exists so rows kept on uninstall with `keepUserData` re-attach on reinstall; without `keepUserData` rows are deleted.
-- Planned contracts:
-  ```php
-  interface AppFeatureConfig { public function getName(): string; }
-  interface AppFeatureDefinition {  // DI tag shopware.app_feature.definition
-      public function getType(): string;
-      public function getConfigClass(): string;
-      public function extract(Manifest $manifest): array;
-      public function toPayload(AppFeatureConfig $declared, ?AppFeatureConfig $stored): array;
-      public function fromPayload(array $payload): AppFeatureConfig;
-  }
-  ```
-- Planned reads via `AppFeatureStorage::forActiveApps(Cookie::class)` / `forApp($appId, ...)` (filters `app.active`); writes via `AppFeatureStorage::save($appId, $config)`; lifecycle sync via `syncForApp()` in a `shopware.app_lifecycle.handler`. Sync diffs by `(type, name)`, so `name` must be stable across app updates; `toPayload()` decides what shop-side changes survive (`$stored` is null on first install).
-- Payloads are opaque JSON, not exposed via the auto-generated Admin API; translations stay as locale-keyed maps resolved at read time.
+- Reconciliation is owned by the definition: on update `toPayload($declared, $stored)` decides what survives; `$stored` is null on first install and on `save()`. There is no platform merge policy.
+- Sync diffs by `(type, name)`: surviving rows are rewritten in place (keeping `id`, `created_at`), new ones inserted, undeclared ones deleted — `name` stability is part of the contract.
+- On uninstall with `keepUserData` rows are kept with `app_id` set to null and re-attached by `app_name` on reinstall; otherwise they are deleted.
+- Payloads are opaque JSON; translatable values stay as locale-keyed maps (`{"label": {"en-GB": "...", "de-DE": "..."}}`) resolved at read time via `Context::getLanguageIdChain()` and `LanguageLocaleCodeProvider`, falling back to the default locale. No translation table.
+- Data is not exposed through the auto-generated Admin API; existing JSON columns on `app` stay until a major.
+- The ADR shows `AppFeatureDefinition` as an interface with `extract(Manifest $manifest)`; the installed code is an abstract class whose extraction method is `fromApp(...)` with a filesystem and default-locale argument.
 
-## Version notes
-
-Existing JSON columns and `AppEntity` getters stay; migrating them needs a deprecation cycle at a major. The ADR scopes `app_feature` to new simple capabilities.
-
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\App\Feature` — namespace not found in installed code
-- absent `AppFeatureStorage` — not found in any installed Shopware package
-- absent `AppFeatureDefinition` — not found in any installed Shopware package
-- absent `app_feature` — no table or DI tag of this name installed
-- confirmed `AppCookieCollectListener` — reads `app.cookies` of active apps — vendor/shopware/core/Framework/App/Cookie/AppCookieCollectListener.php:26
-- confirmed `AppEntity::getCookies()` — cookies JSON column getter — vendor/shopware/core/Framework/App/AppEntity.php:323
-- confirmed `PaymentMethodLifecycleHandler` — lifecycle handler class — vendor/shopware/core/Framework/App/Lifecycle/Handler/PaymentMethodLifecycleHandler.php:27
-- confirmed `shopware.app_lifecycle.handler` — DI tag with priorities — vendor/shopware/core/Framework/DependencyInjection/app.php:273
-- confirmed `Context::getLanguageIdChain()` — returns the language id chain — vendor/shopware/core/Framework/Context.php:167
-- confirmed `LanguageLocaleCodeProvider` — maps languages to locale codes — vendor/shopware/core/System/Locale/LanguageLocaleCodeProvider.php:13
+## Code check (6.7.15.1)
+- corrected `AppFeatureDefinition` — docs: interface; code: `@internal` abstract class — vendor/shopware/core/Framework/App/Feature/AppFeatureDefinition.php:24
+- corrected `AppFeatureDefinition::fromApp()` — docs: `extract(Manifest $manifest)` — vendor/shopware/core/Framework/App/Feature/AppFeatureDefinition.php:44
+- confirmed `AppFeatureDefinition::toPayload()` — receives declared and stored config — vendor/shopware/core/Framework/App/Feature/AppFeatureDefinition.php:56
+- confirmed `AppFeatureDefinition::validate()` — optional pre-write hook, not in docs — vendor/shopware/core/Framework/App/Feature/AppFeatureDefinition.php:73
+- confirmed `AppFeatureConfig::getName()` — item name within its type and app — vendor/shopware/core/Framework/App/Feature/AppFeatureConfig.php:22
+- confirmed `AppFeatureStorage::forActiveApps()` — filters `app.active = 1` — vendor/shopware/core/Framework/App/Feature/AppFeatureStorage.php:43
+- confirmed `AppFeatureStorage::save()` — throws when the item is not declared — vendor/shopware/core/Framework/App/Feature/AppFeatureStorage.php:189
+- confirmed `shopware.app_feature.definition` — tagged iterator for the definition registry — vendor/shopware/core/Framework/DependencyInjection/app.php:384
+- confirmed `shopware.app_lifecycle.handler` — `AppFeatureLifecycleHandler` priority -1300 — vendor/shopware/core/Framework/DependencyInjection/app.php:380
+- confirmed `uniq.app_feature.app_name_type_name` — migration matches the ADR schema — vendor/shopware/core/Migration/V6_7/Migration1783666808AddAppFeatureTable.php:35

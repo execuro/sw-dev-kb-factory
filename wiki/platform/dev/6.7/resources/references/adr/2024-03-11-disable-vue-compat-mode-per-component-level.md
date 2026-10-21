@@ -6,23 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-03-11-disable-vue-compat-mode-per-component-level.html
 sourceHash: 80fc3bbfff24f8eb1cb1c5166e66028962bdabdb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["compatConfig", "Shopware.compatConfig", "Shopware.Component.register", "DISABLE_VUE_COMPAT", "vue compat mode", "vue 3 migration", "vue 2", "administration", "feature flag", "component migration", "adr"]
-summary: "ADR: migrate Administration components to Vue 3 individually via compatConfig: Shopware.compatConfig instead of dropping compat mode globally."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["compatConfig", "Shopware.compatConfig", "DISABLE_VUE_COMPAT", "Shopware.Component.register", "vue compat mode", "vue 3 migration", "vue 2 compatibility", "@vue/compat", "feature flag", "administration", "component migration", "plugin migration"]
+summary: "ADR: disable Vue 3 compat mode per Administration component via compatConfig: Shopware.compatConfig; 6.7 admin source no longer loads compat."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (administration, 2024-03-11): instead of disabling the Vue 3 compatibility mode for the whole Administration at once, compat mode is disabled per component, so components (core and plugin) can be migrated to Vue 3 incrementally.
+An architecture decision record (2024-03-11, area administration). It describes how the Shopware Administration turns off the Vue 3 compatibility mode one component at a time instead of for the whole application at once. Vue 3 ships the compatibility mode to ease migration from Vue 2: it is on by default and lets most Vue 2 features run in a Vue 3 app. Vue recommends it only for the transition period. Shopware kept it on in the Administration so plugins could migrate with fewer breaking changes. This split the migration of the Administration and of plugins across two majors.
 
 ## When to use
 
-- Migrating an Administration component (core or plugin) from Vue 2-style code to Vue 3.
-- Understanding the `compatConfig: Shopware.compatConfig` line found in component definitions.
+Read it when you migrate an Administration component or a plugin component away from Vue 2 behaviour, or when you find `compatConfig: Shopware.compatConfig` in existing code and need to know what it meant. Disabling compat mode for the whole Administration in one step would have been a large task and hard to keep stable. Doing it per component lets teams and plugin developers migrate incrementally, without waiting for the whole Administration or for the global removal.
 
 ## Key steps / config
 
-1. Register the component with the `compatConfig` option set to Shopware's custom configuration, which has all compatibility features disabled:
+The ADR's per-component opt-out is the `compatConfig` option set to the custom configuration exposed as `Shopware.compatConfig`, which has every compatibility feature disabled:
 
 ```javascript
 Shopware.Component.register('your-component', {
@@ -30,25 +29,25 @@ Shopware.Component.register('your-component', {
 })
 ```
 
-2. Use exactly the syntax `compatConfig: Shopware.compatConfig,` inside the component definition. The migration-tracking tool that lists components still using compat mode recognises only this form.
+In the installed 6.7.15.1 Administration source, nothing defines `Shopware.compatConfig` and nothing imports `@vue/compat`. The option still appears, as `compatConfig: Shopware.compatConfig,`, only in four `sw-settings-state-machine` components (`sw-settings-state-machine-list`, `-detail`, `-state-list`, `-state-detail`). New 6.7 components need no compat setting.
 
 ## Essential identifiers
 
-- `compatConfig` (component option)
-- `Shopware.compatConfig`
+- `compatConfig`: Vue component option
+- `Shopware.compatConfig`: Shopware's "all compat features disabled" configuration
 - `Shopware.Component.register`
 
 ## Gotchas
 
-- Any other syntax, e.g. `compatConfig: false,`, is not recognised by the tracking tool and the component is not tracked.
-- Per the ADR, the per-component opt-out only takes effect while the `DISABLE_VUE_COMPAT` feature flag is enabled; in the installed code this flag is a major flag defaulting to true and not toggleable, and no Administration source reads it (see Code check).
-- The compat mode was kept so plugins could migrate in a later major than the Administration itself.
+- The migration tracking tool recognises only the exact syntax `compatConfig: Shopware.compatConfig,` inside the component definition. Other forms, such as `compatConfig: false,`, are not detected and not tracked.
+- In the ADR, the per-component switch only takes effect when the `DISABLE_VUE_COMPAT` feature flag is enabled. In 6.7.15.1 that flag is still declared in `feature.yaml` (`default: true`, `major: true`, `toggleable: false`), but no code reads it.
 
 ## Version notes
 
-- The ADR splits the migration across two majors: Administration first, plugins afterwards. In 6.7.13.0 only a few core components still carry `compatConfig: Shopware.compatConfig`.
+The mechanism belongs to the Vue 2 to Vue 3 transition of the 6.6 major. Teams and plugin developers were told about the new flag and the opt-out syntax so they could migrate over a longer period. In 6.7.15.1 the compat layer is gone from the Administration source, and the remaining `compatConfig` lines are leftovers.
 
-## Code check (6.7.13.0)
-- unread `DISABLE_VUE_COMPAT` — declared in feature.yaml (default true, major, not toggleable), never read in the Administration src — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:20
-- confirmed `compatConfig` — component option still used as `compatConfig: Shopware.compatConfig` — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/page/sw-settings-state-machine-detail/index.js:13
-- unverified `Shopware.compatConfig` — no definition found in the Administration src root; only four sw-settings-state-machine usages
+## Code check (6.7.15.1)
+- unread `DISABLE_VUE_COMPAT` — declared in feature.yaml (default true, not toggleable), never read in code — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:20
+- corrected `Shopware.compatConfig` — docs: exposed by Shopware as a custom compat configuration; no definition in admin src, only leftover usages — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/page/sw-settings-state-machine-list/index.js:13
+- confirmed `compatConfig` — option still set in a state-machine component — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-state-machine/component/sw-settings-state-machine-state-detail/index.js:13
+- unverified `@vue/compat` — not imported anywhere in admin src; package.json outside the checked roots

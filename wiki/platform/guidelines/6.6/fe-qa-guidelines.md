@@ -3,100 +3,110 @@ id: platform/guidelines/6.6/fe-qa-guidelines.md
 title: Frontend QA guidelines
 docType: guideline
 version: "6.6"
-summary: "Admin ESLint template/JS rules, admin Jest specs, storefront Jest and ESLint config, and e2e test hygiene for Shopware 6.6 frontend code."
-keywords: ["eslint", "administration", "vue", "twig templates", "jest", "storefront", "unit tests", "e2e", "wraptestcomponent", "pluginmanager", "linting", "qa"]
-sources: [{url: "https://developer.shopware.com/docs/v6.6/resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.html", hash: "a7fa6b7ad13d1a533cdba26df105890bf05fbd1495b1f36810fad5847dd75d23"}]
-codeVersion: "6.6.10.24+87965325"
-lastBuilt: 2026-09-15
+summary: Rules for admin Jest specs, storefront Jest plugin tests, admin ESLint and end-to-end tests in Shopware 6.6.
+keywords: ["jest", "vue test utils", "administration", "storefront", "eslint", "e2e", "cypress", "fixtures", "selectors", "test isolation", "mocks", "acl"]
+sources: [{url: "https://developer.shopware.com/docs/v6.6/resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.html", hash: "a7fa6b7ad13d1a533cdba26df105890bf05fbd1495b1f36810fad5847dd75d23"}, {url: "https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-admin.html", hash: "3506a1198bdc840ae443e0c4f3c4cc8cf569e34c83ebfdf407c25b9c48c18cd0"}, {url: "https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-storefront.html", hash: "d51a483830d31c7234c00a2244948ae90570a50fbf8312f3118724c832ee3ceb"}, {url: "https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/end-to-end-testing.html", hash: "b22c248daa171ccfb660b51445369bf2608ceca95e6927e3992a66b4fcbe24ee"}, {url: "https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/e2e-best-practises.html", hash: "047f44990b2d5ec369c2d1524329a25b6bdaee0843e87a4045f5229e5fae506d"}]
+codeVersion: "6.6.10.29+c8b59f9d"
+lastBuilt: 2026-10-21
 ---
 
-## admin eslint for js
+## admin jest specs
 
-- Declare a type for every prop (`vue/require-prop-types`) and a default for every optional prop (`vue/require-default-prop`).
-- Register component names in kebab-case (`vue/component-definition-name-casing`), e.g. `sw-sales-channel-detail`.
-- Do not mutate props. The 6.6 admin source carries line-level `eslint-disable-next-line vue/no-mutating-props` suppressions, so treat the rule as active; the ADR's "off" trade-off is not what the code shows.
-- Suppress a rule only per line with `// eslint-disable-next-line <rule>` and only when you know why the rule does not apply — "know the rules, break the rules", not "don't bug me linter".
-- ESLint runs in CI; keep a working ESLint setup locally rather than relying on the pipeline to report.
+- Write a unit test for every functional change in the Administration.
+- Place the spec next to the file under test, same file name with suffix `.spec.js` or `.spec.ts`.
+- Generate the boilerplate with `composer run admin:create:test` (platform repo); run with `composer run admin:unit` (full run with coverage) or `composer run admin:unit:watch` (changed files only) — these scripts cover the core Administration only; a plugin needs its own Jest scripts.
+- Test services, helpers and plain ES modules by importing them directly; no mocking needed.
+- Test components by input and output: set props and assert rendered DOM, interact with the DOM and assert the behaviour.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-admin.html
+
+## admin component mounting
+
+- Mount through the component registry, never by importing the raw options object: in 6.6 specs use `mount(await wrapTestComponent('<component-name>', { sync: true }), { global: { … } })` from `@vue/test-utils`. The build step (`Shopware.Component.build`) resolves template inheritance, overrides and extensions, which a raw import skips.
+- Put `stubs`, `mocks` and `provide` inside the `global` mounting option (Vue Test Utils 2 shape). Do not use `createLocalVue` or a top-level `stubs`/`mocks` key — that is the Vue 2 shape shown in older docs.
+- Stub child components you do not exercise (`'sw-icon': true` or `{ template: '<div><slot /></div>' }`); pass the real built component only when the test needs its behaviour.
+- Pass every required prop so the mount emits no `Missing required prop` warning.
+- Provide injected services with the methods the component actually calls (e.g. `mediaService: { renameMedia: () => Promise.resolve() }`); an empty object is acceptable only to silence an unused injection.
+- For code that calls `Shopware.Service('name')` directly, register a mock service in `beforeAll` via `Shopware.Service().register('name', …)`.
+- Await asynchronous setup (`flushPromises()`) before asserting.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-admin.html
+
+## admin preconfigured mocks
+
+- Set ACL privileges per test with `global.activeAclRoles = ['product.editor']`; the default is no privileges. Reset it in `beforeEach`.
+- Enable feature flags per test with `global.activeFeatureFlags = ['…']`, and reset it afterwards.
+- Answer repository requests with `global.repositoryFactoryMock.responses.addResponse({ method, url, status, response })`; the response must match the real Admin API payload — copy it from the browser network tab. Silence the unmocked-route notice with `global.repositoryFactoryMock.showError = false`.
+- Global directives, filters, the `Shopware` context and mocks such as `$tc`, `$router`, `$store` are prepared automatically; override them in the mounting options only when the test needs a custom behaviour.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-admin.html
+
+## storefront jest tests
+
+- Place storefront tests under `Resources/app/storefront/test/`, mirroring the source path, and keep the location consistent with your `package.json` Jest config.
+- Import helpers directly (e.g. `src/helper/feature.helper`) and set fixtures in `beforeEach` (`Feature.init({...})`, then assert `Feature.isActive(...)`).
+- For JS plugins (classes extending `src/plugin-system/plugin.class`) add `@jest-environment jsdom`, mock `window.PluginManager` with `getPluginInstancesFromElement` (returning a `Map`) and `getPlugin`, and construct the plugin on a `document.createElement('div')` element.
+- Reset the plugin instance in `afterEach` (`plugin = null`) so every test is isolated.
+- Run core storefront tests with `composer run storefront:unit`; plugins need their own scripts.
+
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/jest-storefront.html
+
+## admin eslint
+
+- Keep the Administration ESLint-clean; it runs in CI.
+- In `*.js`: declare a type for every prop (`vue/require-prop-types`), give optional props a default (`vue/require-default-prop`), name components in kebab-case (`vue/component-definition-name-casing`).
+- In `*.html.twig`: use kebab-case component names and hyphenated attributes, self-close empty components (`<sw-language-switcher />`), and put each attribute on its own line once there is more than one.
+- Do not indent content inside `{% block %}` relative to the block tag — Twig is turned into HTML comments for linting, so blocks do not count for indentation.
+- Always write a space before `%}` (`{% block block_name %}`); `block_name%}` breaks parsing and floods the file with errors.
+- `max-len` is not enforced in `*.spec.js`.
+- Disable a template rule only deliberately and locally, never to silence the linter wholesale.
 
 Enforced by: ESLint
-
 Read more: https://developer.shopware.com/docs/v6.6/resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.html
 
-## admin eslint for twig templates
+## e2e test selection
 
-`*.html.twig` files are linted as Vue templates after all Twig syntax is converted to HTML comments. Consequences an agent must write for:
+- Write few, well-chosen E2E tests: cover the happy path and the critical, most damaging-if-broken workflows.
+- Do not duplicate unit coverage: test the UI reaction to a failed validation, not the validation itself.
+- Write each test workflow-based, from the user's point of view, not the developer's.
 
-- Do not indent content inside a `{% block %}`; Twig tags are invisible to the indentation rule, so block content sits at the indentation of the block tag itself:
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/e2e-best-practises.html
 
-```twig
-{% block sw_sales_channel_detail_content_language_info %}
-<sw-language-info
-    :entity-description="placeholder(salesChannel, 'name', $tc('sw-sales-channel.detail.textHeadline'))"
-    is-new-entity
-/>
-{% endblock %}
-```
+## e2e test structure and isolation
 
-- Write a space before the closing `%}` (`{% block block_name %}`, never `{% block block_name%}`); the malformed form produces a cascade of `invalid-x-end-tag` errors across the whole file.
-- Use kebab-case component names in templates (`vue/component-name-in-template-casing`) and hyphenated attributes (`vue/attribute-hyphenation`: `hello-world=""`, not `helloWorld=""`).
-- Self-close components without content: `<sw-language-switch disabled />`, not an empty open/close pair.
-- As soon as an element has more than one attribute, put every attribute on its own line and the closing `>` or `/>` on its own line.
-- Slot names containing `.` are allowed (`vue/valid-v-slot` with `allowModifiers`). Multiple template roots, lone `<template>` tags, `v-html`, template shadowing and scoped-slot "unused vars" are not flagged, because template inheritance and the Twig-to-comment conversion make those checks unreliable.
-- To suppress a rule for one template line, place an HTML comment whose text is `eslint-disable-next-line <rule>` on the line directly above the element (see the code check reference for a real example).
-- PHPStorm needs `html,twig` added to the `eslint.additional.file.extensions` registry key to lint templates in the IDE.
+- One test, one workflow. Create everything else (sales channels, products, categories, login) via API in `beforeEach`, not through the UI.
+- Run against a clean installation without demo data, in production mode, with a theme assigned to the sales channel.
+- Keep tests independent so they can run alone or in any order; never rely on state left by a previous test.
+- Clean up in `before`/`beforeEach`, not `after`/`afterEach` — an `after` hook is not guaranteed to run when a test fails.
+- Use `describe()` and `it()` (not `context()`/`specify()`) and BDD-style `should`/`expect` assertions.
 
-Enforced by: ESLint
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/e2e-best-practises.html
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/end-to-end-testing.html
 
-Read more: https://developer.shopware.com/docs/v6.6/resources/references/adr/2021-05-28-introduce-eslint-on-vue-admin.html
+## e2e fixtures
 
-## admin jest unit tests
+- Store static test data as JSON in `cypress/fixtures` and create it with `cy.createDefaultFixture('<endpoint>')` from the `@shopware-ag/e2e-testsuite-platform` package.
+- For entities that need existing IDs, write a fixture service extending `AdminFixtureService` that searches the IDs, merges them with `mergeFixtureWithData`, and posts via `this.apiClient`.
+- Use only fields reachable in the UI/Storefront in fixtures, and keep a fixture compatible with every test in its file.
+- Never use UUIDs as selectors or hard-coded references; they change between installations.
+- Look up required entity fields in the matching `*Definition` (e.g. `CustomerDefinition`).
 
-- Place the spec next to the file it tests, suffixed `.spec.js` or `.spec.ts`.
-- Mount components through `wrapTestComponent('<component-name>', { sync: true })` passed to `mount` from `@vue/test-utils`, so Shopware's component registry, inheritance and overrides are resolved; stub children via `global.stubs` and inject services via `global.provide`.
-- Set ACL privileges per test with `global.activeAclRoles = ['<entity>.editor']` and feature flags with `global.activeFeatureFlags = ['<flag>']`; reset them in the test that needs a different state.
-- Mock repository responses through `global.repositoryFactoryMock.responses` instead of hitting the API.
-- Await `flushPromises()` after actions that trigger async loading before asserting.
-- Do not disable `max-len` in specs by hand: spec files are exempt so test names and selectors can stay readable.
+Read more: https://developer.shopware.com/docs/v6.6/guides/plugins/plugins/testing/end-to-end-testing.html
 
-Enforced by: review
+## e2e selectors and waiting
 
-Read more: platform/dev/6.6/guides/plugins/plugins/testing/jest-admin.md
+- Do not use XPath or framework classes (`.btn-primary`, `[data-toggle="modal"]`, `.custom-checkbox`) as selectors; use Shopware-specific classes such as `.btn-buy` or `.checkout-confirm-tos-label`, and add a descriptive class when none exists.
+- Never wait for fixed times (`cy.wait(500)`). Wait on an assertion (`.should('be.visible')`) or on an aliased network request (`cy.wait('@alias')`).
+- Wrap vanilla JavaScript in `.then()` or a custom command so it runs inside the Cypress command queue.
 
-## storefront jest and eslint
+Read more: https://developer.shopware.com/docs/v6.6/resources/guidelines/testing/e2e-best-practises.html
 
-- Name storefront unit tests `*.test.js` and put them under `Resources/app/storefront/test/`, mirroring the source path (e.g. `test/plugin/<plugin-name>/<name>.plugin.test.js`); the core `jest.config.js` `testMatch` only picks up `**/test/**/*.test.js` and excludes `test/e2e`.
-- The core config sets `testEnvironment: 'jsdom'`, `clearMocks`, `resetMocks` and `restoreMocks`; do not rely on mock state leaking between tests.
-- Mock `window.PluginManager` (e.g. `getPluginInstancesFromElement`, `getPlugin`) in `beforeEach` before instantiating a JS plugin, and restore or null the instance afterwards.
-- Keep `src/helper` coverage at or above the configured 85 % statements/branches/functions threshold.
-- Storefront ESLint: never commit `it.only`/`describe.only` (`jest/no-focused-tests` is an error), no duplicate hooks (`jest/no-duplicate-hooks`), always-multiline trailing commas, semicolons, one declaration per `var`/`let`/`const`, 4-space indent, single quotes, no `console` except `warn`/`error`.
-- In `*.ts` files use `import type`/`export type` for type-only symbols (`@typescript-eslint/consistent-type-imports`, `consistent-type-exports`) and exhaustive `switch` over unions.
+## Code check (6.6.10.29+c8b59f9d)
 
-Enforced by: ESLint
-
-Read more: platform/dev/6.6/guides/plugins/plugins/testing/jest-storefront.md
-
-## e2e tests
-
-- Write few, workflow-based e2e tests from the end user's point of view: the happy path and the critical path. Test validation logic and edge cases in unit tests instead.
-- One test per workflow; create prerequisite data (sales channels, products, login) via API fixtures in `beforeEach`, not through the UI.
-- Keep tests independent of run order and of each other; clean up in `beforeEach`, since `after` hooks may not run when a test fails.
-- Select elements by stable Shopware-specific classes (e.g. `.btn-buy`), never by XPath, framework classes such as `.btn-primary`, or generated UUIDs.
-- Never wait a fixed duration; wait on assertions or on an intercepted request alias.
-- Run e2e suites against a clean installation without demo data, in production mode.
-
-Enforced by: review
-
-Read more: platform/dev/6.6/resources/guidelines/testing/e2e-best-practises.md
-Read more: platform/dev/6.6/guides/plugins/plugins/testing/end-to-end-testing.md
-
-## Code check (6.6.10.24+87965325)
-
-- confirmed `vue/no-mutating-props` — active rule, suppressed per line in admin source — administration/app/component/form/sw-custom-field-set-renderer/index.js:185
-- confirmed `vue/require-default-prop` — suppressed per line, so enforced — administration/module/sw-sales-channel/view/sw-sales-channel-detail-base/index.js:57
-- confirmed `eslint-disable-next-line vue/valid-v-slot` — template-level suppression comment — administration/module/sw-sales-channel/page/sw-sales-channel-create/sw-sales-channel-create.html.twig:4
-- confirmed `wrapTestComponent` — admin spec mounting helper — administration/module/sw-sales-channel/page/sw-sales-channel-detail/sw-sales-channel-detail.spec.js:8
-- confirmed `global.activeAclRoles` — per-test ACL setup — administration/module/sw-sales-channel/page/sw-sales-channel-detail/sw-sales-channel-detail.spec.js:84
-- confirmed `global.activeFeatureFlags` — per-test feature flags — administration/core/factory/module.factory.spec.js:379
-- confirmed `testMatch` — storefront Jest only matches `*.test.js` — storefront/Resources/app/storefront/jest.config.js:84
-- confirmed `jest/no-focused-tests` — storefront ESLint error — storefront/Resources/app/storefront/.eslintrc.js:39
-- corrected `.spec.js` — storefront Jest uses `*.test.js` instead, storefront/Resources/app/storefront/jest.config.js:84
+- confirmed `build` — component build resolving overrides and extensions — administration/core/factory/async-component.factory.ts:690
+- corrected `shallowMount(Shopware.Component.build(...))` — code uses `mount(await wrapTestComponent(...), { global })` instead, administration/module/sw-settings-number-range/page/sw-settings-number-range-detail/sw-settings-number-range-detail.spec.js:8
+- corrected `repositoryFactoryMock.showWarning` — code uses `repositoryFactoryMock.showError` instead, administration/module/sw-sales-channel/view/sw-sales-channel-detail-base/sw-sales-channel-detail-base.spec.js:86
+- confirmed `global.activeAclRoles` — per-test ACL fixture — administration/module/sw-settings-number-range/page/sw-settings-number-range-detail/sw-settings-number-range-detail.spec.js:101
+- confirmed `Feature.init` — storefront feature helper init — storefront/Resources/app/storefront/src/helper/feature.helper.js:60
+- confirmed `Feature.isActive` — storefront feature helper check — storefront/Resources/app/storefront/src/helper/feature.helper.js:71
+- confirmed `getPluginInstancesFromElement` — called by the plugin base class on construction — storefront/Resources/app/storefront/src/plugin-system/plugin.class.js:122

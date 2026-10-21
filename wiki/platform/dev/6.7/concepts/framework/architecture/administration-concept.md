@@ -6,73 +6,70 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/architecture/administration-concept.html
 sourceHash: 80cd328d8d98a368aec363a128f2162eba9e5553
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["administration", "admin", "spa", "vue.js", "twig.js", "Component.extend", "Component.override", "module", "page", "view", "acl", "sw-order", "Admin API", "vue-i18n", "/admin"]
-summary: Administration concept - Vue.js SPA in a Symfony bundle talking to the Admin API; src layout, module/page/view/component structure, extend/override, ACL roles.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["administration", "admin spa", "Component.extend", "Component.override", "Module.register", "sw-order", "acl", "viewer", "editor", "creator", "deleter", "twig.js", "vue.js", "admin api", "module page view component"]
+summary: Administration concept - Vue.js SPA on the Admin API, src layout (app/core/module), module/page/view/component structure, inheritance, ACL roles.
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-The Administration is a Symfony bundle wrapping a Single Page Application written in JavaScript/TypeScript on Vue.js. It sits on top of the Core (like the Storefront), communicates with the Core only through the Admin API, uses Twig.js for extensible templates, SASS for styling and the Vue I18n plugin (`vue-i18n`) for translations. It contains no business logic; it is served at `/admin`.
+The Administration is a Symfony bundle wrapping a single-page application written in JavaScript (Vue.js components, Twig.js templates, SASS styling, Vue I18n for translations). It sits on top of the Core, like the Storefront, and talks to the Core exclusively through the Admin API. It contains no business logic: it is the UI for all administrative tasks of a shop owner, reachable under `/admin`.
 
 ## When to use
 
-When orienting yourself before writing an Administration extension: locating SPA sources, understanding modules/pages/views/components, choosing between overriding and extending a component, or adding ACL privileges.
+Read this before building or customizing Administration modules, components or ACL privileges in a plugin or app, or when you need to locate where a given admin screen lives in the source tree.
 
 ## Key steps / config
 
-**Cross-cutting concerns:** inheritance (plugins/apps/themes override or extend the UI), data management (in-memory representations of API data), state management (long-running browser process; a router selects the page, each component manages its subcomponents' state).
+Cross-cutting concerns of the Administration:
 
-**Location:** the SPA entry point is `Resources/app/administration` inside the Administration bundle; the rest of the bundle sets up the `/admin` routing, the main template `Resources/views/administration/index.html.twig` and translation handling.
+- **Inheritance** - plugins/apps/themes override or extend existing components.
+- **Data management** - pages and views read/write Core entities via the REST Admin API and work on in-memory representations of the API data.
+- **State management** - the SPA is a long-running browser process; a router handles page selection and each component manages the state of its subcomponents.
 
-**SPA `src` layout:**
+Source layout: SPA entry point is `./Resources/app/administration` inside `shopware/src/Administration`; the bundle around it sets up the `/admin` routing, the main template `./Resources/views/administration/index.html.twig`, and translation handling.
 
-```
-src/
+```bash
+<shopware/src/Administration/Resources/app/administration/src/>
 |- app      # application basis, framework-dependent components
-|- core     # binding to the Admin API and services
-|- module   # UI and state of view pages, along Core modules
+|- core     # Admin API binding and services
+|- module   # UI + state of view pages, structured along Core modules
 ```
 
-**Module structure:** one module = one main-menu navigation entry. A `page` (at least one per module, mandatory) encapsulates `view`s, a view encapsulates `component`s, components nest. A component combines a Twig.js template, `index.js`/`index.ts` logic and an SCSS file.
+Module hierarchy: one module = one main-menu navigation entry. A `page` (at least one per module, mandatory) encapsulates `view`s, a `view` encapsulates `component`s, and components nest freely. A component combines template (Twig.js), logic (`index.js`) and styling (SCSS).
 
-Installed `sw-order` module layout:
+Example - the order module `module/sw-order/` contains `acl`, `component`, `page` (`sw-order-create`, `sw-order-detail`, `sw-order-list`), `snippet`, `state`, `view` and `index.js`, which calls `Module.register('sw-order', { ... })` and registers its components.
 
-```
-module/sw-order/
-|- acl/index.js
-|- component/sw-order-address-modal/ ...
-|- page/sw-order-create | sw-order-detail | sw-order-list
-|- snippet/de.json, en.json
-|- view/sw-order-create-base | sw-order-create-details | sw-order-create-general
-|       sw-order-create-initial | sw-order-detail-details | sw-order-detail-documents | sw-order-detail-general
-|- index.js
-```
+Inheritance from a plugin:
 
-**Inheritance:** `Shopware.Component.extend()` creates a new component based on an existing one; `Shopware.Component.override()` changes the behavior of the existing component in place. Plugins can override or extend logic, customize templates via Twig.js, and extend methods and computed properties.
+- `Component.extend()` creates a new component based on an existing one.
+- `Component.override()` overwrites the behavior of the existing component.
+- Templates can be customized with Twig.js blocks; methods and computed properties can be extended.
 
-**ACL:** CRUD on module data requires privileges. Each module ships an `acl` directory mapping privileges for the default roles `viewer`, `editor`, `creator`, `deleter`; custom roles can be set up in the UI or provided by plugins.
+ACL: each module ships an `acl` directory mapping privileges for the default roles `viewer`, `editor`, `creator` and `deleter`. Custom roles can be set up in the Administration UI; plugins can add individual privileges.
 
 ## Essential identifiers
 
-- `Shopware.Component.extend()`, `Shopware.Component.override()`
+- `Shopware.Component.extend`, `Shopware.Component.override`, `Shopware.Component.register`
+- `Module.register`
 - `src/app`, `src/core`, `src/module`
-- `acl` roles: `viewer`, `editor`, `creator`, `deleter`
-- `/admin`, `Resources/views/administration/index.html.twig`
-- `vue-i18n`
+- `module/sw-order/acl/index.js` - roles `viewer`, `editor`, `creator`, `deleter`
+- `/admin` route, `index.html.twig`
 
 ## Gotchas
 
-- The docs' `sw-order` example lists a view `sw-order-details-base` and a `state` directory; the installed module instead has the `sw-order-create-*` / `sw-order-detail-*` views listed above.
-- Module snippets are flat locale files (`de.json`, `en.json`), not locale subdirectories.
+- In 6.7.15.1 the order module's view directories are `sw-order-create-base`, `sw-order-create-initial`, `sw-order-create-general`, `sw-order-create-details`, `sw-order-detail-general`, `sw-order-detail-details`, `sw-order-detail-documents` - the docs' `sw-order-details-base` does not exist.
+- Several module files are now TypeScript (`index.ts`), e.g. `page/sw-order-create/index.ts`, not only `index.js`.
+- ACL role dependencies are declared per role, e.g. `editor` depends on `order.viewer`.
 
-## Code check (6.7.13.0)
-- confirmed `Component` — global `Shopware.Component` exposes `register`, `extend`, `override` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:129
-- confirmed `extend` — `Component.extend` maps to AsyncComponentFactory.extend — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:131
-- confirmed `override` — `Component.override` maps to AsyncComponentFactory.override — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:132
-- confirmed `viewer` — default ACL role key in sw-order acl — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/acl/index.js:22
-- confirmed `deleter` — default ACL role key in sw-order acl — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/acl/index.js:112
-- confirmed `vue-i18n` — admin creates its i18n instance from vue-i18n — vendor/shopware/administration/Resources/app/administration/src/app/adapter/view/vue.adapter.ts:5
-- absent `sw-order-details-base` — view named in the docs example does not exist in the installed code
-- unverified `index.html.twig` — bundle views live outside the administration src root in scope
-- unverified `Webpack` — build tooling config is outside the administration src root in scope
+## Code check (6.7.15.1)
+- confirmed `Component.extend` — global `Shopware.Component` maps `extend` to `AsyncComponentFactory.extend` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:136
+- confirmed `Component.override` — mapped to `AsyncComponentFactory.override` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137
+- confirmed `override` — exported by the component factory alongside `register`/`extend` — vendor/shopware/administration/Resources/app/administration/src/core/factory/async-component.factory.ts:44
+- confirmed `Module.register` — order module registered as `sw-order` — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/index.js:143
+- confirmed `sw-order-create` — page component of the order module — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/index.js:170
+- corrected `sw-order-detail-details` — docs: view `sw-order-details-base`; installed detail views are `sw-order-detail-general/details/documents` — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/index.js:233
+- confirmed `sw-order-create-base` — view registered by the order module — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/index.js:21
+- confirmed `viewer` — default ACL role in the order module acl mapping — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/acl/index.js:22
+- confirmed `deleter` — default ACL role, depends on `order.viewer` — vendor/shopware/administration/Resources/app/administration/src/module/sw-order/acl/index.js:108
+- unverified `index.html.twig` — Administration bundle PHP/views outside the checked SPA src root

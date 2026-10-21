@@ -6,69 +6,76 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2020-11-25-decoration-pattern.html
 sourceHash: 0d0e2bb3693036369a4bdf1d240a97dce1812057
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["decoration pattern", "AbstractCustomerRoute", "CustomerRoute", "getDecorated", "DecorationPatternException", "DataValidationFactoryInterface", "ContactFormValidationFactory", "abstract class", "interface", "service decoration", "plugin decorator", "adr"]
-summary: "ADR: decoratable services use abstract classes with getDecorated() instead of interfaces; e.g. AbstractCustomerRoute. Type-hint the abstract class."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["decoration pattern", "AbstractCustomerRoute", "getDecorated", "DataValidationFactoryInterface", "ContactFormValidationFactory", "CustomerRoute", "abstract class", "interface", "service decoration", "decorator chain", "adr", "backward compatibility"]
+summary: "ADR: decoratable Shopware services use abstract classes with getDecorated() instead of interfaces, so methods can be added safely."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2020-11-25) that settles on abstract classes, not interfaces, as the base type for platform services — especially services intended for decoration by plugins. Abstract classes let the core add parameters or new methods without breaking decorators.
+Architecture decision record (2020-11-25, area core) stating that Shopware no longer defines services, especially decoratable ones, through interfaces. Abstract classes are used instead, because they let the core add parameters and methods without breaking existing decorators.
 
 ## When to use
 
-When writing a decorator for a core service (e.g. a Store API route such as `AbstractCustomerRoute`), or when designing your own decoratable service and choosing between an interface and an abstract base class.
+- When you decorate a core service (for example a Store API route such as `AbstractCustomerRoute`) and need to know which type to extend and type-hint.
+- When you design a service in your own plugin that other plugins should be able to decorate.
+- When you wonder why some old interfaces still exist next to an abstract class.
 
 ## Key steps / config
 
-1. Type-hint and extend the abstract class, never the concrete core class.
-2. Declare every abstract member of the base. For `AbstractCustomerRoute` in 6.7 these are `getDecorated(): AbstractCustomerRoute` and `load(Request $request, SalesChannelContext $context, Criteria $criteria, CustomerEntity $customer): CustomerResponse`.
-3. Receive the decorated (inner) service in the constructor and return it from `getDecorated()`; delegate to it where you do not change behaviour.
+The ADR compares the two patterns:
+
+1. **Interface (old)**: adding a parameter means documenting it in a docblock and reading it with `func_get_arg(1)` in implementations. Adding a method means a second interface (the ADR's example is a `...V2` interface extending the original) plus `instanceof` checks at every call site. If several plugins decorate the service and one does not implement the new interface, PHP errors.
+2. **Abstract class (decision)**: the base declares `abstract public function getDecorated(): <Base>;`. A newly added method gets a concrete body in the base that delegates to `$this->getDecorated()`, so decorators that do not override it are skipped in the chain, and callers just call the method.
+
+Shape of the installed `AbstractCustomerRoute` (6.7), the ADR's example base, and a decorator:
 
 ```php
+abstract class AbstractCustomerRoute
+{
+    abstract public function getDecorated(): AbstractCustomerRoute;
+
+    abstract public function load(Request $request, SalesChannelContext $context, Criteria $criteria, CustomerEntity $customer): CustomerResponse;
+}
+
 class MyCustomerRoute extends AbstractCustomerRoute
 {
     public function __construct(private readonly AbstractCustomerRoute $decorated) {}
-
     public function getDecorated(): AbstractCustomerRoute { return $this->decorated; }
-
-    public function load(Request $request, SalesChannelContext $context, Criteria $criteria, CustomerEntity $customer): CustomerResponse
-    { /* ... */ }
+    public function load(Request $request, SalesChannelContext $context, Criteria $criteria, CustomerEntity $customer): CustomerResponse { /* ... */ }
 }
 ```
 
-The core implementation at the bottom of the chain (`CustomerRoute`) throws `DecorationPatternException` from `getDecorated()`.
+Consequences stated in the ADR:
 
-Rules from the decision:
-
-- The platform no longer uses interfaces for service definitions, especially not for decoratable services; abstract classes are used for other cases too.
-- Existing non-`@internal` interfaces are replaced iteratively by abstract classes; the abstract class implements the interface for backward compatibility; the interface is then deprecated and removed in the next major.
-- The abstract class is always the type hint for constructors and parameters.
+- Existing interfaces not marked `@internal` are replaced iteratively by abstract classes.
+- The abstract class implements the old interface for backward compatibility; once the equivalent exists, the interface is deprecated and removed in the next major.
+- Constructors and parameters always type-hint the abstract class.
 
 ## Essential identifiers
 
-- `Shopware\Core\Checkout\Customer\SalesChannel\AbstractCustomerRoute`
-- `AbstractCustomerRoute::getDecorated()`, `AbstractCustomerRoute::load()`
-- `Shopware\Core\Checkout\Customer\SalesChannel\CustomerRoute`
-- `DecorationPatternException`
+- `AbstractCustomerRoute` (`Shopware\Core\Checkout\Customer\SalesChannel`), `CustomerRoute`
+- `getDecorated()`
+- `DataValidationFactoryInterface` (`Shopware\Core\Framework\Validation`), `ContactFormValidationFactory`
 
 ## Gotchas
 
-- Why interfaces were rejected: adding a parameter meant documenting it in a comment and reading it with `func_get_arg(1)`; adding a method needed a second interface (the ADR's `DataValidationFactoryInterfaceV2`) plus `instanceof` checks, which caused PHP errors when one of several decorating plugins did not implement it. With abstract classes, a new non-abstract method can delegate via `getDecorated()`, so decorators unaware of it are skipped in the chain.
-- Interfaces still exist in 6.7: `Shopware\Core\Framework\Validation\DataValidationFactoryInterface` declares both `create(SalesChannelContext $context)` and `update(SalesChannelContext $context)`, and `ContactFormValidationFactory` implements both. An implementer must declare both methods; the ADR's `array $data` comment parameter is not in the signature.
+- The ADR's snippets reflect 6.3/6.4-era signatures (commented-out `/* array $data */`, `/*, Criteria $criteria*/` placeholders). In 6.7 these are no longer placeholders: `AbstractCustomerRoute::load()` takes `Request`, `SalesChannelContext`, `Criteria` and `CustomerEntity` as required parameters.
+- `DataValidationFactoryInterface` still exists in 6.7 and declares both `create()` and `update()` with a single `SalesChannelContext` parameter; an implementation must provide both.
+- The ADR's `loadV2()` method is an illustrative example, not a real method.
 
 ## Version notes
 
-- The ADR's `@deprecated tag:v6.4.0` examples (optional `$criteria` on `load()`) are history: in 6.7 `AbstractCustomerRoute::load()` takes a mandatory `Criteria $criteria` and a `CustomerEntity $customer`.
+The commented-parameter deprecations shown in the ADR (`@deprecated tag:v6.4.0`) were resolved in 6.4; the 6.7 signatures above are the current ones.
 
-## Code check (6.7.13.0)
-- confirmed `AbstractCustomerRoute` — abstract base class in core — vendor/shopware/core/Checkout/Customer/SalesChannel/AbstractCustomerRoute.php:15
+## Code check (6.7.15.1)
+- confirmed `AbstractCustomerRoute` — abstract base class, not an interface — vendor/shopware/core/Checkout/Customer/SalesChannel/AbstractCustomerRoute.php:15
 - confirmed `AbstractCustomerRoute::getDecorated()` — abstract, returns AbstractCustomerRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/AbstractCustomerRoute.php:17
-- corrected `AbstractCustomerRoute::load()` — docs: load(Request, SalesChannelContext[, ?Criteria]); now requires Criteria and CustomerEntity — vendor/shopware/core/Checkout/Customer/SalesChannel/AbstractCustomerRoute.php:19
+- corrected `AbstractCustomerRoute::load()` — docs: `load(Request, SalesChannelContext /*, Criteria */)`; installed requires Criteria and CustomerEntity — vendor/shopware/core/Checkout/Customer/SalesChannel/AbstractCustomerRoute.php:19
+- corrected `CustomerRoute::load()` — docs: `?Criteria $criteria = null`; installed has required Criteria and CustomerEntity — vendor/shopware/core/Checkout/Customer/SalesChannel/CustomerRoute.php:46
 - confirmed `CustomerRoute` — extends AbstractCustomerRoute — vendor/shopware/core/Checkout/Customer/SalesChannel/CustomerRoute.php:20
-- confirmed `CustomerRoute::getDecorated()` — throws DecorationPatternException — vendor/shopware/core/Checkout/Customer/SalesChannel/CustomerRoute.php:31
-- confirmed `DataValidationFactoryInterface` — interface still present — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:9
-- corrected `DataValidationFactoryInterface::update()` — docs: only on a separate V2 interface; declared on the interface itself — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:13
-- confirmed `DataValidationFactoryInterface::create()` — takes only SalesChannelContext — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:11
-- confirmed `ContactFormValidationFactory` — implements DataValidationFactoryInterface with create and update — vendor/shopware/core/Content/ContactForm/Validation/ContactFormValidationFactory.php:19
-- unverified `DataValidationFactoryInterfaceV2` — illustrative name in the ADR; no match found in the vendor roots
+- confirmed `DataValidationFactoryInterface` — still an interface in 6.7 — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:9
+- corrected `DataValidationFactoryInterface::create()` — docs: commented `/* array $data */` parameter; installed takes only SalesChannelContext — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:11
+- corrected `DataValidationFactoryInterface::update()` — docs: only on a V2 interface; installed declares it on the base interface — vendor/shopware/core/Framework/Validation/DataValidationFactoryInterface.php:13
+- confirmed `ContactFormValidationFactory` — implements DataValidationFactoryInterface with create() and update() — vendor/shopware/core/Content/ContactForm/Validation/ContactFormValidationFactory.php:19
+- unverified `DataValidationFactoryInterfaceV2` — hypothetical name from the ADR example, not searched as a real type

@@ -246,7 +246,7 @@ test("gate ⊆ lint: a synonyms batch accepted by validateSynonymsBatch, merged 
     assert.equal(gateResult.ok, true, gateResult.ok ? undefined : gateResult.reason);
     rmSync(stageDir, { recursive: true, force: true });
 
-    writeSynonymsOutput(wikiRoot, gateResult.ok ? gateResult.lines : [], config);
+    writeSynonymsOutput(wikiRoot, gateResult.ok ? gateResult.lines : [], config, knownPaths);
 
     const report = emptyReport();
     lintTreeSafety(resolve(wikiRoot, "platform"), report, config);

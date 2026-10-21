@@ -6,42 +6,34 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/services-utilities/
 sourceHash: 291cea886b229f3d6a39535fcbac4ad226252ba9
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["administration services", "utilities", "Shopware.Service", "Shopware.Application", "Shopware.Filter", "service container", "dependency injection", "decorate service", "filters", "api requests", "sanitizer", "user feedback", "utils"]
-summary: "Index of Administration guides on services and utilities: registering, injecting, extending services, API requests, filters, utils, sanitizer, user feedback."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["Shopware.Service", "Shopware.Filter", "Shopware.Utils", "SanitizerHelper", "administration services", "service container", "inject service", "decorate service", "api requests", "filters", "utils", "user feedback"]
+summary: Overview of Administration guides on services and utilities - registering, injecting, extending services, API requests, filters, utils, sanitizer.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The overview page for the Shopware 6.7 Administration "Services and Utilities" guide group. It lists the guides covering how to create, extend and use services and utility helpers in the Administration JavaScript application.
+Section overview for the Administration guides on creating, extending and using services and utility helpers. The guides cover how to:
 
-## When to use
+- structure reusable logic and integrate with the Administration service container;
+- register and inject custom services;
+- extend or decorate existing services;
+- make API requests from the Administration;
+- create and use filters;
+- work with utility helpers and data validation.
 
-Start here when plugin code in the Administration needs reusable logic outside a component: a custom service in the Administration's service container, a change to an existing service, an HTTP call to the Admin API, a text-formatting filter, a utility helper or data validation, or feedback shown to the user after an action.
-
-## Key steps / config
-
-The group contains these guides (in navigation order):
-
-- Add Custom Service — register a service in the container and inject it into components.
-- Injecting Services — use registered services inside components.
-- Extending Services — decorate existing services or add middleware to them.
-- Displaying User Feedback — notifications and snackbars.
-- Making API Requests — call the API from the Administration.
-- Add Filter — register a formatting filter.
-- Using Filter — use a registered filter in code.
-- Using Utils — the utility helpers.
-- The Sanitizer Helper — sanitizing data.
-
-The guides share the global `Shopware` object as entry point: `Shopware.Service()` for the service container and `Shopware.Application` for container access, service decorators and middleware, and `Shopware.Filter` for filters.
+Pages in this section: Add Custom Service, Injecting Services, Extending Services, Displaying User Feedback, Making API Requests, Add Filter, Using Filter, Using Utils, The Sanitizer Helper.
 
 ## Essential identifiers
 
-- `Shopware.Service`
-- `Shopware.Application`
-- `Shopware.Filter`
+- `Shopware.Service` — service container accessor
+- `Shopware.Filter` — filter registry
+- `Shopware.Utils` — utility helpers
+- `Shopware.Helper.SanitizerHelper` — sanitizer helper
 
-## Code check (6.7.13.0)
-- confirmed `Shopware.Service` — global object exposes the service factory — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:208
-- confirmed `Shopware.Application` — global object exposes the application bootstrapper — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:212
-- confirmed `Shopware.Filter` — global object exposes the filter factory (register, getByName, getRegistry) — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:178
+## Code check (6.7.15.1)
+- confirmed `Shopware.Service` — global accessor bound to ServiceFactory — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:221
+- confirmed `Shopware.Filter` — exposes register/getByName/getRegistry — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:191
+- confirmed `Shopware.Utils` — global utils object — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:223
+- confirmed `SanitizerHelper` — exposed under Shopware.Helper — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:313
+- confirmed `Shopware.ApiService` — API service registry for API requests — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:233

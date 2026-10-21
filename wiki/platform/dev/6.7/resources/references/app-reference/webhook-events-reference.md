@@ -1,87 +1,77 @@
 ---
-id: platform/dev/6.7/resources/references/app-reference/webhook-events-reference.md
-title: Webhook Events Reference
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/webhook-events-reference.html
+id: platform/dev/6.7/resources/references/app-reference/webhook-events-reference.md
 sourceHash: ec341b090dbce2b79ebcd63a413ddd4f60f19d35
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["webhook events", "app webhooks", "checkout.order.placed", "checkout.customer.login", "state_enter", "state_leave", "product.written", "order.deleted", "app.installed", "shopware.updated", "mail.sent", "contact_form.send", "acl permissions", "event payload", "docs:app-system-events"]
-summary: "Webhook event names for apps: business events, state_enter/state_leave transitions, entity .written/.deleted, app lifecycle, and required ACL permissions."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/references/app-reference/webhook-events-reference.html
+title: Webhook Events Reference
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["webhook events", "app webhooks", "checkout.order.placed", "customer.recovery.request", "user.recovery.request", "mail.before.send", "mail.after.create.message", "state_enter.order.state.open", "product.written", "app.installed", "webhook permissions", "webhook payload"]
+summary: App-reference table of webhook event names with required ACL permission and payload keys (recovery, mail, state, entity and app events).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A generated table of every event name an app can subscribe to as a webhook in Shopware 6.7, with the permissions needed and the shape of the payload. In core, the list is produced by the `docs:app-system-events` console command.
+The app-reference table of webhook event names an app can subscribe to, with the permission each requires and the payload keys delivered. It overlaps with the script-reference webhook table but lists some extra business events (password recovery, mail lifecycle) and extra payload keys.
 
 ## When to use
 
-When adding a webhook to an app and you need the exact event name, the read permissions (`<entity>:read`) the app must request, or the payload keys you will receive.
+When choosing the event name for a webhook in an app manifest, deciding which `<entity>:read` permissions to request, or parsing a webhook payload (e.g. reading `confirmUrl`, `resetUrl` or `contextToken`).
 
 ## Key steps / config
 
-1. Pick the event name from the groups below.
-2. Request the listed permissions for the app.
-3. Parse the payload keys listed for the event.
+1. Choose the event name; request the listed permission, or the app does not receive the event.
+2. Parse the payload according to the keys below.
 
-### Business events (permissions → payload)
+**Customer / account events** (`customer:read` unless noted):
+- `checkout.customer.before.login` — no permission, `{"email":"string"}`
+- `checkout.customer.login` — `{"entity":"customer","contextToken":"string"}`
+- `checkout.customer.double_opt_in_guest_order`, `checkout.customer.double_opt_in_registration` — `{"entity":"customer","confirmUrl":"string"}`
+- `checkout.customer.logout`, `checkout.customer.register`, `checkout.customer.guest_register`, `checkout.customer.deleted` — `{"entity":"customer"}`
+- `customer.recovery.request` — `customer_recovery:read` `customer:read`, `{"entity":"customer","resetUrl":"string","shopName":"string"}`
+- `customer.group.registration.accepted` / `.declined` — `customer:read` `customer_group:read`
+- `user.recovery.request` — `user_recovery:read`, `{"entity":"user_recovery","resetUrl":"string"}`
 
-- `checkout.customer.before.login` — none — `{"email":"string"}`
-- `checkout.customer.login` — `customer:read` — `{"entity":"customer","contextToken":"string"}`
-- `checkout.customer.logout`, `checkout.customer.register`, `checkout.customer.deleted`, `checkout.customer.guest_register`, `checkout.customer.changed-payment-method` — `customer:read` — `{"entity":"customer"}`
-- `checkout.customer.double_opt_in_registration`, `checkout.customer.double_opt_in_guest_order` — `customer:read` — `entity`, `confirmUrl`
-- `checkout.order.placed` — `order:read` — `{"entity":"order"}`
-- `checkout.order.payment_method.changed` — `order:read` `order_transaction:read` — `{"entity":"order_transaction"}`
-- `customer.group.registration.accepted` / `customer.group.registration.declined` — `customer:read` `customer_group:read` — `{"entity":"customer_group"}`
-- `customer.recovery.request` — `customer_recovery:read` `customer:read` — `entity`, `resetUrl`, `shopName`
-- `user.recovery.request` — `user_recovery:read` — `entity`, `resetUrl`
-- `contact_form.send` (no permissions; `contactFormData`), `review_form.send` (`product:read`; `reviewFormData`, `entity`)
-- `mail.before.send` (`data`, `templateData`), `mail.after.create.message` (`data`, `message`), `mail.sent` (`subject`, `contents`, `recipients`) — no permissions
-- `newsletter.register` (adds `url`), `newsletter.confirm`, `newsletter.unsubscribe` — `newsletter_recipient:read`
-- `product_export.log` — no permissions — `{"name":"string"}`
+**Order**: `checkout.order.placed` (`order:read`), `checkout.order.payment_method.changed` (`order:read` `order_transaction:read`, entity `order_transaction`).
 
-### State machine transitions
+**Mail and forms** (no permission): `mail.before.send` (`data`, `templateData`), `mail.after.create.message` (`data`, `message`), `mail.sent` (`subject`, `contents`, `recipients`), `contact_form.send` (`contactFormData`), `product_export.log` (`name`). `review_form.send` needs `product:read`.
 
-`state_enter.<machine>.state.<state>` and `state_leave.<machine>.state.<state>` for machines `order`, `order_delivery`, `order_transaction`, `order_transaction_capture`, `order_transaction_capture_refund` (e.g. `state_enter.order_transaction.state.paid`, `state_leave.order_delivery.state.shipped`). All require `order:read`; payload `{"entity":"order"}`.
+**Newsletter** (`newsletter_recipient:read`): `newsletter.confirm`, `newsletter.unsubscribe`, `newsletter.register` (adds `url`).
 
-### Entity write events
+**State machine**: `state_enter.<machine>.state.<state>` / `state_leave.<machine>.state.<state>` for `order`, `order_delivery`, `order_transaction`, `order_transaction_capture`, `order_transaction_capture_refund`; all `order:read`, payload `{"entity":"order"}`.
 
-`<entity>.written` and `<entity>.deleted` for `product`, `product_price`, `category`, `sales_channel`, `sales_channel_domain`, `customer`, `customer_address`, `order`, `order_address`, `document`, `media`. Permission `<entity>:read`. Payload skeleton:
+**Entity events**: `<entity>.written` / `<entity>.deleted` for `product`, `product_price`, `category`, `sales_channel`, `sales_channel_domain`, `customer`, `customer_address`, `order`, `order_address`, `document`, `media`; permission `<entity>:read`:
 
 ```json
-{"entity":"product","operation":"update insert","primaryKey":"array string","payload":"array"}
+{"entity":"order","operation":"update insert","primaryKey":"array string","payload":"array"}
 ```
 
-`operation` is `deleted` for `.deleted` events.
-
-### App lifecycle and system
-
-`app.activated`, `app.deactivated`, `app.deleted`, `app.installed`, `app.updated`, `shopware.updated` — no permissions, no payload listed.
+**App lifecycle** (no permission, no documented payload): `app.activated`, `app.deactivated`, `app.deleted`, `app.installed`, `app.updated`, `shopware.updated`.
 
 ## Essential identifiers
 
-- `checkout.order.placed`, `checkout.customer.login`, `checkout.customer.before.login`
-- `state_enter.`, `state_leave.` prefixes
-- `<entity>.written`, `<entity>.deleted`
-- `app.installed`, `app.updated`, `app.activated`, `app.deactivated`, `app.deleted`, `shopware.updated`
-- `shopware.entity.hookable` (service tag that makes an entity emit `.written`/`.deleted` webhooks)
-- `docs:app-system-events`
+- `checkout.order.placed`, `checkout.customer.login`, `checkout.customer.register`
+- `customer.recovery.request`, `user.recovery.request`
+- `mail.before.send`, `mail.after.create.message`, `mail.sent`
+- `state_enter.*` / `state_leave.*`
+- `<entity>.written` / `<entity>.deleted`
+- `app.installed`, `app.updated`, `shopware.updated`
 
 ## Gotchas
 
-- Many descriptions in the source are **EMPTY**; the event names and permissions are still listed.
-- The entity write-event list is not hard-coded: core builds it from services tagged `shopware.entity.hookable` (autoconfigured for `Shopware\Core\Framework\Webhook\Hookable\HookableEntityInterface`), so the installed set can grow beyond the eleven entities listed.
-- `customer.recovery.request` needs both `customer_recovery:read` and `customer:read`.
+- The table lists `checkout.customer.changed-payment-method` (`customer:read`). In 6.7.15.1 only the constant `CustomerEvents::CUSTOMER_CHANGED_PAYMENT_METHOD_EVENT` remains; no event class uses it, and a 6.7 migration deletes the flows bound to it. Do not rely on receiving this webhook.
+- Many descriptions are `**EMPTY**` in the source; the event name is the only documentation.
+- This table omits events found in the script-reference variant (e.g. `app.system_heartbeat`, `app.config.changed`, `document.generation.completed`, consent events) — check that page for the complete 6.7 list.
 
-## Code check (6.7.13.0)
-- confirmed `checkout.customer.before.login` — CustomerBeforeLoginEvent::EVENT_NAME — vendor/shopware/core/Checkout/Customer/Event/CustomerBeforeLoginEvent.php:23
-- confirmed `checkout.order.placed` — CheckoutOrderPlacedEvent::EVENT_NAME — vendor/shopware/core/Checkout/Cart/Event/CheckoutOrderPlacedEvent.php:29
-- confirmed `mail.sent` — MailSentEvent::EVENT_NAME — vendor/shopware/core/Content/MailTemplate/Service/Event/MailSentEvent.php:20
-- confirmed `user.recovery.request` — UserRecoveryRequestEvent::EVENT_NAME — vendor/shopware/core/System/User/Recovery/UserRecoveryRequestEvent.php:24
-- confirmed `state_enter` — transition-side prefix constant — vendor/shopware/core/System/StateMachine/Event/StateMachineStateChangeEvent.php:16
-- confirmed `state_leave` — transition-side prefix constant — vendor/shopware/core/System/StateMachine/Event/StateMachineStateChangeEvent.php:17
-- confirmed `HookableEventCollector::getEntityWrittenEventNamesWithPrivileges()` — builds `<entity>.written`/`.deleted` with `<entity>:read` — vendor/shopware/core/Framework/Webhook/Hookable/HookableEventCollector.php:72
-- confirmed `shopware.entity.hookable` — tag autoconfigured for HookableEntityInterface — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/AutoconfigureCompilerPass.php:62
-- confirmed `app.activated` — AppActivatedEvent::NAME — vendor/shopware/core/Framework/App/Event/AppActivatedEvent.php:13
-- confirmed `shopware.updated` — UpdatePostFinishEvent::EVENT_NAME — vendor/shopware/core/Framework/Update/Event/UpdatePostFinishEvent.php:14
+## Code check (6.7.15.1)
+- corrected `checkout.customer.changed-payment-method` — docs: listed as a deliverable webhook; only the constant remains, no dispatching event class — vendor/shopware/core/Checkout/Customer/CustomerEvents.php:34
+- confirmed `Migration1720603803RemoveDefaultPaymentMethodFlows` — deletes flows with `event_name` `checkout.customer.changed-payment-method` — vendor/shopware/core/Migration/V6_7/Migration1720603803RemoveDefaultPaymentMethodFlows.php:13
+- confirmed `checkout.customer.before.login` — `CustomerBeforeLoginEvent::EVENT_NAME` — vendor/shopware/core/Checkout/Customer/Event/CustomerBeforeLoginEvent.php:26
+- confirmed `customer.recovery.request` — `CustomerAccountRecoverRequestEvent::EVENT_NAME` — vendor/shopware/core/Checkout/Customer/Event/CustomerAccountRecoverRequestEvent.php:31
+- confirmed `user.recovery.request` — `UserRecoveryRequestEvent::EVENT_NAME` — vendor/shopware/core/System/User/Recovery/UserRecoveryRequestEvent.php:26
+- confirmed `checkout.customer.login` — `CustomerEvents::CUSTOMER_LOGIN_EVENT` — vendor/shopware/core/Checkout/Customer/CustomerEvents.php:38
+- confirmed `shopware.updated` — `UpdatePostFinishEvent::EVENT_NAME` — vendor/shopware/core/Framework/Update/Event/UpdatePostFinishEvent.php:14
+- confirmed `Hookable::HOOKABLE_EVENTS` — app lifecycle events `app.installed` etc. are hookable — vendor/shopware/core/Framework/Webhook/Hookable.php:21
+- confirmed `HookableEventCollector::getEntityWrittenEventNamesWithPrivileges()` — `<entity>.written`/`.deleted` require `<entity>:read` — vendor/shopware/core/Framework/Webhook/Hookable/HookableEventCollector.php:72

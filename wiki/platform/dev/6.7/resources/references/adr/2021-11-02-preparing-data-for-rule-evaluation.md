@@ -1,62 +1,76 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/resources/references/adr/2021-11-02-preparing-data-for-rule-evaluation.md
-sourceHash: b55fd74615c650788187f22cbe0b2a9c0bac81d8
-sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-11-02-preparing-data-for-rule-evaluation.html
 title: Preparing data for rule evaluation
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["rule evaluation", "rule builder", "Rule", "RuleScope", "SalesChannelContext", "SalesChannelContextFactory", "FkField", "ManyToManyIdField", "ManyToManyIdFieldUpdater", "JsonField", "indexer", "updater service", "conditions", "adr"]
-summary: "ADR: rules evaluate only data from RuleScope; prefer FkField/ManyToManyIdField and indexer-maintained fields over extra Criteria associations."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2021-11-02-preparing-data-for-rule-evaluation.html
+sourceHash: b55fd74615c650788187f22cbe0b2a9c0bac81d8
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["rule evaluation", "Rule", "RuleScope", "SalesChannelContext", "SalesChannelContextFactory", "FkField", "ManyToManyIdField", "ManyToManyIdFieldUpdater", "JsonField", "indexer", "updater service", "rule builder", "adr"]
+summary: "ADR (2021-11-02): rules evaluate only from RuleScope data; prefer FkField/ManyToManyIdField or indexer-maintained fields over extra Criteria associations."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Architecture decision record (2021-11-02, area services-settings) on how to provide the data a new `Rule` needs for evaluation. Because rules may be evaluated on any request, the data must always be available without costly extra database queries.
+Architecture decision record on how a `Rule` gets the data it evaluates. Because rules can be evaluated on any request, the data they need must always be available, so performance (extra database queries vs. pre-stored data) has to be considered when designing a new rule.
 
 ## When to use
 
-- You write a custom rule condition and need to decide where its evaluation data comes from.
-- You consider adding associations to context loading or writing an indexer/updater for rule data.
+Read this when writing a new `Rule` subclass whose `match()` needs data that is not obviously available from the current context, or when deciding whether to add an association, a `ManyToManyIdField`, or an indexer for rule evaluation.
 
 ## Key steps / config
 
-1. Evaluate a `Rule` only from its `RuleScope` (in code: `Rule::match(RuleScope $scope): bool`). `RuleScope` provides `getContext()` (`Context`), `getSalesChannelContext()` (`SalesChannelContext`) and `getCurrentTime()` (`\DateTimeImmutable`); derive everything from these.
-2. First check whether the scope already provides the data:
-   - ManyToOne / OneToOne association: match the id via the target definition's `FkField`.
-   - ManyToMany association: match via the `ManyToManyIdField` (e.g. product `tagIds`). If none exists yet and id matching suffices, add a `ManyToManyIdField` to the definition first, and make sure the target entity has an indexer that calls `ManyToManyIdFieldUpdater`.
-3. Least favourable option: adding associations to the `Criteria` of DAL searches, e.g. in `SalesChannelContextFactory` — only if the association is needed anyway in a much wider scope.
-4. Preferred option for anything beyond ids: indexers and updater services that store only the data needed for evaluation on the target entity's definition. The data is persisted asynchronously via the message queue, avoiding extra queries during storefront requests.
-5. When writing the updater service:
-   - store multiple values per entity in a `JsonField`;
-   - use plain SQL only;
-   - handle large numbers of rows at once efficiently;
-   - also run on deletion of the data the index is based on;
-   - also run on changes to the target entity if the index depends on its state;
-   - include parent ids in the SQL when the data can be inherited from a parent.
+1. Evaluate only from the `RuleScope` passed to `match(RuleScope $scope): bool`. The scope provides `getContext()`, `getSalesChannelContext()` and `getCurrentTime()` (a `\DateTimeImmutable`); everything the rule checks should be derived from these.
+2. A concrete `Rule` must also implement `getConstraints(): array` and define a non-null `RULE_NAME` constant (otherwise `getName()` throws).
+3. Check whether the scope already has the data:
+   - ManyToOne / OneToOne association: match the association id via the target definition's `FkField`.
+   - ManyToMany association: match ids via the corresponding `ManyToManyIdField`. If none exists and matching by id suffices, add a `ManyToManyIdField` to the definition first; the target entity then needs an indexer that calls `ManyToManyIdFieldUpdater` (`update(string $entity, array $ids, Context $context, ?string $propertyName = null)`).
+4. Adding associations to the `Criteria` of DAL searches (e.g. in `SalesChannelContextFactory`) is the least favourable option — only when the association is needed anyway in a wider scope.
+5. Preferred option for other data: indexers and updater services that store only the data needed for evaluation on the target entity's definition. The data is persisted asynchronously via the message queue, so storefront requests need no extra queries.
+
+When writing such an updater service:
+
+- Store multiple values per entity in a `JsonField`.
+- Use plain SQL only, and handle large numbers of rows at once efficiently.
+- Re-run on deletion of the data the index is based on.
+- If the indexed data depends on the target entity's state, re-run on changes to the target entity.
+- If the data can be inherited from a parent, include the parent ids in the SQL.
+
+```php
+class MyRule extends Rule
+{
+    final public const RULE_NAME = 'myRule';
+
+    public function match(RuleScope $scope): bool { /* ... */ }
+
+    public function getConstraints(): array { /* ... */ }
+}
+```
 
 ## Essential identifiers
 
-- `Rule`, `Rule::match()`
-- `RuleScope::getContext()`, `RuleScope::getSalesChannelContext()`, `RuleScope::getCurrentTime()`
-- `FkField`, `ManyToManyIdField`, `JsonField`
-- `ManyToManyIdFieldUpdater::update()`
-- `SalesChannelContextFactory`
+- `Shopware\Core\Framework\Rule\Rule` (`match()`, `getConstraints()`, `RULE_NAME`)
+- `Shopware\Core\Framework\Rule\RuleScope`
+- `Shopware\Core\Framework\DataAbstractionLayer\Field\FkField`
+- `Shopware\Core\Framework\DataAbstractionLayer\Field\ManyToManyIdField`
+- `Shopware\Core\Framework\DataAbstractionLayer\Indexing\ManyToManyIdFieldUpdater`
+- `Shopware\Core\Framework\DataAbstractionLayer\Field\JsonField`
+- `Shopware\Core\System\SalesChannel\Context\SalesChannelContextFactory`
 
 ## Gotchas
 
-- Extra `Criteria` associations in context creation cost performance on every request; the ADR ranks them last.
+- A `ManyToManyIdField` is only kept in sync if the target entity's indexer calls `ManyToManyIdFieldUpdater`; adding the field alone is not enough.
+- Indexed data is updated asynchronously through the message queue, so it can lag behind writes.
 
-## Code check (6.7.13.0)
-- confirmed `Rule::match()` — abstract, receives a RuleScope — vendor/shopware/core/Framework/Rule/Rule.php:62
-- confirmed `RuleScope::getContext()` — abstract getter — vendor/shopware/core/Framework/Rule/RuleScope.php:13
-- confirmed `RuleScope::getSalesChannelContext()` — abstract getter — vendor/shopware/core/Framework/Rule/RuleScope.php:15
-- confirmed `RuleScope::getCurrentTime()` — returns \DateTimeImmutable from the clock — vendor/shopware/core/Framework/Rule/RuleScope.php:17
-- confirmed `ManyToManyIdField` — DAL field class — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ManyToManyIdField.php:9
-- confirmed `ManyToManyIdFieldUpdater::update()` — updates id fields for entity ids — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/ManyToManyIdFieldUpdater.php:36
-- confirmed `tagIds` — product ManyToManyIdField example — vendor/shopware/core/Content/Product/ProductDefinition.php:206
-- confirmed `FkField` — DAL field class — vendor/shopware/core/Framework/DataAbstractionLayer/Field/FkField.php:11
-- confirmed `JsonField` — DAL field class — vendor/shopware/core/Framework/DataAbstractionLayer/Field/JsonField.php:10
+## Code check (6.7.15.1)
+- confirmed `RuleScope::getContext()` — abstract getter on the scope — vendor/shopware/core/Framework/Rule/RuleScope.php:13
+- confirmed `RuleScope::getSalesChannelContext()` — abstract getter on the scope — vendor/shopware/core/Framework/Rule/RuleScope.php:15
+- confirmed `RuleScope::getCurrentTime()` — returns \DateTimeImmutable — vendor/shopware/core/Framework/Rule/RuleScope.php:17
+- confirmed `Rule::match()` — abstract, takes RuleScope — vendor/shopware/core/Framework/Rule/Rule.php:62
+- confirmed `Rule::getConstraints()` — also abstract; not mentioned in the ADR — vendor/shopware/core/Framework/Rule/Rule.php:74
+- confirmed `Rule::RULE_NAME` — getName() throws when null — vendor/shopware/core/Framework/Rule/Rule.php:12
+- confirmed `ManyToManyIdField` — DAL field extending ListField — vendor/shopware/core/Framework/DataAbstractionLayer/Field/ManyToManyIdField.php:9
+- confirmed `ManyToManyIdFieldUpdater::update()` — indexer helper for id fields — vendor/shopware/core/Framework/DataAbstractionLayer/Indexing/ManyToManyIdFieldUpdater.php:36
+- confirmed `FkField` — DAL foreign key field — vendor/shopware/core/Framework/DataAbstractionLayer/Field/FkField.php:11
 - confirmed `SalesChannelContextFactory` — context factory class — vendor/shopware/core/System/SalesChannel/Context/SalesChannelContextFactory.php:34

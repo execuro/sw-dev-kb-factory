@@ -5,65 +5,67 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/integrations-api/request-headers.html
-sourceHash: effea0f6d1c4259490af882d449dbda5cc65ead8
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["request headers", "sw-language-id", "sw-version-id", "sw-inheritance", "sw-skip-trigger-flow", "sw-access-key", "sw-context-token", "sw-currency-id", "sw-include-seo-urls", "sw-app-integration-id", "sw-app-user-id", "PlatformRequest", "api headers", "translation header"]
-summary: Shopware API request headers for language, entity version, inheritance, skipping flows, Store API auth/context, currency, SEO URLs and app permissions.
-lastBuilt: 2026-09-15
+sourceHash: 365c38dec36241e5dd7636f86b65b5d820ba7212
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["sw-language-id", "sw-version-id", "sw-inheritance", "sw-skip-trigger-flow", "sw-expect-packages", "sw-access-key", "sw-context-token", "sw-currency-id", "sw-include-seo-urls", "sw-app-integration-id", "sw-app-user-id", "PlatformRequest", "http headers", "api headers"]
+summary: Shopware API request headers (sw-language-id, sw-inheritance, sw-skip-trigger-flow, sw-expect-packages, sw-app-user-id, ...) and what each one controls.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/concepts/framework/translations/plain-vs-translated-fields.md"]
 ---
 ## What it is
 
-Reference of the HTTP headers that control how the Shopware APIs handle language, entity versions, parent-child inheritance, flow triggering, Store API authentication and context, currency, SEO URLs and app permissions. Header names are defined as constants on `Shopware\Core\PlatformRequest`.
+The `sw-*` HTTP headers control how the Shopware Admin API and Store API handle a request: language, entity version, inheritance, flow triggering, package expectations, context, currency, SEO URLs and app permissions. All names are constants on `Shopware\Core\PlatformRequest` (`HEADER_*`).
 
 ## When to use
 
-When an API request must return a specific translation, order version or inherited variant data, when bulk-importing via the sync API without firing flows, or when an app acts on behalf of a user.
+- A client needs translated content, a specific order version or inherited variant data.
+- A bulk import through `POST /api/_action/sync` must not fire flows.
+- An integration must refuse to run against a shop with incompatible plugin or package versions.
+- An app calls the API on behalf of a specific admin user.
 
 ## Key steps / config
 
-| Header | Constant | Effect |
-|---|---|---|
-| `sw-language-id` | `HEADER_LANGUAGE_ID` | Return entities in the given language instead of the system language |
-| `sw-version-id` | `HEADER_VERSION_ID` | Read a specific entity version (e.g. orders); default is the most recent record |
-| `sw-inheritance` | `HEADER_INHERITANCE` | Consider parent-child inheritance (products/variants); send `1` |
-| `sw-skip-trigger-flow` | `HEADER_SKIP_TRIGGER_FLOW` | Do not trigger flows, e.g. on `POST /api/_action/sync` imports; send `1` |
-| `sw-access-key` | `HEADER_ACCESS_KEY` | Authenticates Store API requests against a sales channel |
-| `sw-context-token` | `HEADER_CONTEXT_TOKEN` | Identifies the customer context in the Store API |
-| `sw-currency-id` | `HEADER_CURRENCY_ID` | Currency ID in which prices are returned |
-| `sw-include-seo-urls` | `HEADER_INCLUDE_SEO_URLS` | Include configured SEO URLs for products/categories |
-| `sw-app-integration-id` | `HEADER_APP_INTEGRATION_ID` | Use the app's privileges for permission checks; set automatically by the Meteor Admin SDK repository |
-| `sw-app-user-id` | `HEADER_APP_USER_ID` | Run the request as a user; effective permissions = user permissions intersected with app permissions |
-
-Example shape:
+| Header | Effect |
+|---|---|
+| `sw-language-id` | Return entities in this language instead of the system language |
+| `sw-version-id` | Return this version of a versioned entity (e.g. orders) instead of the live record |
+| `sw-inheritance: 1` | Apply parent-child inheritance (product variants) to returned data |
+| `sw-skip-trigger-flow: 1` | Do not trigger flows (e.g. customer-created mails) for this request |
+| `sw-expect-packages` | Comma-separated `package:constraint` pairs, Composer constraint syntax |
+| `sw-access-key` | Sales channel access key that authenticates Store API requests |
+| `sw-context-token` | Identifies the customer context in the Store API |
+| `sw-currency-id` | Currency ID that prices are returned in |
+| `sw-include-seo-urls: 1` | Include configured SEO URLs of products/categories in the response |
+| `sw-app-integration-id` | Use the app's privileges for permission checks (set automatically by the Meteor Admin SDK) |
+| `sw-app-user-id` | Run the request as a user, intersecting user and app permissions |
 
 ```bash
-POST /api/search/product
---header 'sw-language-id: <language-id>'
---header 'sw-inheritance: 1'
+POST /api/_action/sync
+--header 'sw-expect-packages: acme/erp-connector:^3.2,shopware/core:~6.7.0'
 ```
+
+`sw-expect-packages` is checked against active plugin metadata first, then Composer's installed packages. If a package is missing or does not satisfy its constraint, the request is rejected with `417 Expectation Failed` before any data is processed.
 
 ## Essential identifiers
 
-- `Shopware\Core\PlatformRequest` constants listed above
-- `sw-language-id`, `sw-version-id`, `sw-inheritance`, `sw-skip-trigger-flow`, `sw-access-key`, `sw-context-token`, `sw-currency-id`, `sw-include-seo-urls`, `sw-app-integration-id`, `sw-app-user-id`
-- `app.all` (privilege)
+- `PlatformRequest::HEADER_LANGUAGE_ID`, `HEADER_VERSION_ID`, `HEADER_INHERITANCE`, `HEADER_SKIP_TRIGGER_FLOW`, `HEADER_EXPECT_PACKAGES`, `HEADER_ACCESS_KEY`, `HEADER_CONTEXT_TOKEN`, `HEADER_CURRENCY_ID`, `HEADER_INCLUDE_SEO_URLS`, `HEADER_APP_INTEGRATION_ID`, `HEADER_APP_USER_ID`
+- Permission `app.all`
 
 ## Gotchas
 
-- With `sw-language-id`, a translatable plain field (e.g. `product.name`) is `null` when no explicit translation exists; the nested `translated` object always holds a value with language inheritance applied. Display clients should read `product.translated.<field>`; use the plain field only in Admin/CRUD flows. See [Plain vs translated entity fields](platform/dev/6.7/concepts/framework/translations/plain-vs-translated-fields.md).
-- The docs name the Store API auth header `sw-access-token`; that string does not exist in the installed code - the header is `sw-access-key`.
-- In the installed core, `sw-include-seo-urls` is evaluated by `StoreApiSeoResolver`, which only acts on Store API responses.
-- `sw-app-user-id` requires the user to be an admin, or to hold the app-specific privilege `app.<appName>` or `app.all`; otherwise a missing-privilege error is thrown.
+- With `sw-language-id`, a plain translatable field such as `product.name` is `null` when no explicit translation exists for that language. The nested `translated` object always has values, with language inheritance applied. Display clients should read `product.translated.<field>`. See [Plain vs translated entity fields](platform/dev/6.7/concepts/framework/translations/plain-vs-translated-fields.md).
+- The docs name the Store API auth header `sw-access-token`. That string does not exist in the code. The Store API reads `sw-access-key` (`PlatformRequest::HEADER_ACCESS_KEY`).
+- `sw-expect-packages` is only evaluated on Admin API routes that require authentication. On unauthenticated routes, a non-empty header is rejected with 417 ("not supported on endpoints that do not require authentication"), because failure messages disclose installed versions.
+- `sw-app-user-id` only takes effect together with `sw-app-integration-id`. The user must be an admin, hold `app.<appName>` or hold `app.all`. Otherwise a missing-privilege error is thrown.
 
-## Code check (6.7.13.0)
-- confirmed `PlatformRequest::HEADER_LANGUAGE_ID` — `sw-language-id` — vendor/shopware/core/PlatformRequest.php:20
-- confirmed `PlatformRequest::HEADER_VERSION_ID` — `sw-version-id` — vendor/shopware/core/PlatformRequest.php:23
-- confirmed `PlatformRequest::HEADER_INHERITANCE` — `sw-inheritance` — vendor/shopware/core/PlatformRequest.php:22
-- confirmed `PlatformRequest::HEADER_SKIP_TRIGGER_FLOW` — read as boolean in the API context resolver — vendor/shopware/core/Framework/Routing/ApiRequestContextResolver.php:68
-- absent `sw-access-token` — docs name it as Store API auth header; not found in installed code
-- confirmed `PlatformRequest::HEADER_ACCESS_KEY` — actual Store API auth header `sw-access-key` — vendor/shopware/core/PlatformRequest.php:19
-- confirmed `PlatformRequest::HEADER_CONTEXT_TOKEN` — `sw-context-token` — vendor/shopware/core/PlatformRequest.php:18
-- confirmed `PlatformRequest::HEADER_CURRENCY_ID` — `sw-currency-id` — vendor/shopware/core/PlatformRequest.php:21
-- confirmed `PlatformRequest::HEADER_INCLUDE_SEO_URLS` — checked only on Store API responses — vendor/shopware/core/Content/Seo/SalesChannel/StoreApiSeoResolver.php:69
-- confirmed `app.all` — user privilege accepted for sw-app-user-id besides admin or app-specific privilege — vendor/shopware/core/Framework/Routing/ApiRequestContextResolver.php:483
+## Code check (6.7.15.1)
+- confirmed `PlatformRequest::HEADER_LANGUAGE_ID` — value sw-language-id — vendor/shopware/core/PlatformRequest.php:20
+- confirmed `PlatformRequest::HEADER_VERSION_ID` — value sw-version-id — vendor/shopware/core/PlatformRequest.php:23
+- confirmed `PlatformRequest::HEADER_INHERITANCE` — read by API context resolver — vendor/shopware/core/Framework/Routing/ApiRequestContextResolver.php:124
+- confirmed `PlatformRequest::HEADER_SKIP_TRIGGER_FLOW` — parsed as boolean — vendor/shopware/core/Framework/Routing/ApiRequestContextResolver.php:69
+- confirmed `PlatformRequest::HEADER_EXPECT_PACKAGES` — comma-separated package:constraint list — vendor/shopware/core/Framework/Api/EventListener/ExpectationSubscriber.php:89
+- confirmed `ApiException::expectationNotSupported()` — 417 on routes without auth — vendor/shopware/core/Framework/Api/ApiException.php:206
+- absent `sw-access-token` — docs name; no occurrence in code, Store API uses sw-access-key
+- confirmed `PlatformRequest::HEADER_ACCESS_KEY` — value sw-access-key — vendor/shopware/core/PlatformRequest.php:19
+- confirmed `PlatformRequest::HEADER_INCLUDE_SEO_URLS` — checked by Store API SEO resolver — vendor/shopware/core/Content/Seo/SalesChannel/StoreApiSeoResolver.php:74
+- confirmed `app.all` — admin, app.<name> or app.all required for sw-app-user-id — vendor/shopware/core/Framework/Routing/ApiRequestContextResolver.php:483

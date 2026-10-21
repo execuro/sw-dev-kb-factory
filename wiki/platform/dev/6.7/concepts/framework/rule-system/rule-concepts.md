@@ -6,67 +6,64 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/rule-system/rule-concepts.html
 sourceHash: 7de79a8e8a60b0897cae3fe45dad7e1a86a50e4e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["Rule", "RuleScope", "CheckoutRuleScope", "CartRuleScope", "FlowRuleScope", "AndRule", "OrRule", "NotRule", "RuleComparison", "RuleConfig", "RuleConstraints", "container rules", "rule operators", "rule condition", "rule builder"]
-summary: "Rule building blocks: Rule::match(RuleScope), rule scopes, And/Or/Not container rules, operators, RuleComparison, RuleConfig, RuleConstraints."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["rule builder", "conditions", "Rule", "RuleScope", "CheckoutRuleScope", "CartRuleScope", "FlowRuleScope", "AndRule", "OrRule", "NotRule", "RuleConfig", "RuleConstraints", "RuleComparison", "container rules", "rule operators"]
+summary: "Rule system building blocks: Rule::match() against a RuleScope, container rules (AndRule/OrRule/NotRule), operators, RuleConfig UI contract, RuleConstraints."
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Core concepts of the Shopware rule system: a **rule** is one condition evaluating to `true`/`false` against a **rule scope**; **container rules** combine rules into trees; each rule declares its operators, **rule config** (UI contract) and **rule constraints** (payload validation).
+The conceptual model of the Shopware rule system: a **rule** is a single condition that evaluates to `true` or `false` against a **rule scope**, rules are combined into trees by **container rules**, and each rule declares its admin UI contract (`RuleConfig`) and its validation (`RuleConstraints`).
 
 ## When to use
 
-When writing a custom rule condition, or reasoning about which data a rule sees and how the Rule Builder renders and validates it.
+Read this before writing a custom rule condition, consuming rules in a feature, or debugging why a Rule Builder condition matches or fails.
 
 ## Key steps / config
 
-**Rule contract** (`Shopware\Core\Framework\Rule\Rule`): a rule never fetches data itself, gets everything from the scope, returns a boolean and has no side effects.
+- **Rule contract** (`Shopware\Core\Framework\Rule\Rule`, abstract): a rule receives all data through the scope, never fetches data itself, returns a boolean and has no side effects. Subclasses declare:
+  - `public const RULE_NAME` — unique API name (a `null` value throws on `getName()`);
+  - `match(RuleScope $scope): bool`;
+  - `getConstraints(): array` — `propertyName => list<Constraint>`;
+  - optionally `getConfig(): ?RuleConfig` (base returns `null`).
+- **Scopes** (`Shopware\Core\Framework\Rule\RuleScope`, abstract) expose `getContext()`, `getSalesChannelContext()` and `getCurrentTime()`. Specialisations:
+  - `CheckoutRuleScope` — wraps the `SalesChannelContext` (customer, sales channel, currency);
+  - `CartRuleScope` extends `CheckoutRuleScope`, adds `getCart()`;
+  - `FlowRuleScope` extends `CartRuleScope`, adds `getOrder()` (so it carries cart and order).
+- **Container rules** (`Shopware\Core\Framework\Rule\Container\*`) evaluate no condition of their own: `AndRule` (all match), `OrRule` (at least one), `NotRule` (must not match). The code also ships `XorRule` and `MatchAllLineItemsRule`. Leaf nodes are concrete conditions.
+- Example tree from the source:
 
-```php
-class MyRule extends Rule
-{
-    public const RULE_NAME = 'myRule';   // getName() throws if null
-    public function match(RuleScope $scope): bool { /* ... */ }
-    public function getConstraints(): array { /* ... */ }
-    public function getConfig(): ?RuleConfig { /* optional */ }
-}
+```
+OrRule  rules: [lineItemCount, cartPrice]
+├─ LineItemsInCartCountRule  operator ">="  count 40
+└─ GoodsPriceRule            operator ">="  amount 500
 ```
 
-**Rule scopes** — abstract `RuleScope` declares `getContext()` and `getSalesChannelContext()`. Specializations:
-
-- `CheckoutRuleScope` — the `SalesChannelContext` (customer, sales channel, currency).
-- `CartRuleScope` extends `CheckoutRuleScope` — adds `getCart()`.
-- `FlowRuleScope` extends `CartRuleScope` — adds `getOrder()`.
-
-**Container rules** evaluate nothing themselves: `AndRule` (all match), `OrRule` (at least one), `NotRule` (must not match). A rule definition is a tree of container nodes and leaf conditions, e.g. an `OrRule` over `LineItemsInCartCountRule` (`operator: ">="`, `count: 40`) and `GoodsPriceRule` (`operator: ">="`, `amount: 500`).
-
-**Operators** — constants on `Rule`: `=`, `!=`, `<`, `<=`, `>`, `>=`, `empty` (plus `between`). Shared comparison semantics live in static helpers on `RuleComparison` (`numeric()`, `string()`, `uuids()`, `date()` …).
-
-**Rule config** (`RuleConfig`, from `getConfig()`) — the Rule Builder UI contract: `operatorSet(...)` (presets such as `OPERATOR_SET_STRING`, `OPERATOR_SET_NUMBER`) and fields by name/type/extra config (`numberField()`, `stringField()`, `selectField()`, `entitySelectField()`, `dateField()`).
-
-**Rule constraints** (`RuleConstraints`, used in `getConstraints()`) — value constraints (`float()`, `string()`, `uuids()`, `choice()`) and operator constraints (`numericOperators()`, `stringOperators()`), used to validate payloads before evaluation.
+- **Operators** are constants on `Rule`: `=`, `!=`, `<`, `<=`, `>`, `>=`, `empty`, plus `between`. Shared comparison semantics live in `RuleComparison` (`numeric()`, `string()`, `stringArray()`, `uuids()`, `date()`, `datetime()`).
+- **Rule config** (`RuleConfig`) is the UI contract: `operatorSet()` picks valid operators (predefined sets `OPERATOR_SET_STRING`, `OPERATOR_SET_NUMBER`, `OPERATOR_SET_DATE`, `OPERATOR_SET_DEFAULT`), and field builders (`numberField()`, `stringField()`, `selectField()`, `entitySelectField()`, `dateTimeField()`, `field()`) describe each field by name, type and extra config (options, unit, placeholder).
+- **Rule constraints** (`RuleConstraints`) validate payloads before evaluation: value helpers (`float()`, `int()`, `string()`, `uuids()`, `choice()`, `bool()`) and operator helpers (`numericOperators()`, `stringOperators()`, `uuidOperators()`) restrict allowed operators, e.g. equality-only.
 
 ## Essential identifiers
 
-- `Shopware\Core\Framework\Rule\Rule`, `Rule::match(RuleScope $scope)`, `Rule::getConstraints()`, `Rule::getConfig()`
-- `Shopware\Core\Framework\Rule\RuleScope`, `CheckoutRuleScope`, `CartRuleScope`, `FlowRuleScope`
-- `AndRule`, `OrRule`, `NotRule`
-- `RuleComparison`, `RuleConfig`, `RuleConstraints`
+- `Shopware\Core\Framework\Rule\Rule`, `Rule::match()`, `Rule::getConstraints()`, `Rule::getConfig()`
+- `Shopware\Core\Framework\Rule\RuleScope`
+- `Shopware\Core\Checkout\CheckoutRuleScope`, `Shopware\Core\Checkout\Cart\Rule\CartRuleScope`, `Shopware\Core\Content\Flow\Rule\FlowRuleScope`
+- `AndRule`, `OrRule`, `NotRule` (`Shopware\Core\Framework\Rule\Container`)
+- `RuleConfig`, `RuleConstraints`, `RuleComparison`
 
 ## Gotchas
 
-- A rule only sees what its scope exposes; a cart-based rule needs a `CartRuleScope` (or subclass).
-- `getConstraints()` is abstract and mandatory; `getConfig()` is optional (default `null`).
+- Rules depend only on what the scope exposes; a rule written for `CartRuleScope` data must check the scope type, since checkout-only scopes have no cart.
+- The source describes `FlowRuleScope` as "checkout information plus the related order"; in code it extends `CartRuleScope`, so a cart is available too.
 
-## Code check (6.7.13.0)
-- confirmed `Rule::match()` — abstract, takes `RuleScope`, returns bool — vendor/shopware/core/Framework/Rule/Rule.php:62
-- confirmed `Rule::getConstraints()` — abstract, required on every rule — vendor/shopware/core/Framework/Rule/Rule.php:74
-- confirmed `Rule::getConfig()` — optional, returns `?RuleConfig`, default null — vendor/shopware/core/Framework/Rule/Rule.php:79
+## Code check (6.7.15.1)
+- confirmed `Rule::match()` — abstract, `match(RuleScope $scope): bool` — vendor/shopware/core/Framework/Rule/Rule.php:62
+- confirmed `Rule::getConstraints()` — abstract, returns property-to-constraints map — vendor/shopware/core/Framework/Rule/Rule.php:74
+- confirmed `Rule::getConfig()` — optional, base returns null — vendor/shopware/core/Framework/Rule/Rule.php:79
+- confirmed `Rule::OPERATOR_EMPTY` — operator value `empty` — vendor/shopware/core/Framework/Rule/Rule.php:26
 - confirmed `RuleScope::getSalesChannelContext()` — abstract scope contract — vendor/shopware/core/Framework/Rule/RuleScope.php:15
-- confirmed `CartRuleScope` — extends `CheckoutRuleScope`, `getCart()` — vendor/shopware/core/Checkout/Cart/Rule/CartRuleScope.php:11
-- corrected `FlowRuleScope` — docs: "checkout information plus the related order"; code extends `CartRuleScope` — vendor/shopware/core/Content/Flow/Rule/FlowRuleScope.php:12
-- confirmed `OrRule::RULE_NAME` — `orContainer`, extends `Container` — vendor/shopware/core/Framework/Rule/Container/OrRule.php:11
-- confirmed `Rule::OPERATOR_EMPTY` — operator `empty`; `OPERATOR_BETWEEN` also exists — vendor/shopware/core/Framework/Rule/Rule.php:26
-- confirmed `RuleConfig::operatorSet()` — operator set for the admin UI — vendor/shopware/core/Framework/Rule/RuleConfig.php:63
-- confirmed `RuleConstraints::numericOperators()` — operator constraint helper — vendor/shopware/core/Framework/Rule/RuleConstraints.php:124
+- confirmed `FlowRuleScope` — extends CartRuleScope, adds order — vendor/shopware/core/Content/Flow/Rule/FlowRuleScope.php:12
+- confirmed `OrRule` — container, RULE_NAME `orContainer` — vendor/shopware/core/Framework/Rule/Container/OrRule.php:11
+- confirmed `RuleConfig::operatorSet()` — declares valid operators for the UI — vendor/shopware/core/Framework/Rule/RuleConfig.php:63
+- confirmed `RuleConstraints::numericOperators()` — operator constraint helper — vendor/shopware/core/Framework/Rule/RuleConstraints.php:123
+- confirmed `RuleComparison::numeric()` — shared numeric comparison — vendor/shopware/core/Framework/Rule/RuleComparison.php:15

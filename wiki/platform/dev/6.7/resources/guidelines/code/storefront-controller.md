@@ -1,60 +1,64 @@
 ---
-id: platform/dev/6.7/resources/guidelines/code/storefront-controller.md
-title: Storefront Controller
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/storefront-controller.html
+id: platform/dev/6.7/resources/guidelines/code/storefront-controller.md
 sourceHash: 18e5b2b884a8fd0d3f21f4407a7c4b4a732db5ca
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["storefront controller", "StorefrontController", "StorefrontRouteScope", "createActionResponse", "_httpCache", "PlatformRequest::ATTRIBUTE_HTTP_CACHE", "frontend route", "page loader", "flash bag", "renderStorefront", "coding guideline", "route attribute"]
-summary: "Storefront controller rules: extend StorefrontController, StorefrontRouteScope::ID route scope, frontend.* route names, createActionResponse for writes."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/storefront-controller.html
+title: Storefront Controller
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["StorefrontController", "StorefrontRouteScope::ID", "PlatformRequest::ATTRIBUTE_ROUTE_SCOPE", "createActionResponse", "_httpCache", "#[Route]", "frontend route name", "page loader", "store api route", "flash bag", "storefront controller guidelines", "coding standards"]
+summary: "Storefront controller rules: StorefrontController base, route scope attribute, page loaders, Store API writes, createActionResponse."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware core coding guideline for writing Storefront controllers: class and route attributes, dependency injection, and how read and write operations must go through Store API routes and page loaders.
+The Shopware coding guideline for Storefront controllers: how a controller class and its actions must be declared, how they read data, and how write operations must be implemented.
 
 ## When to use
 
-When adding a controller or action to the Storefront (core or plugin) and deciding how it loads data, handles writes, reports errors and caches.
+When writing or reviewing a controller in a plugin or in core that serves Storefront pages, widgets, or form actions, and you need the conventions Shopware expects for routing, dependency injection, data loading, and responses.
 
 ## Key steps / config
 
-Controller:
+Class level:
 
-- Extend `\Shopware\Storefront\Controller\StorefrontController`.
-- Put the scope attribute on the class:
-  `#[Route(defaults: [\Shopware\Core\PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [\Shopware\Storefront\Framework\Routing\StorefrontRouteScope::ID]])]`
-- Every action has its own `#[Route]` attribute; the route name starts with `frontend` and the route defines its HTTP method(s) (GET, POST, DELETE, PATCH).
-- Concise function names, a return type hint on every action, one purpose per route.
-- Inject dependencies via the constructor, define them in the DI container service definition, and assign them to private properties.
-- Report errors with Symfony flash bags (`StorefrontController` defines the flash types `SUCCESS`, `DANGER`, `INFO`, `WARNING`).
-- No business logic in the controller; every Storefront feature must also exist in the Store API.
+- Extend `\Shopware\Storefront\Controller\StorefrontController` (an abstract class extending Symfony's `AbstractController`).
+- Add the class attribute `#[Route(defaults: [\Shopware\Core\PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [\Shopware\Storefront\Framework\Routing\StorefrontRouteScope::ID]])]` (the constants resolve to `_routeScope` and `storefront`).
+- Inject dependencies through the constructor, define them in the DI container service definition, and assign them to private properties (core uses `private readonly` promoted constructor parameters).
+- Never put business logic in the controller.
 
-Installed shape (core `NavigationController`):
+Action level:
+
+- Every action has a `#[Route]` attribute with a route name starting with `frontend` and the HTTP method(s) defined (GET, POST, DELETE, PATCH).
+- Keep function names concise, declare a return type, and give each route a single purpose.
+- Report errors via Symfony flash bags.
+- Every Storefront feature must also be available in the Store API.
 
 ```php
 #[Route(defaults: [PlatformRequest::ATTRIBUTE_ROUTE_SCOPE => [StorefrontRouteScope::ID]])]
-class NavigationController extends StorefrontController
+class ExampleController extends StorefrontController
 {
-    public function __construct(private readonly NavigationPageLoaderInterface $navigationPageLoader /* ... */) {}
+    public function __construct(private readonly ExamplePageLoader $loader) {}
 
-    #[Route(path: '/', name: 'frontend.home.page', defaults: [PlatformRequest::ATTRIBUTE_HTTP_CACHE => true], methods: [Request::METHOD_GET])]
-    public function home(Request $request, SalesChannelContext $context): Response { /* renderStorefront(...) */ }
+    #[Route(path: '/example', name: 'frontend.example.page',
+        defaults: [PlatformRequest::ATTRIBUTE_HTTP_CACHE => true],
+        methods: [Request::METHOD_GET])]
+    public function index(Request $request, SalesChannelContext $context): Response { /* ... */ }
 }
 ```
 
 Read operations:
 
-- Never use a repository directly; fetch data through a Store API route or page loader.
-- Routes rendering a full page use a page loader class.
-- Pages whose data is identical for all customers set the `_httpCache` attribute (`PlatformRequest::ATTRIBUTE_HTTP_CACHE`) to true in the route defaults.
+- Never use a repository directly; fetch data via a Store API route or a page loader.
+- Routes that render a full page use a page loader class for all their data.
+- Pages whose data is identical for all customers set the `_httpCache` route default (`PlatformRequest::ATTRIBUTE_HTTP_CACHE => true`).
 
 Write operations:
 
-- Build the response with `createActionResponse($request)`: it redirects to the route in the `redirectTo` request parameter (with `redirectParameters`), falls back to `frontend.home.page` when `redirectTo` is empty, forwards to `forwardTo` (with `forwardParameters`), else returns an empty `Response`.
-- Each write operation calls the corresponding Store API route.
+- Each write calls the corresponding Store API route.
+- Build the response with `createActionResponse($request)` so callers can control forwards and redirects.
 
 ## Essential identifiers
 
@@ -63,20 +67,20 @@ Write operations:
 - `\Shopware\Core\PlatformRequest::ATTRIBUTE_ROUTE_SCOPE`
 - `PlatformRequest::ATTRIBUTE_HTTP_CACHE` (`_httpCache`)
 - `StorefrontController::createActionResponse()`
-- `StorefrontController::renderStorefront()`
 
 ## Gotchas
 
-- `createActionResponse()` and `renderStorefront()` are `protected` — call them from inside your controller subclass.
+- `createActionResponse()` reads the request parameters `redirectTo` (with `redirectParameters`) and `forwardTo` (with `forwardParameters`); an empty `redirectTo` redirects to `frontend.home.page`, and with neither set it returns an empty `Response`.
+- Core also registers widget/pagelet routes with names starting `widgets.` (e.g. `widgets.wishlist.pagelet`), so the `frontend` prefix rule applies to page and action routes.
 
-## Code check (6.7.13.0)
-- confirmed `StorefrontController` — abstract base extending Symfony AbstractController — vendor/shopware/storefront/Controller/StorefrontController.php:40
-- confirmed `StorefrontController::createActionResponse()` — protected, handles redirectTo/forwardTo — vendor/shopware/storefront/Controller/StorefrontController.php:125
-- confirmed `frontend.home.page` — default redirect target of createActionResponse — vendor/shopware/storefront/Controller/StorefrontController.php:136
-- confirmed `StorefrontController::renderStorefront()` — protected render helper — vendor/shopware/storefront/Controller/StorefrontController.php:67
-- confirmed `StorefrontController::SUCCESS` — flash type constants — vendor/shopware/storefront/Controller/StorefrontController.php:42
+## Code check (6.7.15.1)
+- confirmed `StorefrontController` — abstract class extending AbstractController — vendor/shopware/storefront/Controller/StorefrontController.php:41
+- confirmed `StorefrontController::createActionResponse()` — handles redirectTo/forwardTo request params — vendor/shopware/storefront/Controller/StorefrontController.php:126
+- confirmed `StorefrontController::renderStorefront()` — protected render helper used by page actions — vendor/shopware/storefront/Controller/StorefrontController.php:68
 - confirmed `StorefrontRouteScope::ID` — value `storefront` — vendor/shopware/storefront/Framework/Routing/StorefrontRouteScope.php:14
-- confirmed `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` — value `_routeScope` — vendor/shopware/core/PlatformRequest.php:77
-- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — value `_httpCache` — vendor/shopware/core/PlatformRequest.php:80
-- confirmed `NavigationController` — class-level storefront scope attribute, frontend route with GET method — vendor/shopware/storefront/Controller/NavigationController.php:32
-- unverified `addFlash` — flash bag helper comes from Symfony AbstractController, vendor/symfony out of scope
+- confirmed `PlatformRequest::ATTRIBUTE_ROUTE_SCOPE` — value `_routeScope` — vendor/shopware/core/PlatformRequest.php:78
+- confirmed `PlatformRequest::ATTRIBUTE_HTTP_CACHE` — value `_httpCache` — vendor/shopware/core/PlatformRequest.php:82
+- confirmed `ATTRIBUTE_HTTP_CACHE` — used as route default on a product page route — vendor/shopware/storefront/Controller/ProductController.php:59
+- confirmed `StorefrontRouteScope::ID` — class-level Route attribute pattern on a core controller — vendor/shopware/storefront/Controller/WishlistController.php:39
+- confirmed `frontend.wishlist.page` — core route name using the frontend prefix — vendor/shopware/storefront/Controller/WishlistController.php:59
+- confirmed `widgets.wishlist.pagelet` — core widget route not using the frontend prefix — vendor/shopware/storefront/Controller/WishlistController.php:105

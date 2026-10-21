@@ -1,56 +1,64 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/mcp-server.md
-title: MCP Server Extension
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
+id: platform/dev/6.7/guides/plugins/plugins/mcp-server.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/apps/mcp-server.md
+  - platform/dev/6.7/products/tools/mcp-server/extending.md
+  - platform/dev/6.7/products/tools/mcp-server/configuration.md
+  - platform/dev/6.7/products/tools/mcp-server/mcp-concepts.md
+sourceHash: ecef6503d225d5004a08106013246c584244ff97
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/mcp-server.html
-sourceHash: d217963f18c1db70aa9b8912aaa315b7b2b1ca14
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["mcp", "model context protocol", "McpTool", "McpToolResponse", "McpContextProvider", "McpToolDependsOn", "McpToolRequires", "requirePrivilege", "shopware.mcp.tool", "shopware.mcp.prompt", "shopware.mcp.resource", "debug:mcp", "MCP_SERVER", "ai tools plugin", "McpPrompt"]
-summary: "Add MCP tools, prompts and resources from a Shopware plugin: #[McpTool] class extending McpToolResponse, tagged shopware.mcp.tool, checked with debug:mcp"
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/tools/mcp-server/extending.md", "platform/dev/6.7/guides/plugins/apps/mcp-server.md", "platform/dev/6.7/products/tools/mcp-server/configuration.md", "platform/dev/6.7/products/tools/mcp-server/best-practices.md"]
+title: MCP Server Extension
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["McpTool", "McpToolResponse", "McpToolGroup", "McpToolDependsOn", "McpToolRequires", "McpContextProvider", "shopware.mcp.tool", "shopware.mcp.prompt", "shopware.mcp.resource", "debug:mcp", "requirePrivilege", "mcp server", "ai agent tools", "model context protocol", "plugin mcp tool"]
+summary: Add MCP tools, prompts and resources from a plugin or bundle - McpTool on the class, McpToolResponse, tool groups, ACL, shopware.mcp.tool tag (6.7.14+).
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How a Shopware plugin (or plain Symfony bundle) registers in-process PHP tools, prompts and resources on Shopware's MCP server, with full DAL and container access. Remote/webhook capabilities: [Extending via App](platform/dev/6.7/guides/plugins/apps/mcp-server.md); comparison: [Extending the MCP Server](platform/dev/6.7/products/tools/mcp-server/extending.md).
+How a Shopware plugin or Symfony bundle adds in-process tools, prompts and resources to the Shopware MCP server, with full DAL and container access. Tools are served on the Admin API MCP endpoint (`/api/_mcp`). For webhook-based capabilities see [Extending via App](platform/dev/6.7/guides/plugins/apps/mcp-server.md); for a comparison see [Extending the MCP Server](platform/dev/6.7/products/tools/mcp-server/extending.md).
 
 ## When to use
 
-A tool needs DAL repositories, services or the container, ships via the Marketplace, or depends on the plugin lifecycle.
+Your tool needs DAL repositories, services or the Symfony container, should ship via the Marketplace, or is tied to the plugin lifecycle.
 
 ## Key steps / config
 
-**Naming**: only `a-zA-Z0-9_-` (no dots). Core reserves `shopware-{name}`; plugins/bundles use `{vendor-name}-{tool-name}` (e.g. `swag-erp-sync-orders`); apps are auto-prefixed. Same for tools, prompts, resources.
+Naming: capability names may only contain `a-zA-Z0-9_-` (no dots). Use `{vendor-name}-{tool-name}` (e.g. `swag-erp-sync-orders`); `shopware-{name}` is reserved for core.
 
-**1. Tool class** — attributes on the class, extend `Shopware\Core\Framework\Mcp\Tool\McpToolResponse`:
+1. Tool class — `#[McpTool]` on the class, extend `McpToolResponse`, get the context from `McpContextProvider`:
 
 ```php
-#[McpTool(name: 'swag-my-plugin-orders', title: 'Order List', description: '...')] // Mcp\Capability\Attribute\McpTool
+#[McpTool(name: 'swag-my-plugin-orders', title: 'Order List', description: '...')]
+#[McpToolGroup('swag-my-plugin')]
 #[McpToolDependsOn('shopware-entity-schema')]
 #[McpToolRequires('order:read')]
 class MyTool extends McpToolResponse
 {
     public function __construct(private readonly EntityRepository $orderRepository, private readonly McpContextProvider $contextProvider) {}
+    /** @param string $email the customer's email address */
     public function __invoke(string $email, int $limit = 10): string
     {
         $context = $this->contextProvider->getContext();
         if ($error = $this->requirePrivilege($context, 'order:read')) { return $error; }
-        // search ... return $this->success($data, ['total' => $total]);
+        /* search ... */ return $this->success($data, ['total' => $total]);
     }
 }
 ```
 
-- `title` optional (clients display it instead of `name`).
-- `__invoke()` parameters map to JSON schema: `string`, `int`, `float`, `bool`; defaults make them optional. Return a `string`.
-- Context only via `McpContextProvider::getContext()` — no `Context` parameter on `__invoke()`, never `Context::createDefaultContext()` (bypasses the integration ACL).
+Imports: `Mcp\Capability\Attribute\McpTool`, `Shopware\Core\Framework\Mcp\Attribute\McpToolGroup`, `...\McpToolDependsOn`, `...\McpToolRequires`, `Shopware\Core\Framework\Mcp\Context\McpContextProvider`, `Shopware\Core\Framework\Mcp\Tool\McpToolResponse`.
 
-**2. Dependencies and privileges** (repeatable):
-- `#[McpToolDependsOn('shopware-entity-search')]` — enabling the tool in the Admin allowlist auto-adds transitive dependencies; declare only genuine needs.
-- `#[McpToolRequires('order:read')]` or `#[McpToolRequires(entityParam: 'entity', operations: ['read', 'update'])]` — declarative only (Admin warnings, `debug:mcp`); enforcement needs `requirePrivilege()`.
+- `__invoke()` parameter types (`string`, `int`, `float`, `bool`) become JSON schema; defaults make parameters optional; `@param` text becomes the parameter `description` in `inputSchema`.
+- Return a `string`. Use `$this->success()` / `$this->error()`; for write tools `$this->executeWithDryRun()`.
 
-**3. Register** in `src/Resources/config/services.php`:
+2. Group — `#[McpToolGroup('swag-my-plugin')]`, one group per tool. Each group becomes a toolset clients can enable per session; title is generated (`swag-my-plugin` → "Swag my plugin tools"). Without the attribute, the longest hyphen-segment prefix shared with other ungrouped tools is used (case-insensitive), falling back to the first segment. The special group `discovery` puts a tool in the initial session surface (always advertised, not listed in `shopware-toolsets-list`).
+
+3. Dependencies and privileges — `#[McpToolDependsOn('<tool>')]` (repeatable; enabling the tool adds its transitive dependencies to the integration allowlist). `#[McpToolRequires('order:read')]` or `#[McpToolRequires(entityParam: 'entity', operations: ['read', 'update'])]` is declarative only (Admin UI coverage warnings, `debug:mcp`); enforce at runtime with `requirePrivilege()`.
+
+4. Register in `src/Resources/config/services.php`:
 
 ```php
 $services->set(MyTool::class)
@@ -58,9 +66,9 @@ $services->set(MyTool::class)
     ->tag('shopware.mcp.tool');
 ```
 
-Tags: `shopware.mcp.tool`, `shopware.mcp.prompt` (class with `#[McpPrompt]`, `__invoke()` returns role/content messages), `shopware.mcp.resource` (`#[McpResource(uri:, name:, description:)]`, returns `uri`, `mimeType`, `text`). The compiler remaps them to `mcp.tool` / `mcp.prompt` / `mcp.resource`; no `shopware.feature` tag needed.
+Tags: `shopware.mcp.tool`, `shopware.mcp.prompt`, `shopware.mcp.resource` — remapped at compile time to `mcp.tool`/`mcp.prompt`/`mcp.resource`. No feature-flag tag or namespace config needed.
 
-**4. Install and verify**:
+5. Install and verify:
 
 ```bash
 bin/console plugin:refresh
@@ -69,36 +77,41 @@ bin/console cache:clear
 bin/console debug:mcp
 ```
 
-**Symfony bundle**: same tags; the bundle extends `Symfony\Component\HttpKernel\Bundle\Bundle`, is active once in `config/bundles.php`, and loads `services.php` in `build()` via `PhpFileLoader`.
+Prompts: `#[McpPrompt(name: ..., title: ..., description: ...)]` (`Mcp\Capability\Attribute\McpPrompt`), `__invoke(): array` returning `[['role' => 'user', 'content' => '...']]`. Resources: `#[McpResource(uri: 'swag-my-plugin://config', name: ..., description: ...)]` (`Mcp\Capability\Attribute\McpResource`), `__invoke(): array` returning `uri`, `mimeType`, `text`.
+
+Symfony bundle: extend `Symfony\Component\HttpKernel\Bundle\Bundle`, register in `config/bundles.php`, load `services.php` in `build()` via `PhpFileLoader`; same tags, no install lifecycle.
 
 ## Essential identifiers
 
 - `Mcp\Capability\Attribute\McpTool`, `McpPrompt`, `McpResource`
-- `Shopware\Core\Framework\Mcp\Tool\McpToolResponse` (`success()`, `error()`, `requirePrivilege()`, `executeWithDryRun()`)
-- `Shopware\Core\Framework\Mcp\Context\McpContextProvider`
-- `Shopware\Core\Framework\Mcp\Attribute\McpToolDependsOn`, `Shopware\Core\Framework\Mcp\Attribute\McpToolRequires`
-- Tags `shopware.mcp.tool`, `shopware.mcp.prompt`, `shopware.mcp.resource`; `bin/console debug:mcp`; flag `MCP_SERVER`
+- `Shopware\Core\Framework\Mcp\Attribute\McpToolGroup`, `McpToolDependsOn`, `McpToolRequires`
+- `Shopware\Core\Framework\Mcp\Tool\McpToolResponse` — `success()`, `error()`, `requirePrivilege()`, `executeWithDryRun()`
+- `Shopware\Core\Framework\Mcp\Context\McpContextProvider::getContext()`
+- Tags `shopware.mcp.tool`, `shopware.mcp.prompt`, `shopware.mcp.resource`
+- `bin/console debug:mcp`, `bin/console debug:mcp --native`
 
 ## Gotchas
 
-- `#[McpTool]` on `__invoke()` silently drops the tool; `debug:mcp` not listing it means inactive plugin, missing tag, or misplaced attribute.
-- Dots in names are invalid.
-- Unhandled exceptions give a generic MCP error (`-32603`); catch and return `$this->error($e->getMessage())`. Write tools: `$this->executeWithDryRun()` catches exceptions.
-- `#[McpToolGroup]` (`Shopware\Core\Framework\Mcp\Attribute\McpToolGroup`) appears in the source but does not exist in 6.7.13.0.
+- `#[McpTool]` on `__invoke()` instead of the class silently drops the tool.
+- Dots in names (`swag-my-plugin.orders`) are invalid.
+- Do not add a `Context` parameter to `__invoke()` (not injected) and never use `Context::createDefaultContext()` — it bypasses the integration's ACL.
+- `#[McpToolRequires]` without a `requirePrivilege()` call enforces nothing.
+- Unhandled exceptions produce a generic MCP error `-32603`; catch and return `$this->error($message)`.
+- Plugin tools use `shopware.mcp.tool`, not `mcp.tool`. If `debug:mcp` doesn't list the tool, check plugin active, tag, attribute placement.
 
 ## Version notes
 
-- Source targets 6.7.14.0+: `#[McpToolGroup('swag-my-plugin')]` assigns a tool to exactly one group, which becomes a client-enableable toolset; without it the group is inferred from the longest shared hyphen prefix among ungrouped tools. The special `discovery` group is always advertised and absent from `shopware-toolsets-list`.
-- Earlier 6.7 (including 6.7.13.0): no groups/toolsets; feature flag `MCP_SERVER` defaults off, so set `MCP_SERVER=1`.
+- Describes 6.7.14.0+. Earlier 6.7 versions need `MCP_SERVER=1` and have no tool groups/toolsets (skip step 2) — see [Configuration](platform/dev/6.7/products/tools/mcp-server/configuration.md).
+- Since 6.7.15.0 `debug:mcp` lists tools only; use `debug:mcp --native` for prompts and resources.
 
-## Code check (6.7.13.0)
-- absent `Shopware\Core\Framework\Mcp\Attribute\McpToolGroup` — not in the installed code index (tool groups arrive with 6.7.14.0 per docs)
-- confirmed `MCP_SERVER` — feature flag, default false, must be enabled on 6.7.13.0 — vendor/shopware/core/Framework/Resources/config/packages/feature.yaml:89
-- confirmed `McpToolResponse::requirePrivilege()` — returns ?string error — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:147
-- confirmed `McpToolResponse::success()` — protected helper with data and meta — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:62
-- confirmed `McpToolResponse::executeWithDryRun()` — takes Connection, Context, callable — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:167
-- confirmed `McpContextProvider::getContext()` — returns Context — vendor/shopware/core/Framework/Mcp/Context/McpContextProvider.php:28
-- confirmed `McpToolDependsOn` — class-level, repeatable attribute — vendor/shopware/core/Framework/Mcp/Attribute/McpToolDependsOn.php:28
-- confirmed `McpToolRequires` — repeatable; privilege, entityParam, operations arguments — vendor/shopware/core/Framework/Mcp/Attribute/McpToolRequires.php:31
-- confirmed `shopware.mcp.tool` — remapped to mcp.tool (prompt/resource likewise) — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:32
-- confirmed `debug:mcp` — console command lists registered capabilities — vendor/shopware/core/Framework/Mcp/Command/DebugMcpCommand.php:28
+## Code check (6.7.15.1)
+- confirmed `shopware.mcp.tool` — remapped to `mcp.tool` (also prompt/resource) — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/McpToolDiscoveryCompilerPass.php:56
+- confirmed `McpToolResponse::requirePrivilege()` — returns `?string` error — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:147
+- confirmed `McpToolResponse::success()` — `(array $data, array $meta = [])` — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:62
+- confirmed `McpToolResponse::error()` — `(string $message)` — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:121
+- confirmed `McpToolResponse::executeWithDryRun()` — takes `Connection`, `Context`, callable — vendor/shopware/core/Framework/Mcp/Tool/McpToolResponse.php:178
+- confirmed `McpContextProvider::getContext()` — returns `Context` — vendor/shopware/core/Framework/Mcp/Context/McpContextProvider.php:28
+- confirmed `McpToolGroup` — not repeatable — vendor/shopware/core/Framework/Mcp/Attribute/McpToolGroup.php:12
+- confirmed `McpToolDependsOn` — class-level, `IS_REPEATABLE` — vendor/shopware/core/Framework/Mcp/Attribute/McpToolDependsOn.php:27
+- confirmed `McpToolRequires` — `privilege`, `entityParam`, `operations` args — vendor/shopware/core/Framework/Mcp/Attribute/McpToolRequires.php:16
+- confirmed `McpToolsetRegistry::DISCOVERY_GROUP` — value `discovery` — vendor/shopware/core/Framework/Mcp/McpToolsetRegistry.php:24

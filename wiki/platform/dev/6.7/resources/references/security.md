@@ -5,63 +5,66 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/security.html
-sourceHash: 75a90b608c5d89cb821a0fbbec31960d7e051a4a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["security", "shopware.security.csp_templates", "shopware.media.enable_url_validation", "shopware.media.enable_url_upload_feature", "ApiAware", "acl", "content security policy", "xss", "rate limiter", "html sanitizer", "samesite cookie", "sql injection", "gdpr", "maintenance ip whitelist"]
-summary: "Shopware 6 security measures: ACL, ApiAware, CSP via shopware.security.csp_templates, media URL upload validation, rate limiter, sanitizer, SQL injection."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/concepts/framework/architecture/administration-concept.md", "platform/dev/6.7/guides/development/troubleshooting/dal-reference/flags-reference.md", "platform/dev/6.7/guides/hosting/configurations/shopware/html-sanitizer.md", "platform/dev/6.7/guides/hosting/infrastructure/rate-limiter.md"]
+sourceHash: 165367ef4a6d8ab839d4dfbff0754aefd48cd70c
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["security", "shopware.security.csp_templates", "content security policy", "csp", "xss", "shopware.media.enable_url_validation", "shopware.media.enable_url_upload_feature", "ApiAware", "acl", "sql injection", "rate limiter", "html sanitizer", "samesite"]
+summary: Shopware 6 security measures and their config - ACL, ApiAware, CSP templates, stored-asset CSP header, media URL upload validation.
+lastBuilt: 2026-10-21
+relatedPages:
+  - platform/dev/6.7/concepts/framework/architecture/administration-concept.md
+  - platform/dev/6.7/resources/references/config-reference/server/nginx.md
+  - platform/dev/6.7/guides/hosting/infrastructure/rate-limiter.md
+  - platform/dev/6.7/guides/hosting/configurations/shopware/html-sanitizer.md
 ---
 ## What it is
 
-A reference list of the security measures built into Shopware 6 and where each one is configured: ACL, API field exposure, captcha, CSP, file access, media upload by URL, GDPR/cookie consent, HTML sanitizer, rate limiter, session reset on password change, SameSite cookies, the Security plugin, maintenance IP whitelisting, SQL injection protection, and features that intentionally expose Twig/CSS.
+A compilation of the security measures built into Shopware 6 and where each one is configured. Vulnerabilities are reported through Shopware's GitHub security advisory form.
 
 ## When to use
 
-When hardening a shop, reviewing which security-relevant container parameters exist, or deciding whether a finding is a vulnerability or a bug. Vulnerabilities are reported through the GitHub security advisory form of `shopware/shopware`.
+When hardening a shop, reviewing which data is exposed through the APIs, configuring CSP or media URL uploads, or judging whether an issue (e.g. an ACL gap) counts as a security vulnerability.
 
 ## Key steps / config
 
-- **ACL (Administration):** CRUD on a module requires the matching privileges. See [ACL in the Administration](platform/dev/6.7/concepts/framework/architecture/administration-concept.md). Faulty ACL checks count as bugs, not vulnerabilities, unless they lead to privilege escalation or unauthorized access to sensitive data (the attacker already needs Administration / Admin API access).
-- **API exposure:** the DAL `ApiAware` field flag decides which entity fields are exposed through the APIs. See [Flags Reference](platform/dev/6.7/guides/development/troubleshooting/dal-reference/flags-reference.md).
-- **CSP:** default policies live in the container parameter `shopware.security.csp_templates` (collection keyed `default`, `administration`, `storefront`, `installer`); override it via container configuration.
-- **Media upload by URL:** configured under `shopware.media`:
+- **ACL in the Administration**: CRUD on a module needs the matching privilege ([ACL in the Administration](platform/dev/6.7/concepts/framework/architecture/administration-concept.md)). Missing/incorrect ACL checks are treated as bugs, not vulnerabilities, unless they lead to privilege escalation or unauthorized access to sensitive data, because the attacker must already be authenticated in the Administration or Admin API.
+- **API-aware field**: the `ApiAware` DAL flag controls which entity fields are exposed to the Store API ([Flags Reference](platform/dev/6.7/guides/development/troubleshooting/dal-reference/flags-reference.md)).
+- **CSP**: default policies come from the `shopware.security.csp_templates` container parameter (keys `default`, `administration`, `storefront`, `installer`) and are adjusted via container configuration.
+- **XSS on stored assets**: stored HTML/SVG files served directly by the web server or CDN bypass the application CSP. Serve them with:
+
+```http
+Content-Security-Policy: script-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'
+```
+
+  The header must be on the asset response, including cached ones. The shipped [Apache](platform/dev/6.7/resources/references/config-reference/server/apache.md), [Nginx](platform/dev/6.7/resources/references/config-reference/server/nginx.md) and [Caddy](platform/dev/6.7/resources/references/config-reference/server/caddy.md) configs include it — redeploy updated configs. A [reverse proxy](platform/dev/6.7/guides/hosting/infrastructure/reverse-http-cache.md) must preserve the header (default Fastly and Varnish configs do). A separate CDN URL must set the header itself.
+- **Media upload by URL**: `shopware.media.enable_url_validation` (default `true`) ensures the URL points to a public resource, preventing internal network leaks. `shopware.media.enable_url_upload_feature: false` disables URL uploads entirely (the server still discloses IP/user agent to the remote host when enabled).
 
 ```yaml
 shopware:
     media:
-        enable_url_upload_feature: true   # false disables URL upload entirely
-        enable_url_validation: true       # false skips the public-URL check
+        enable_url_upload_feature: true
+        enable_url_validation: true
 ```
 
-  Validation blocks URLs that would leak internal network information. Even with validation, the server fetching the URL discloses its IP address and user agent — disable the whole feature if that matters.
-- **HTML sanitizer:** strips unsafe HTML from text editor input. See [HTML Sanitizer](platform/dev/6.7/guides/hosting/configurations/shopware/html-sanitizer.md).
-- **Rate limiter:** default limits for login and password reset against brute force. See [Rate Limiter](platform/dev/6.7/guides/hosting/infrastructure/rate-limiter.md).
-- **Password change:** changing a user's or customer's password invalidates the session; re-login is required.
-- **SameSite cookie:** see [SameSite Protection](platform/dev/6.7/guides/hosting/configurations/framework/samesite-protection.md).
-- **Security plugin:** delivers security fixes without a version upgrade. See [cluster setup](platform/dev/6.7/guides/hosting/installation-updates/cluster-setup.md).
-- **Maintenance mode:** IP addresses can be whitelisted per sales channel to access the Storefront.
-- **SQL injection:** the [Data Abstraction Layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md) does not expose SQL; direct SQL follows Doctrine DBAL escaping practices.
-- **Captcha, GDPR, file access:** covered in the merchant documentation and the filesystem hosting guide.
+- **Other measures** (see linked guides): Captcha, [Cookie Consent Management](platform/dev/6.7/concepts/commerce/content/cookie-consent-management.md) for GDPR, [HTML sanitizer](platform/dev/6.7/guides/hosting/configurations/shopware/html-sanitizer.md), [rate limiter](platform/dev/6.7/guides/hosting/infrastructure/rate-limiter.md) for login/password reset, session reset on password change for users and customers, [SameSite cookies](platform/dev/6.7/guides/hosting/configurations/framework/samesite-protection.md), the [Security plugin](platform/dev/6.7/guides/hosting/installation-updates/cluster-setup.md) for fixes without upgrades, and Storefront IP whitelisting during maintenance mode.
+- **SQL injection**: the [Data Abstraction Layer](platform/dev/6.7/concepts/framework/data-abstraction-layer.md) does not expose SQL directly; direct SQL follows Doctrine DBAL escaping best practices.
 
 ## Essential identifiers
 
 - `shopware.security.csp_templates`
 - `shopware.media.enable_url_validation`
 - `shopware.media.enable_url_upload_feature`
-- `ApiAware` (`Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware`)
+- `ApiAware`
+- `Content-Security-Policy` response header
 
 ## Gotchas
 
-- Mail templates, SEO URL templates and product export templates expose Twig; theme configuration exposes raw CSS. Anyone with those ACL permissions gets that power — grant them only to trusted users.
-- In the installed code, the `dev`, `test` and `e2e` package configs set `enable_url_validation: false`; only the base `shopware.yaml` enables it.
-- The shipped `storefront` and `installer` CSP templates are empty; only `default` and `administration` carry policies.
-- `ApiAware` without arguments allows both the Admin API (`/api/`) and the Store API (`/store-api/`), not only the Store API.
+- Granting ACL permissions for mail templates, SEO URL templates or product export templates exposes Twig; theme configuration exposes direct CSS. Grant these only to trusted users.
+- The application CSP does not cover files the web server or CDN serves without passing through Shopware.
 
-## Code check (6.7.13.0)
-- confirmed `shopware.security.csp_templates` — collection parameter with default/administration/storefront/installer keys — vendor/shopware/core/Framework/DependencyInjection/services.xml:20
-- confirmed `shopware.media.enable_url_upload_feature` — defaults to true — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:412
-- confirmed `shopware.media.enable_url_validation` — defaults to true — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:413
-- confirmed `enable_url_validation` — set to false in dev environment — vendor/shopware/core/Framework/Resources/config/packages/dev/shopware.yaml:13
-- confirmed `enable_url_upload_feature` — declared as booleanNode in bundle configuration — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:355
-- corrected `ApiAware` — docs: controls Store API exposure; code allowlists AdminApiSource and SalesChannelApiSource by default — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Flag/ApiAware.php:11
+## Code check (6.7.15.1)
+- confirmed `shopware.security.csp_templates` — container parameter with `default`/`administration`/`storefront`/`installer` keys — vendor/shopware/core/Framework/DependencyInjection/services.php:181
+- confirmed `shopware.media.enable_url_upload_feature` — default `true` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:448
+- confirmed `shopware.media.enable_url_validation` — default `true` — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:449
+- confirmed `shopware.media.enable_url_validation` — set to `false` in the dev environment config — vendor/shopware/core/Framework/Resources/config/packages/dev/shopware.yaml:13
+- confirmed `ApiAware` — DAL field flag class — vendor/shopware/core/Framework/DataAbstractionLayer/Field/Flag/ApiAware.php:11
+- unverified `Content-Security-Policy` — stored-asset header is set in web server/CDN configs, outside the checked package roots

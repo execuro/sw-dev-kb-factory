@@ -5,26 +5,24 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/concepts/framework/elasticsearch.html
-sourceHash: 86bfc2f1b8b1a913c6c8117b570e0580b63cfe71
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["elasticsearch", "opensearch", "Criteria::STATE_ELASTICSEARCH_AWARE", "ElasticsearchDefinition", "ProductElasticsearchDefinition", "ElasticsearchEntitySearcher", "ElasticsearchEntityAggregator", "CriteriaParser", "SHOPWARE_ES_THROW_EXCEPTION", "SHOPWARE_ES_INDEX_PREFIX", "es:index", "es:reset", "search engine", "product search indexing"]
-summary: How Shopware routes DAL searches to Elasticsearch/OpenSearch, the elasticsearchAware criteria state, core ES classes, env vars and es:* console commands.
-lastBuilt: 2026-09-15
+sourceHash: 9cbcc6f527ddca089b21ef77b689a949b522398e
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["elasticsearch", "opensearch", "search engine", "STATE_ELASTICSEARCH_AWARE", "ElasticsearchDefinition", "ElasticsearchEntitySearcher", "CriteriaParser", "ProductSearchBuilder", "SHOPWARE_ES_THROW_EXCEPTION", "SHOPWARE_ES_INDEX_PREFIX", "es:index", "es:reset", "es:index:cleanup", "es:create:alias", "es:status"]
+summary: "Elasticsearch concept: enabling ES per Criteria state, ElasticsearchDefinition/EntitySearcher/Aggregator/CriteriaParser, env vars and es:* CLI commands."
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/_index.md", "platform/dev/6.7/guides/plugins/plugins/integrations/elasticsearch/add-product-entity-extension-to-elasticsearch.md"]
 ---
 ## What it is
 
-Concept overview of Shopware's Elasticsearch integration: which DAL searches are sent to Elasticsearch instead of MySQL, the classes that translate criteria to Elasticsearch queries, and the `es:*` maintenance commands. Setup is covered in the hosting guide (`platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/_index.md`).
+Shopware's Elasticsearch integration moves product and category searches to Elasticsearch (a NoSQL database focused on search) to improve search performance. It is only used for searches that explicitly opt in. Setup is covered in the [Elasticsearch hosting guide](platform/dev/6.7/guides/hosting/infrastructure/elasticsearch/_index.md).
 
 ## When to use
 
-- You need to know whether a given product/category search hits Elasticsearch or MySQL.
-- You want your own repository search to use Elasticsearch.
-- You operate indices (cleanup, re-index, reset, status) or plan to extend the indexed fields (see `platform/dev/6.7/guides/plugins/plugins/integrations/elasticsearch/add-product-entity-extension-to-elasticsearch.md`).
+Read this when you need to route your own DAL search through Elasticsearch, understand which classes map DAL criteria to Elasticsearch, or operate the indices with the `es:*` console commands.
 
 ## Key steps / config
 
-Elasticsearch is only used for searches that explicitly opt in. In core, the product search, listing and suggest paths add the state (`ProductSearchRoute`, `ProductListingLoader` behind `ProductListingRoute`, `ResolvedCriteriaProductSuggestRoute` decorating `ProductSuggestRoute`). To opt in your own search, add the state to the **criteria** — the constant is defined on `Criteria`, not on `Context`:
+Opt-in per search: by default the product search, listing and suggest routes are Elasticsearch-aware. For your own search add the state to the criteria:
 
 ```php
 $criteria = new \Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria();
@@ -35,44 +33,51 @@ $criteria->addState(\Shopware\Core\Framework\DataAbstractionLayer\Search\Criteri
 $repository->search($criteria, $context);
 ```
 
-Fallback: if the Elasticsearch query fails, data is loaded via MySQL. Set `SHOPWARE_ES_THROW_EXCEPTION=1` to throw instead. Other env vars from the installer's `.env` template: `SHOPWARE_ES_ENABLED`, `SHOPWARE_ES_INDEXING_ENABLED`, `SHOPWARE_ES_INDEX_PREFIX` (default `sw`).
+Failure handling: a failing Elasticsearch query throws by default (`SHOPWARE_ES_THROW_EXCEPTION=1`); set `SHOPWARE_ES_THROW_EXCEPTION=0` to log the error and fall back to MySQL.
 
-Commands:
+Architecture:
+
+- `ElasticsearchDefinition` - one per entity exposed to Elasticsearch; defines fields and their aggregation. Product uses `ProductElasticsearchDefinition`.
+- `ElasticsearchEntitySearcher` - decorates the DAL `EntitySearcher`, returns an `IdSearchResult` hydrated by `ElasticsearchEntitySearchHydrator`; found ids are then read from the database.
+- `ElasticsearchEntityAggregator` - same for aggregations.
+- `CriteriaParser` - converts criteria to Elasticsearch notation.
+- `ProductSearchBuilder` - the core builder has an Elasticsearch extension mapping its queries to Elasticsearch notation.
+- `ProductUpdater` - listens to `ProductIndexerEvent` and triggers `ElasticsearchIndexer` when a `ProductEntity` changes.
+
+Console commands:
 
 | Command | Effect |
 |---|---|
-| `es:index:cleanup` | Deletes outdated indices; `-f` skips confirmation |
-| `es:create:alias` | Refreshes the current index and points the alias (index name without timestamp) at it; normally automatic on publish |
-| `es:index` | Re-indexes all configured entities |
-| `es:reset` | Resets all active indices with the `SHOPWARE_ES_INDEX_PREFIX` prefix and clears the queue; only for corrupted indices or a fresh setup |
-| `es:status` | Status of all current indices |
-| `es:test:analyzer` | Runs an analyzer on your indices |
+| `es:index:cleanup` | delete outdated indices; `-f` skips confirmation |
+| `es:create:alias` | refresh current index and point alias (name without timestamp) at it; normally automatic |
+| `es:index` | re-index all configured entities |
+| `es:reset` | reset all active indices with prefix `SHOPWARE_ES_INDEX_PREFIX` and clear the queue |
+| `es:status` | status of all current indices |
+| `es:test:analyzer` | run an analyzer on your indices |
+
+To add fields or entities, see [extending the Elasticsearch product definition](platform/dev/6.7/guides/plugins/plugins/integrations/elasticsearch/add-product-entity-extension-to-elasticsearch.md).
 
 ## Essential identifiers
 
-- `Criteria::STATE_ELASTICSEARCH_AWARE` (value `elasticsearchAware`)
-- `ElasticsearchDefinition` / `ProductElasticsearchDefinition` — defines fields sent to Elasticsearch and their aggregation, per entity
-- `ElasticsearchEntitySearcher` — decorates `EntitySearcher`, returns an `IdSearchResult` hydrated by `ElasticsearchEntitySearchHydrator`; ids are then read from the database
-- `ElasticsearchEntityAggregator` — same for aggregations
-- `CriteriaParser` — converts criteria into Elasticsearch notation
-- `ProductSearchBuilder` — core product search builder; the Elasticsearch extension maps its queries to Elasticsearch notation
-- `ProductUpdater` — listens to `ProductIndexerEvent`, triggers `ElasticsearchIndexer` on `ProductEntity` changes
+- `Criteria::STATE_ELASTICSEARCH_AWARE`
+- `ProductSearchRoute`, `ProductListingRoute`, `ProductSuggestRoute`
+- `ElasticsearchDefinition`, `ProductElasticsearchDefinition`, `ElasticsearchEntitySearcher`, `ElasticsearchEntityAggregator`, `ElasticsearchEntitySearchHydrator`, `CriteriaParser`, `ProductUpdater`, `ElasticsearchIndexer`
 - `SHOPWARE_ES_THROW_EXCEPTION`, `SHOPWARE_ES_INDEX_PREFIX`
 
 ## Gotchas
 
-- The docs' example calls `$context->addState(Context::STATE_ELASTICSEARCH_AWARE)`; no such constant exists on `Context` in 6.7.13.0. Core code always calls `$criteria->addState(Criteria::STATE_ELASTICSEARCH_AWARE)`.
-- Silent MySQL fallback can hide a broken Elasticsearch setup; the installer `.env` template sets `SHOPWARE_ES_THROW_EXCEPTION=1`.
-- If multiple Shopware instances share one Elasticsearch host, use distinct `SHOPWARE_ES_INDEX_PREFIX` values — `es:reset` acts on every index with the prefix.
+- Only use `es:reset` when an index is corrupted or must be rebuilt from scratch.
+- Several Shopware instances sharing one Elasticsearch host should use different `SHOPWARE_ES_INDEX_PREFIX` values.
+- In 6.7.15.1 the listing state is set in `ProductListingLoader`, and `ProductDetailRoute` also marks its criteria Elasticsearch-aware.
 
-## Code check (6.7.13.0)
-- corrected `Criteria::STATE_ELASTICSEARCH_AWARE` — docs: `Context::STATE_ELASTICSEARCH_AWARE` added to the context — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:29
-- confirmed `Criteria::addState()` — via `StateAwareTrait`, used by core listing loader — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingLoader.php:144
-- confirmed `ProductListingRoute` — core listing route — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingRoute.php:31
-- confirmed `ResolvedCriteriaProductSuggestRoute` — decorator that adds the elasticsearchAware state for suggest — vendor/shopware/core/Content/Product/SalesChannel/Suggest/ResolvedCriteriaProductSuggestRoute.php:21
-- confirmed `SHOPWARE_ES_THROW_EXCEPTION` — present in installer env template — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:52
-- confirmed `SHOPWARE_ES_INDEX_PREFIX` — default `sw` — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:51
-- confirmed `ProductSearchBuilder` — core class — vendor/shopware/core/Content/Product/SearchKeyword/ProductSearchBuilder.php:20
-- confirmed `ProductIndexerEvent` — core event — vendor/shopware/core/Content/Product/Events/ProductIndexerEvent.php:10
-- unverified `ElasticsearchEntitySearcher` — lives in shopware/elasticsearch package, outside checked roots
-- unverified `es:index` — es:* commands live in shopware/elasticsearch package, outside checked roots
+## Code check (6.7.15.1)
+- confirmed `Criteria::STATE_ELASTICSEARCH_AWARE` — value `elasticsearchAware` — vendor/shopware/core/Framework/DataAbstractionLayer/Search/Criteria.php:29
+- confirmed `ProductSearchRoute` — adds the Elasticsearch-aware state — vendor/shopware/core/Content/Product/SalesChannel/Search/ProductSearchRoute.php:47
+- confirmed `ProductListingLoader` — listing criteria marked Elasticsearch-aware — vendor/shopware/core/Content/Product/SalesChannel/Listing/ProductListingLoader.php:36
+- confirmed `ResolvedCriteriaProductSuggestRoute` — suggest criteria marked Elasticsearch-aware — vendor/shopware/core/Content/Product/SalesChannel/Suggest/ResolvedCriteriaProductSuggestRoute.php:21
+- confirmed `EntitySearcher` — DAL searcher decorated by the Elasticsearch searcher — vendor/shopware/core/Framework/DataAbstractionLayer/Dbal/EntitySearcher.php:32
+- confirmed `IdSearchResult` — search result type — vendor/shopware/core/Framework/DataAbstractionLayer/Search/IdSearchResult.php:17
+- confirmed `ProductSearchBuilder` — core product search builder — vendor/shopware/core/Content/Product/SearchKeyword/ProductSearchBuilder.php:20
+- confirmed `ProductIndexerEvent` — event the product updater listens to — vendor/shopware/core/Content/Product/Events/ProductIndexerEvent.php:13
+- confirmed `SHOPWARE_ES_THROW_EXCEPTION` — installer default `1`, prefix default `sw` — vendor/shopware/core/Installer/Configuration/EnvConfigWriter.php:51
+- unverified `ElasticsearchEntitySearcher` — Elasticsearch bundle classes and `es:*` commands live outside the core/storefront/administration roots

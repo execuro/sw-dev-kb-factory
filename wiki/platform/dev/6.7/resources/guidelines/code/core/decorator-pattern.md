@@ -1,50 +1,41 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/resources/guidelines/code/core/decorator-pattern.md
-sourceHash: 24554dfd729a39218f7b6d6f64983c6619fd6458
-sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/core/decorator-pattern.html
 title: Decorator pattern
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["decorator pattern", "service decoration", "getDecorated", "DecorationPatternException", "DecorationPatternRule", "AbstractRuleLoader", "RuleLoader", "CachedRuleLoader", "abstract class", "@internal", "@final", "phpstan rule", "extend core service"]
-summary: Shopware rules for decoratable services - abstract base class with getDecorated(), core throws DecorationPatternException, enforced by a PHPStan rule.
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/resources/guidelines/code/core/decorator-pattern.html
+sourceHash: 48a5f8a7053252e5840d6bd77863aaadffee9d97
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["decorator pattern", "service decoration", "getDecorated", "DecorationPatternException", "DecorationPatternRule", "AbstractRuleLoader", "RuleLoader", "CachedRuleLoader", "abstract class", "@internal", "@final", "phpstan rule", "di container"]
+summary: "Core rules for decoratable services: abstract base class with getDecorated(), core throws DecorationPatternException, no extra public methods."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Shopware core coding guideline for services that other developers may decorate (Symfony DI service decoration). Shopware uses abstract classes instead of interfaces as the service contract so new methods can be added without breaking implementations (per the 2020-11-25 decoration-pattern ADR).
+The Shopware core coding guideline for the decorator pattern: how to define a DI container service so that other developers can decorate or replace it. Shopware uses abstract classes instead of interfaces as the service contract, so new methods can be added later without breaking existing implementations (decision taken in the 2020-11-25 decoration-pattern ADR).
 
 ## When to use
 
-When defining a core or extension service that third parties should be able to decorate, when decorating such a service, or when wrapping your own service (cache/logging) without making it publicly decoratable.
+- You write a service that third-party developers should be able to decorate or rewrite in the DI container (Symfony service decoration).
+- Do not use it for new Store-API route classes; the guideline points to the ADR replacing abstract route classes with extension events.
+- Do not use it when you only want an internal logging/cache layer around your own service — see the alternative below.
 
 ## Key steps / config
 
 Rules for a decoratable service:
 
-- The abstract class declares `getDecorated()` returning the abstract class type.
-- The core (base) implementation throws `\Shopware\Core\Framework\Plugin\Exception\DecorationPatternException` from `getDecorated()`.
-- The abstract class must not be marked `@internal` or `@final`.
-- An implementation must not expose public methods not defined in the abstract class (constructors and static methods are exempt).
-- An implementation must not be an event subscriber.
-
-Enforced by the PHPStan rule `\Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\DecorationPatternRule`.
-
-Installed example — `Shopware\Core\Checkout\Cart\AbstractRuleLoader`, base `RuleLoader`, and a decorator:
+1. The abstract class declares `getDecorated()` returning the abstract class.
+2. The core implementation throws `DecorationPatternException` when `getDecorated()` is called (it must be the first statement — that is how the PHPStan rule detects the base implementation).
+3. The abstract class must not be marked `@internal` or `@final`.
+4. An implementation may not expose public methods other than those defined in the abstract class (constructor excepted).
+5. Implementations may not be event subscribers.
 
 ```php
 abstract class AbstractRuleLoader
 {
     abstract public function getDecorated(): AbstractRuleLoader;
     abstract public function load(Context $context): RuleCollection;
-}
-
-class RuleLoader extends AbstractRuleLoader
-{
-    public function getDecorated(): AbstractRuleLoader { throw new DecorationPatternException(self::class); }
-    public function load(Context $context): RuleCollection { /* ... */ }
 }
 
 class SomePlugin extends AbstractRuleLoader
@@ -55,30 +46,33 @@ class SomePlugin extends AbstractRuleLoader
 }
 ```
 
-Adding functionality later: add the new method to the abstract class as a **non-abstract** method that delegates, e.g. `public function create(Context $context): RuleCollection { return $this->getDecorated()->create($context); }` — existing decorators keep working.
+The core `RuleLoader` implements `getDecorated()` as `throw new DecorationPatternException(self::class);`.
 
-**Non-decoratable wrapping (alternative):** to put a cache or logging layer around your own service without inviting third-party decoration, inject the inner service and delegate instead of using the pattern above. Mark the classes `@internal` for private API, or `@final` if others may call but not extend them.
+Adding functionality later: add the new method to the abstract class as a concrete (non-abstract) method that delegates, e.g. `public function create(Context $context): RuleCollection { return $this->getDecorated()->create($context); }`.
+
+Alternative (non-decoratable wrapping): inject the inner service and delegate without offering the pattern to others; mark classes `@internal` (private API) or `@final` (callable, not extendable).
 
 ## Essential identifiers
 
 - `getDecorated()`
 - `Shopware\Core\Framework\Plugin\Exception\DecorationPatternException`
-- `Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\DecorationPatternRule` (error identifier `shopware.decorationPattern`)
+- `\Shopware\Core\DevOps\StaticAnalyze\PHPStan\Rules\DecorationPatternRule`
 - `Shopware\Core\Checkout\Cart\AbstractRuleLoader`, `RuleLoader`, `CachedRuleLoader`
 
 ## Gotchas
 
-- The guideline's example names the base implementation `CoreRuleLoader` and omits `extends`; the installed base class is `RuleLoader extends AbstractRuleLoader`.
-- The guideline's alternative example shows an `AbstractRuleLoader` without `getDecorated()` and a `CachedLoader`; the installed `AbstractRuleLoader` does declare `getDecorated()` abstract, and the real `CachedRuleLoader` implements it (returning `$decorated`) with `CACHE_KEY = 'cart_rules'`.
-- `DecorationPatternRule` checks concrete classes only when `getDecorated()` starts with a `throw` (the base implementation) and the parent is an abstract `Shopware\` class; a `getDecorated()` carrying `@deprecated` disables the check.
-- Symfony's event system cannot handle decorated subscribers, hence the event-subscriber ban.
+- The source's "Alternative" snippet shows a `CachedLoader extends AbstractRuleLoader` with only `load()`; against the installed `AbstractRuleLoader` this does not compile, because `getDecorated()` is abstract there. The real `CachedRuleLoader` implements both and returns its `$decorated` inner service from `getDecorated()`.
+- The source's `CoreRuleLoader` example omits `extends AbstractRuleLoader`; the installed `RuleLoader` extends it.
+- `DecorationPatternRule` skips test classes, anonymous classes, a list of App/Store lifecycle abstracts, and classes whose `getDecorated()` is `@deprecated`.
+- A concrete class implementing `EventSubscriberInterface` or marked `@internal` while decoratable triggers a `shopware.decorationPattern` error.
 
-## Code check (6.7.13.0)
+## Code check (6.7.15.1)
 - confirmed `AbstractRuleLoader::getDecorated()` — abstract, returns AbstractRuleLoader — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:12
-- confirmed `AbstractRuleLoader::load()` — abstract, returns RuleCollection — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:14
-- corrected `RuleLoader` — docs: CoreRuleLoader; base implementation is RuleLoader throwing DecorationPatternException — vendor/shopware/core/Checkout/Cart/RuleLoader.php:19
-- confirmed `DecorationPatternException` — takes the class name — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:13
-- confirmed `DecorationPatternRule` — PHPStan rule enforcing the pattern — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:31
-- confirmed `EventSubscriberInterface` — decorated base implementations may not implement it — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:109
-- confirmed `@final` — abstract decoratable class marked @final is rejected — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:144
-- corrected `CachedRuleLoader::getDecorated()` — docs: cached wrapper without getDecorated; installed one returns $decorated — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:27
+- confirmed `AbstractRuleLoader::load()` — abstract, takes Context, returns RuleCollection — vendor/shopware/core/Checkout/Cart/AbstractRuleLoader.php:14
+- confirmed `DecorationPatternException` — class in Framework\Plugin\Exception — vendor/shopware/core/Framework/Plugin/Exception/DecorationPatternException.php:13
+- confirmed `RuleLoader::getDecorated()` — core service throws DecorationPatternException — vendor/shopware/core/Checkout/Cart/RuleLoader.php:32
+- confirmed `DecorationPatternRule` — PHPStan rule enforcing the pattern — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:35
+- confirmed `EventSubscriberInterface` — decoratable implementations may not be subscribers — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:113
+- confirmed `@final` — abstract decoratable class marked final is rejected — vendor/shopware/core/DevOps/StaticAnalyze/PHPStan/Rules/DecorationPatternRule.php:184
+- confirmed `CachedRuleLoader::getDecorated()` — cache layer also implements getDecorated, unlike the docs' CachedLoader — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:27
+- confirmed `CachedRuleLoader::CACHE_KEY` — constant used by the cache wrapper — vendor/shopware/core/Checkout/Cart/CachedRuleLoader.php:16

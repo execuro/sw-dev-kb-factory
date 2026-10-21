@@ -5,78 +5,64 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/installation/legacy-setups/devenv-options.html
-sourceHash: c55fd3472f17187628f29688b23cecc120a5798a
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["devenv.local.nix", "devenv reload", "devenv gc", "devenv down", "services.blackfire", "languages.php.extensions", "xdebug", "services.mysql.package", "mariadb", "services.caddy.virtualHosts", "services.adminer.listen", "services.varnish", "xkey", "overrideAttrs", "pin package version"]
-summary: "Devenv devenv.local.nix recipes: Blackfire, Xdebug, MariaDB, MySQL/Caddy/Adminer ports, Varnish with xkey, pinned package versions, cleanup."
-lastBuilt: 2026-09-15
+sourceHash: 0c2573f93d36bc4b53e1d0b5bde23c0f69315640
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["devenv", "devenv.local.nix", "devenv.local.yaml", "lib.mkForce", "xdebug", "blackfire", "rabbitmq", "opensearch", "mariadb", "MESSENGER_TRANSPORT_DSN", "APP_URL", "sales-channel:update:domain", "varnish", "caddy virtualHosts", "nix"]
+summary: Devenv overrides in devenv.local.nix - Blackfire, Xdebug, RabbitMQ, OpenSearch, MariaDB, custom ports/vhosts, Varnish, pinned package versions.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-A collection of optional overrides for a Devenv-based Shopware development environment. Every snippet goes into `<PROJECT_ROOT>/devenv.local.nix`, which wraps its settings in `{ pkgs, config, lib, ... }: { ... }`.
+Optional overrides for the legacy Devenv setup. All snippets go into `devenv.local.nix` in the project root, which Devenv merges with the `devenv.nix` from `frosh/devenv-meta`. After changes run `devenv down` and `devenv up` (without Direnv, also re-enter the Devenv shell).
 
 ## When to use
 
-You already run Shopware with Devenv and need profiling/debugging, a different database engine, non-default ports or virtual hosts, a local Varnish reverse cache, an older service version, or want to clean up the Nix store.
+Enabling profiling/debugging or extra services, switching the database, resolving port conflicts, running several projects at once, or matching production package versions in a Devenv-based project.
 
 ## Key steps / config
 
-All options below are Devenv/Nix options set in `devenv.local.nix`; apply changes with `devenv reload`.
+Every file starts with `{ pkgs, config, lib, ... }:` followed by an attribute set:
 
-- **Blackfire**: `services.blackfire.enable = true;` plus `services.blackfire.server-id`, `services.blackfire.server-token`, `services.blackfire.client-id`, `services.blackfire.client-token` (your credentials).
-- **Xdebug**:
-  ```nix
-  languages.php.extensions = [ "xdebug" ];
-  languages.php.ini = ''
-    xdebug.mode = debug
-    xdebug.discover_client_host = 1
-    xdebug.client_host = 127.0.0.1
-  '';
-  ```
-- **MariaDB instead of MySQL**: `services.mysql.package = pkgs.mariadb;`
-- **Custom MySQL port**: `services.mysql.settings = { mysqld = { port = 33881; }; };`
-- **Caddy port / virtual host**: define `services.caddy.virtualHosts.":8029"` (port only) or a key with scheme, host and port such as `shopware.swag:8029` prefixed with the http scheme, each with:
-  ```nix
-  extraConfig = ''
-    root * public
-    php_fastcgi unix/${config.languages.php.fpm.pools.web.socket}
-    file_server
-  '';
-  ```
-- **Adminer port**: `services.adminer.listen = "127.0.0.1:9084";`
-- **Varnish**: enable `services.caddy` with a localhost virtual host that does `reverse_proxy 127.0.0.1:6081` (with `header_up Host sw.localhost`), and serve the app itself from a second virtual host `sw.localhost` (add it to `/etc/hosts` if needed). Then:
-  ```nix
-  services.varnish = {
-    enable = true;
-    package = pkgs.varnish;
-    listen = "127.0.0.1:6081";
-    extraModules = [ pkgs.varnishPackages.modules ]; # xkey module
-    vcl = '' backend default { .host = "sw.localhost"; .port = "80"; } acl purgers { ... } '';
-  };
-  ```
-  The VCL is a slightly adjusted version of the Shopware reverse-HTTP-cache Varnish config; the `purgers` ACL must contain the app server addresses (`sw.localhost`, `127.0.0.1`, `localhost`, `::1`).
-- **Pin an older package**: wrap the package in `let ... in` with `overrideAttrs`, e.g. `pkgs.mysql80.overrideAttrs (oldAttrs: { version = "8.0.33"; src = pkgs.fetchFromGitHub { owner = "mysql"; repo = "mysql-server"; rev = "mysql-8.0.33"; sha256 = "..."; }; })`, then set `package = mysql8033;`. RabbitMQ works the same with `pkgs.rabbitmq-server.overrideAttrs` and `pkgs.fetchurl`.
-- **Maintenance**: `devenv gc` removes unused packages, services and caches; `devenv down` stops services.
+```nix
+{
+  services.blackfire.enable = true;           # plus server-id/server-token/client-id/client-token
+  languages.php.extensions = [ "xdebug" ];    # languages.php.ini: xdebug.mode = debug ...
+  services.rabbitmq.enable = true;
+  services.rabbitmq.managementPlugin.enable = true;
+  services.opensearch.enable = true;
+  services.mysql.package = lib.mkForce pkgs.mariadb;
+  services.mysql.settings.mysqld.port = 3307;
+  services.adminer.listen = "127.0.0.1:8011";
+}
+```
+
+- **RabbitMQ:** Devenv enables the `amqp` PHP extension and sets `MESSENGER_TRANSPORT_DSN` to `amqp://guest:guest@127.0.0.1:5672/%2f/messages`; also run `composer require symfony/amqp-messenger`.
+- **OpenSearch:** Devenv sets `OPENSEARCH_URL` (127.0.0.1 port 9200), `SHOPWARE_ES_ENABLED=1` and `SHOPWARE_ES_INDEXING_ENABLED=1`; then run `bin/console es:index`.
+- **Custom MySQL port:** `DATABASE_URL` follows automatically.
+- **Caddy port / vhost:** replace the default vhost with `services.caddy.virtualHosts = lib.mkForce { ":8001".extraConfig = '' root * public  php_fastcgi unix/${config.languages.php.fpm.pools.web.socket} ... ''; };` and set `env.APP_URL` to the matching URL (127.0.0.1 port 8001, or a custom host such as `shopware.swag` resolved via `/etc/hosts`).
+- **Already installed shop:** update the domain in Administration (**Sales Channels > Storefront > Domains**) or run an SQL `UPDATE sales_channel_domain SET url = ...` via `mysql ... -P "$MYSQL_TCP_PORT"` in a fresh Devenv shell, then `bin/console cache:clear`.
+- **Multiple projects:** move ports — Caddy vhost + `env.APP_URL`, `services.mysql.settings.mysqld.port`, `services.redis.port = 6380`, `services.mailpit.smtpListenAddress`, `services.mailpit.uiListenAddress`, `services.adminer.listen`. `DATABASE_URL`, `MAILER_DSN` and the Redis session configuration follow.
+- **Varnish:** `services.caddy` proxies localhost to Varnish (`reverse_proxy 127.0.0.1:6081` with `header_up Host sw.localhost`) and serves Shopware on `sw.localhost`; `services.varnish` with `listen = "127.0.0.1:6081"`, `extraModules = [ pkgs.varnishPackages.modules ]` (xkey) and a `vcl` whose `backend default` and `acl purgers` point at `sw.localhost`.
+- **Older package version:** add an input in `devenv.local.yaml` (`inputs.nixpkgs-mysql80.url: github:NixOS/nixpkgs/nixos-25.05`), import it in a `let` block and set `services.mysql.package = lib.mkForce pkgs-mysql80.mysql80;`. For the whole team use `devenv.yaml`/`devenv.nix` and commit `devenv.lock`.
 
 ## Essential identifiers
 
-- `devenv.local.nix`, `devenv reload`, `devenv gc`, `devenv down`
-- `services.blackfire.*`, `languages.php.extensions`, `languages.php.ini`
-- `services.mysql.package`, `services.mysql.settings`
-- `services.caddy.virtualHosts`, `config.languages.php.fpm.pools.web.socket`
-- `services.adminer.listen`, `services.varnish`, `pkgs.varnishPackages.modules`
+- `devenv.local.nix`, `devenv.local.yaml`, `lib.mkForce`
+- `MESSENGER_TRANSPORT_DSN`, `APP_URL`, `DATABASE_URL`, `MYSQL_TCP_PORT`
+- `sales_channel_domain`, `bin/console cache:clear`, `bin/console es:index`
 
 ## Gotchas
 
-- Leave `sha256` empty on the first run of a pinned fetch; Nix prompts with the expected hash.
-- Pinning versions may increase build time; use only when necessary.
-- If processes remain after `devenv down`, as a last resort kill processes whose command line contains `/nix/store`.
-- If the app at `127.0.0.1:8000` is not reachable in the browser, try `localhost:8000` instead; common on WSL2 under Windows. On macOS/Linux, `127.0.0.1:8000` should work.
+- `lib.mkForce` is needed for MariaDB (default sets the MySQL package) and for vhosts (otherwise Caddy still listens on port 8000 alongside yours).
+- MySQL and MariaDB cannot share a data directory, and MySQL cannot open a directory created by a newer version: remove `<PROJECT_ROOT>/.devenv/state/mysql` (deletes the local DB) and reinstall.
+- `bin/console sales-channel:update:domain` only replaces the host and keeps the old port, so it cannot change the port.
+- Maintenance: `devenv down` stops services started with `devenv up -d` (foreground: `Ctrl+C`); `devenv gc` then `nix store gc` free disk space. On WSL2 use localhost instead of 127.0.0.1 if port 8000 is unreachable.
 
-## Code check (6.7.13.0)
-- unverified `services.varnish` — Devenv/Nix option, outside vendor/shopware scope
-- unverified `services.caddy.virtualHosts` — Devenv/Nix option, outside vendor/shopware scope
-- unverified `languages.php.extensions` — Devenv/Nix option, outside vendor/shopware scope
-- unverified `services.blackfire.enable` — Devenv/Nix option, outside vendor/shopware scope
-- confirmed `xkey` — Varnish gateway purges by the xkey header, matching the xkey module requirement — vendor/shopware/core/Framework/Adapter/Cache/ReverseProxy/VarnishReverseProxyGateway.php:54
-- confirmed `VarnishReverseProxyGateway` — core Varnish reverse proxy gateway class exists — vendor/shopware/core/Framework/Adapter/Cache/ReverseProxy/VarnishReverseProxyGateway.php:21
+## Code check (6.7.15.1)
+- confirmed `sales-channel:update:domain` — console command name — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelUpdateDomainCommand.php:25
+- confirmed `SalesChannelUpdateDomainCommand::replaceDomain()` — replaces only `host`, port is re-appended — vendor/shopware/core/Maintenance/SalesChannel/Command/SalesChannelUpdateDomainCommand.php:67
+- confirmed `sales_channel_domain` — entity/table name — vendor/shopware/core/System/SalesChannel/Aggregate/SalesChannelDomain/SalesChannelDomainDefinition.php:34
+- confirmed `MESSENGER_TRANSPORT_DSN` — env var feeding the messenger transport, default doctrine DSN — vendor/shopware/core/Framework/Resources/config/packages/framework.yaml:3
+- unverified `es:index` — Elasticsearch package, outside the checked roots
+- unverified `SHOPWARE_ES_ENABLED` — Elasticsearch package config, outside the checked roots
+- unverified `devenv.local.nix` — Devenv / frosh/devenv-meta tooling, out of scope

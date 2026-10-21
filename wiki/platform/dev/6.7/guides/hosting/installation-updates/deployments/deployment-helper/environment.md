@@ -5,88 +5,101 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/hosting/installation-updates/deployments/deployment-helper/environment.html
-sourceHash: 1d8aa65efe2f82a07129e802b21c91e39fe7516c
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["deployment helper environment variables", "DATABASE_URL", "INSTALL_ADMIN_PASSWORD", "INSTALL_LOCALE", "SALES_CHANNEL_URL", "SHOPWARE_DEPLOYMENT_TIMEOUT", "SHOPWARE_DEPLOYMENT_FORCE_REINSTALL", "SHOPWARE_PROJECT_CONFIG_FILE", "SHOPWARE_STORE_ACCOUNT_EMAIL", "SHOPWARE_STORE_SHOP_SECRET", "SHOPWARE_USAGE_DATA_CONSENT", "FASTLY_API_TOKEN", "DATABASE_SSL_CA", "install detection", "env vars"]
-summary: Deployment Helper database requirements, install detection and env vars - INSTALL_*, DATABASE_URL/SSL, SHOPWARE_DEPLOYMENT_*, store auth, usage data, Fastly.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/hosting/infrastructure/database.md", "platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md"]
+sourceHash: f090a0483b3777710305ff99f28f6ab22b6e9198
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["DATABASE_URL", "DATABASE_SSL_CA", "INSTALL_ADMIN_PASSWORD", "INSTALL_LOCALE", "INSTALL_CURRENCY", "SALES_CHANNEL_URL", "SHOPWARE_DEPLOYMENT_FORCE_REINSTALL", "SHOPWARE_DEPLOYMENT_TIMEOUT", "SHOPWARE_STORE_ACCOUNT_EMAIL", "FASTLY_API_TOKEN", "system:install", "env vars", "deployment helper environment", "database requirements"]
+summary: Deployment Helper env vars and DB requirements - install detection, fresh-install defaults, DB TLS, deploy control, Store and Fastly.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md", "platform/dev/6.7/resources/references/core-reference/commands-reference.md", "platform/dev/6.7/guides/hosting/infrastructure/database.md"]
 ---
 ## What it is
 
-Database prerequisites of the Deployment Helper, how it decides whether Shopware is installed, what a fresh install creates, and the environment variables it and the Shopware installation read.
+The prerequisites and environment variables for the Deployment Helper. It covers the MySQL/MariaDB requirements, how the helper decides whether Shopware is installed, what a fresh install creates, and every env var the helper reads.
 
 ## When to use
 
-When preparing a server, container or CI secret set for `shopware-deployment-helper run`, or when a deployment unexpectedly reinstalls, cannot reach the database, or needs Store/Fastly credentials.
+- Preparing a server, container or CI deploy job for `shopware-deployment-helper run`.
+- Setting the initial admin, sales channel URL, DB TLS, Store credentials or Fastly integration.
 
 ## Key steps / config
 
-The database must be reachable at `DATABASE_URL` before the helper runs, writable, and compatible with the deployed Shopware version. An empty database is fine; the schema is created via `system:install`.
+**Database:** reachable at `DATABASE_URL` before the helper runs, writable (create tables, insert data), and compatible with the Shopware version being deployed. An empty database is fine; the helper then runs `system:install`.
 
-Shopware counts as installed only if the `system_config` table has content and `user` and `sales_channel` each have at least one row.
+**Install detection:** Shopware counts as installed only if all three hold:
 
-A fresh install creates the schema, one admin user, one Storefront sales channel named `Storefront`, the default Storefront theme assignment, messenger transport tables/queues, and all configured plugins and apps (unless excluded). More users, sales channels and settings must be added afterwards.
+- the `system_config` table exists and has content;
+- there is at least one row in `user`;
+- there is at least one row in `sales_channel`.
 
-### Installation (fresh install only)
+If the schema exists but users or sales channels are missing, the helper runs `system:install` again.
+
+**Fresh install creates:**
+
+- The schema, locale, currency and core setup via `system:install`.
+- One admin user from `INSTALL_ADMIN_*`.
+- A `Storefront` sales channel through `sales-channel:create:storefront`. This happens only if the Storefront is installed and no sales channel with that URL exists. The URL is `SALES_CHANNEL_URL`, falling back to `APP_URL`, otherwise empty.
+- The default Storefront theme assignment.
+- Messenger transport tables and queues.
+- All configured plugins and apps.
+
+Create additional users and sales channels yourself.
+
+### Installation (fresh install only, read by the helper)
 
 | Variable | Default |
 |---|---|
-| `INSTALL_LOCALE` | `en-GB` |
-| `INSTALL_CURRENCY` | `EUR` |
+| `INSTALL_LOCALE` | `en-GB` (passed as `--shop-locale`) |
+| `INSTALL_CURRENCY` | `EUR` (passed as `--shop-currency`) |
 | `INSTALL_ADMIN_USERNAME` | `admin` |
-| `INSTALL_ADMIN_PASSWORD` | `shopware` |
+| `INSTALL_ADMIN_PASSWORD` | `shopware` (change it) |
 | `INSTALL_ADMIN_EMAIL` | empty |
-| `SALES_CHANNEL_URL` | localhost over plain HTTP |
-| `APP_URL` | not set; fallback if `SALES_CHANNEL_URL` is unset |
+| `SALES_CHANNEL_URL` / `APP_URL` | not set |
+
+For other `system:install` options, see the [commands reference](platform/dev/6.7/resources/references/core-reference/commands-reference.md).
 
 ### Database connection
 
-- `DATABASE_URL` (required) — MySQL connection DSN
-- `DATABASE_SSL_CA`, `DATABASE_SSL_CERT`, `DATABASE_SSL_KEY` — TLS CA / client cert / client key paths
-- `DATABASE_SSL_DONT_VERIFY_SERVER_CERT` — any value skips server cert verification (dev/test only); see [database SSL/TLS](platform/dev/6.7/guides/hosting/infrastructure/database.md)
+`DATABASE_URL` (required, e.g. `mysql://user:pass@host:3306/shop`), `DATABASE_SSL_CA`, `DATABASE_SSL_CERT`, `DATABASE_SSL_KEY`, `DATABASE_SSL_DONT_VERIFY_SERVER_CERT` (any value skips server-cert verification; dev/test only). TLS details are on the [database page](platform/dev/6.7/guides/hosting/infrastructure/database.md).
 
 ### Deployment control
 
-- `SHOPWARE_DEPLOYMENT_TIMEOUT` — max seconds per step, default `300`, `null` disables
-- `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL` — `1` forces a fresh install with `--drop-database`
-- `SHOPWARE_DEPLOYMENT_STAGING` — `1` enables staging mode on every deployment
-- `SHOPWARE_PROJECT_CONFIG_FILE` — custom path to `.shopware-project.yml`
+- `SHOPWARE_DEPLOYMENT_TIMEOUT`: maximum seconds per step, default `300`; `null` disables the limit.
+- `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL=1`: forces a fresh install with `--drop-database`, which destroys existing data.
+- `SHOPWARE_DEPLOYMENT_STAGING=1`: enables staging mode on every deployment.
+- `SHOPWARE_PROJECT_CONFIG_FILE`: custom path to the project config, absolute or relative to the project root.
 
-### Store authentication (required for apps)
+### Store, usage data, Fastly
 
-- `SHOPWARE_STORE_ACCOUNT_EMAIL` + `SHOPWARE_STORE_ACCOUNT_PASSWORD`, or `SHOPWARE_STORE_SHOP_SECRET` (PaaS Native only)
-- `SHOPWARE_STORE_LICENSE_DOMAIN` — overrides `deployment.store.license-domain`
+- Store authentication is required for apps and optional if you only use plugins. Use `SHOPWARE_STORE_ACCOUNT_EMAIL` + `SHOPWARE_STORE_ACCOUNT_PASSWORD`, or `SHOPWARE_STORE_SHOP_SECRET` (PaaS Native only).
+- `SHOPWARE_STORE_LICENSE_DOMAIN` overrides `deployment.store.license-domain`.
+- `SHOPWARE_USAGE_DATA_CONSENT` = `accepted`|`revoked` overrides the Admin setting.
+- `DO_NOT_TRACK` (any value) opts out of helper telemetry.
+- `FASTLY_API_TOKEN` + `FASTLY_SERVICE_ID` are required to deploy VCL snippets. `FASTLY_DISABLE_SNIPPET_UPDATE=1` turns off snippet updates during `run`.
 
-### Usage, telemetry, Fastly
-
-- `SHOPWARE_USAGE_DATA_CONSENT` — `accepted` or `revoked`; overrides the Admin setting
-- `DO_NOT_TRACK` — any value opts out of Deployment Helper telemetry
-- `FASTLY_API_TOKEN`, `FASTLY_SERVICE_ID` — both required to deploy VCL snippets; `FASTLY_DISABLE_SNIPPET_UPDATE=1` disables updates during `run`
-
-On Shopware PaaS, keep sensitive values in the [Vault](platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md).
+On Shopware PaaS, store sensitive values in the [Vault](platform/dev/6.7/products/paas/shopware/guides/secrets-vault-guide.md).
 
 ## Essential identifiers
 
-- `DATABASE_URL`, `DATABASE_SSL_CA`
-- `INSTALL_ADMIN_USERNAME`, `INSTALL_ADMIN_PASSWORD`, `SALES_CHANNEL_URL`
-- `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL`, `SHOPWARE_PROJECT_CONFIG_FILE`
-- `SHOPWARE_STORE_ACCOUNT_EMAIL`, `SHOPWARE_STORE_SHOP_SECRET`
+- `DATABASE_URL`, `DATABASE_SSL_CA`, `DATABASE_SSL_CERT`, `DATABASE_SSL_KEY`, `DATABASE_SSL_DONT_VERIFY_SERVER_CERT`
+- `INSTALL_LOCALE`, `INSTALL_CURRENCY`, `INSTALL_ADMIN_USERNAME`, `INSTALL_ADMIN_PASSWORD`, `INSTALL_ADMIN_EMAIL`, `SALES_CHANNEL_URL`, `APP_URL`
+- `SHOPWARE_DEPLOYMENT_TIMEOUT`, `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL`, `SHOPWARE_DEPLOYMENT_STAGING`, `SHOPWARE_PROJECT_CONFIG_FILE`
+- `SHOPWARE_STORE_ACCOUNT_EMAIL`, `SHOPWARE_STORE_ACCOUNT_PASSWORD`, `SHOPWARE_STORE_SHOP_SECRET`, `SHOPWARE_STORE_LICENSE_DOMAIN`
+- `SHOPWARE_USAGE_DATA_CONSENT`, `DO_NOT_TRACK`, `FASTLY_API_TOKEN`, `FASTLY_SERVICE_ID`, `FASTLY_DISABLE_SNIPPET_UPDATE`
 
 ## Gotchas
 
-- Change `INSTALL_ADMIN_PASSWORD` from `shopware` immediately; the default is a production security risk.
-- A schema without users or sales channels is treated as not installed and `system:install` runs again.
-- `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL=1` destroys existing data.
+- The `INSTALL_*` variables are read by the Deployment Helper, not by `bin/console system:install`, and apply only on a fresh install.
+- The default `INSTALL_ADMIN_PASSWORD` (`shopware`) is a production security risk. Change it immediately.
+- `SHOPWARE_DEPLOYMENT_FORCE_REINSTALL=1` wipes the database on every run while it is set.
 
-## Code check (6.7.13.0)
-- confirmed `DATABASE_URL` — core throws when undefined or not a valid DSN — vendor/shopware/core/Maintenance/System/Struct/DatabaseConnectionInformation.php:55
-- confirmed `DATABASE_SSL_CA` — read by core connection info — vendor/shopware/core/Maintenance/System/Struct/DatabaseConnectionInformation.php:83
-- confirmed `DATABASE_SSL_DONT_VERIFY_SERVER_CERT` — read by core connection info — vendor/shopware/core/Maintenance/System/Struct/DatabaseConnectionInformation.php:86
-- confirmed `system:install` — core install command — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:27
-- confirmed `drop-database` — system:install option used by forced reinstall — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:47
-- confirmed `shop-locale` — system:install option for the install locale — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:53
-- confirmed `shop-currency` — system:install option for the install currency — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:54
-- unverified `INSTALL_ADMIN_PASSWORD` — read by the Deployment Helper package, outside the checked roots
-- unverified `SHOPWARE_DEPLOYMENT_TIMEOUT` — Deployment Helper variable, outside the checked roots
-- unverified `SHOPWARE_USAGE_DATA_CONSENT` — Deployment Helper variable, outside the checked roots
+## Code check (6.7.15.1)
+- confirmed `shop-locale` — `system:install` option exists — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:57
+- confirmed `shop-currency` — `system:install` option exists — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:58
+- confirmed `drop-database` — `system:install` option exists — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:51
+- confirmed `url` — `sales-channel:create:storefront` option exists — vendor/shopware/storefront/Framework/Command/SalesChannelCreateStorefrontCommand.php:48
+- confirmed `DATABASE_URL` — read by core when building the DB connection info — vendor/shopware/core/Maintenance/System/Struct/DatabaseConnectionInformation.php:53
+- confirmed `DATABASE_SSL_CA` — read by the core MySQLFactory — vendor/shopware/core/Framework/Adapter/Database/MySQLFactory.php:69
+- confirmed `DATABASE_SSL_KEY` — read by the core MySQLFactory — vendor/shopware/core/Framework/Adapter/Database/MySQLFactory.php:77
+- confirmed `DATABASE_SSL_DONT_VERIFY_SERVER_CERT` — read by core, applied only when the PDO constant exists — vendor/shopware/core/Framework/Adapter/Database/MySQLFactory.php:81
+- unverified `INSTALL_ADMIN_PASSWORD` — read by the deployment-helper package, out of scope
+- unverified `SHOPWARE_DEPLOYMENT_TIMEOUT` — read by the deployment-helper package, out of scope

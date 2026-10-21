@@ -6,71 +6,63 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/styling/add-custom-assets.html
 sourceHash: 9a87e07ece698c5812d3680f6551b553a8d2d5c6
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["assets:install", "src/Resources/public", "public/bundles", "asset()", "$sw-asset-public-url", "sw_extends", "base_main", "custom assets", "plugin images", "static files", "scss asset url", "storefront"]
-summary: Put plugin images/files in src/Resources/public, copy them with bin/console assets:install, link via Twig asset() or SCSS $sw-asset-public-url.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["assets:install", "src/Resources/public", "public/bundles", "asset()", "$sw-asset-public-url", "sw_extends", "base_main", "custom assets", "plugin images", "static files", "scss background image", "AssetInstallCommand"]
+summary: "Plugin static assets: put files in src/Resources/public, run assets:install, reference them via Twig asset() or SCSS."
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md", "platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md"]
 ---
 ## What it is
 
-How a Shopware plugin ships its own static assets (images and other files), gets them published under `public/bundles`, and references them from Storefront Twig templates and SCSS.
+How a plugin ships its own static assets (images and other files) and links to them from Storefront Twig templates and SCSS.
 
 ## When to use
 
-Your plugin needs a custom image or other static file in the Storefront, either in a template (`<img>`) or in a stylesheet (for example a `background-image`). For media, see [Media and thumbnails](platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md). Prerequisite: a working plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)).
+When a plugin needs its own images or other static files in the Storefront. Assumes a running plugin ([Plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)). For media managed in the shop (thumbnails), see [Media and thumbnails](platform/dev/6.7/guides/plugins/plugins/storefront/howto/use-media-thumbnails.md).
 
 ## Key steps / config
 
-1. Create the folder `src/Resources/public` in the plugin and store the asset there:
+1. Put the files into `<plugin root>/src/Resources/public/` (e.g. `src/Resources/public/your-image.png`).
+2. Run `bin/console assets:install` — do not copy by hand. It copies each bundle's `Resources/public` to `public/bundles/<name>`, where `<name>` is the lowercased bundle name with a trailing `bundle` stripped (`SwagBasicExample` → `public/bundles/swagbasicexample/`).
+3. Link from Twig with the `asset()` function and the `asset` package:
 
-   ```text
-   <plugin root>
-   ├── composer.json
-   └── src
-       ├── Resources/public/your-image.png
-       └── SwagBasicExample.php
-   ```
+```twig
+{% sw_extends '@Storefront/storefront/base.html.twig' %}
 
-2. Copy plugin assets into `public/bundles` with `bin/console assets:install` (do not copy by hand). The bundle folder is the lowercased plugin name, e.g. `public/bundles/swagbasicexample/your-image.png`.
+{% block base_main %}
+    <img src="{{ asset('bundles/swagbasicexample/image.png', 'asset') }}">
+    {{ parent() }}
+{% endblock %}
+```
 
-3. Link from a Storefront template with Symfony's `asset()` function, using the `asset` package:
+4. Link from SCSS (e.g. `src/Resources/app/storefront/src/scss/base.scss`) using the theme compiler variable:
 
-   ```twig
-   {% sw_extends '@Storefront/storefront/base.html.twig' %}
-   {% block base_main %}
-       <img src="{{ asset('bundles/swagbasicexample/image.png', 'asset') }}">
-       {{ parent() }}
-   {% endblock %}
-   ```
-
-4. Link from SCSS (e.g. `src/Resources/app/storefront/src/scss/base.scss`) with the theme compiler variable for the `public` asset package:
-
-   ```scss
-   body {
-       background-image: url("#{$sw-asset-public-url}/bundles/swagbasicexample/image.png");
-   }
-   ```
-
-   The theme compiler generates one `sw-asset-<package>-url` SCSS variable per asset package tagged `shopware.asset`; core registers packages named `public`, `asset` and `sitemap`, Storefront adds `theme`.
+```scss
+body {
+    background-image: url("#{$sw-asset-public-url}/bundles/swagbasicexample/image.png");
+}
+```
 
 ## Essential identifiers
 
-- `bin/console assets:install`
-- `src/Resources/public` → `public/bundles/<pluginname>/`
-- Twig: `asset('bundles/<pluginname>/<file>', 'asset')`
-- SCSS: `$sw-asset-public-url`
-- `shopware.asset.public`, `shopware.asset.asset` (asset package services)
+- `bin/console assets:install` (Shopware `AssetInstallCommand`; `--force` ignores the asset manifest)
+- `src/Resources/public` → `public/bundles/<lowercased-name>/`
+- Twig `asset('<path>', 'asset')`, `sw_extends`, block `base_main`
+- SCSS variable `$sw-asset-public-url`
 
 ## Gotchas
 
-- Assets placed in `src/Resources/public` are not served until `assets:install` has run.
-- Themes can use custom assets the same way, and additionally have another integration mechanism described in the theme guide on adding assets to a theme.
+- The source example stores `your-image.png` but references `image.png`; the path in `asset()`/`url()` must match the actual filename under `bundles/<name>/`.
+- `assets:install` also copies assets for active apps and the Installer, not only plugins.
+- Themes have an additional way to integrate assets (theme guide on adding assets to a theme, not linked here).
 
-## Code check (6.7.13.0)
-- confirmed `assets:install` — console command in core — vendor/shopware/core/Framework/Adapter/Asset/AssetInstallCommand.php:22
-- confirmed `sw-asset-%s-url` — SCSS variable generated per asset package before the enrich event — vendor/shopware/storefront/Theme/ThemeCompiler.php:728
-- confirmed `shopware.asset.public` — asset package tagged with asset="public", source of `$sw-asset-public-url` — vendor/shopware/core/Framework/DependencyInjection/filesystem.xml:71
-- confirmed `shopware.asset.asset` — asset package tagged asset="asset", used by `asset(..., 'asset')` — vendor/shopware/core/Framework/DependencyInjection/filesystem.xml:98
-- confirmed `base_main` — block exists in Storefront base template — vendor/shopware/storefront/Resources/views/storefront/base.html.twig:64
-- unverified `asset()` — Twig function provided by Symfony, out of scope
+## Code check (6.7.15.1)
+- confirmed `assets:install` — Shopware's own command — vendor/shopware/core/Framework/Adapter/Asset/AssetInstallCommand.php:23
+- confirmed `AssetInstallCommand::configure()` — `--force` option — vendor/shopware/core/Framework/Adapter/Asset/AssetInstallCommand.php:41
+- confirmed `Resources/public` — source directory constant — vendor/shopware/core/Framework/Plugin/Util/AssetService.php:40
+- confirmed `getTargetDirectory()` — `bundles/` + lowercased name minus `bundle` — vendor/shopware/core/Framework/Plugin/Util/AssetService.php:248
+- confirmed `shopware.asset.asset` — asset package tagged `asset` — vendor/shopware/core/Framework/DependencyInjection/filesystem.php:127
+- confirmed `sw-asset-%s-url` — theme compiler emits one SCSS variable per asset package — vendor/shopware/storefront/Theme/ThemeCompiler.php:737
+- confirmed `public` — asset package that yields `$sw-asset-public-url` — vendor/shopware/core/Framework/DependencyInjection/filesystem.php:104
+- confirmed `base_main` — block in Storefront base template — vendor/shopware/storefront/Resources/views/storefront/base.html.twig:64
+- unverified `asset()` — Twig function provided by Symfony, outside vendor/shopware roots

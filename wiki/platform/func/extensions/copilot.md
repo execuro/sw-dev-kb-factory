@@ -5,47 +5,40 @@ docType: functional
 version: "6.5"
 versions: ["6.5", "6.6", "6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/extensions/copilot
-sourceHash: 8b7735c637ee8cdf4f5e0fb14abfb9dcf97f6df310b7b71e95e7071fe4dd636c
+sourceHash: 431d739ca77d40b60b2a8baaf443b97bb9e5feeca61eafcfa61633016844a1cd
 revision:
   current: true
   range: "6.7.8.0"
   swMax: null
   swMin: null
-keywords: ["Copilot", "Copilot Agentic", "Data Insights", "Copilot credits", "@PRODUCT", "entity mention", "SwagCopilot", "custom role", "Users & permissions", "Shopware Intelligence+"]
-summary: "Chat-based admin AI assistant: Data Insights Q&A, entity mentions, custom Copilot roles, and Copilot Agentic draft-and-approve task execution."
-lastBuilt: "2026-09-15"
+keywords: ["Copilot", "SwagCopilot", "Data Insights", "Agentic", "chat history", "skills", "Copilot credits", "custom role", "Shopware Intelligence+", "MCP", "@ mention", "Manage extensions", "AI assistant", "Users & permissions"]
+summary: "Administration Copilot AI assistant: chat, role and skill settings, Data Insights, @ entity mentions, agentic draft approval, activity history and FAQ."
+lastBuilt: 2026-10-20
 ---
-
 ## What it is
 
-Copilot is a chat-based AI assistant in the Shopware Administration that answers configuration/feature questions, answers data-related questions via Data Insights, and — in Copilot Agentic — drafts changes for admin approval before executing them.
+Copilot is a chat-based AI assistant in the Shopware Administration. It answers questions about Shopware features and setup, queries shop data (Data Insights) and, in Agentic mode, performs admin tasks after approval.
 
 ## When to use
 
-When an admin wants quick answers about store configuration or features, data-driven insights (turnover, newsletter signups, bestsellers), or wants Copilot to perform bulk/recurring admin tasks after reviewing a draft.
+When configuring who may use Copilot and what it may access, using data questions about orders, customers or performance, or letting Copilot prepare changes such as discount campaigns, flows or bulk product updates.
 
 ## Key steps / config
 
-- Open Copilot via the **three stars** button on the admin dashboard; pick a suggested question or type into the text field; view **Chat history** via the clock/circular-arrow icon; start a **New chat** to run parallel conversations.
-- **Copilot settings** (gear icon): **General** tab — enable "Use custom roles for Copilot" and assign a role (managed under Settings > System > Users & permissions) to restrict which admin areas Copilot may view/edit/create/delete.
-- **Skills** tab: enable/disable individual Copilot features and see remaining free monthly Copilot credits; an Upgrade prompt appears for skills requiring a Shopware Intelligence+ subscription.
-- **Data Insights**: ask data questions about customers/orders/performance; output as text, table, or graph; supports CSV export and a full-screen sidebar view. Does not process PII — e.g. cannot answer address requests.
-- Mention entities in prompts with `@` (Categories, Customers, Landing pages, Products), e.g. `How many @PRODUCT are left in my inventory?`; requires Data Insights active and Shopware 6.7.3.0 or higher.
-- **Copilot Agentic** (beta): performs tasks such as creating discount campaigns, setting up flows, or bulk product updates. Presents a draft with an affected-data preview; changes only apply after clicking **Approve** (or are discarded on **Reject**). **Activity history** lists past requests with the read/write operations performed, filterable by search and time.
-- Access: only administrators have initial access; additional users are enabled via Settings > System > Users & permissions > Roles, with the "Manage extensions" additional permission required to reveal Apps > SwagCopilot.
-
-## Essential identifiers
-
-Copilot, Copilot Agentic, Data Insights, `@PRODUCT` (entity mention), SwagCopilot, Manage extensions permission
+- **Open**: the three-stars button on the right of the dashboard; pick a suggested question or type one. Chat history (clock icon) is user-specific; delete all or single chats via context menus. A new chat can start while another runs; a status circle shows progress.
+- **Settings** (gear icon): General tab, enable **Use custom roles for Copilot** and select a role. Permissions (view, edit, create, delete) come from **Users & permissions**. The Skills tab toggles features and shows remaining free monthly Copilot credits; an Upgrade button appears for skills needing Intelligence+.
+- **Data Insights**: ask data questions (turnover, newsletter registrations, bestsellers) and get text, table or graph output, CSV export and a full-screen sidebar. Copilot does not process PII. A global switch in the Copilot context menu disables Data Insights if large shops slow down.
+- **Mention entities** with `@`: Categories, Customers, Landing pages, Products; for example `How many @PRODUCT are left in my inventory?`. Requires Data Insights active and Shopware 6.7.3.0 or higher.
+- **Agentic**: Copilot drafts a change, shows old and new values and the affected data, and applies it only after **Approve** (Reject is possible). The activity history lists requests per date with read counts and whether changes were made, with search and time filter. Compatible plugins and apps can expose features to Copilot via MCP; the provider sets this up.
+- **Access**: initially administrators only. For others, Settings > System > Users & permissions > Roles, activate **Manage extensions** under Additional permissions so that Apps > SwagCopilot becomes visible.
 
 ## Gotchas
 
-- Copilot Agentic requires Data Insights enabled; disabling Data Insights disables the agentic functions too.
-- Executed Agentic actions cannot be reverted.
-- Copilot does not have direct shop access and does not use entered data to train the AI model.
-- Do not enter sensitive data (names, bank details) into Copilot prompts.
-- Disable Data Insights via the global switch in the Copilot context menu if data-intensive skills slow the admin area on very large shops.
+- Free requests per month are limited; beyond that an active Shopware Intelligence+ subscription is needed.
+- Agentic features depend on Data Insights; if it is disabled they are unavailable. Executed actions cannot be reverted; Copilot acts within the assigned role.
+- Do not enter sensitive data; answers can be inaccurate.
+- Queries go to an external AI provider (currently based in Europe) that has no shop access and does not train on the data; Shopware collects requests to improve the product.
 
 ## Version notes
 
-Entity mentions (`@`) require Shopware 6.7.3.0 or higher. Both Data Insights beyond the free monthly quota and Copilot Agentic require an active Shopware Intelligence+ subscription.
+Entity mentions need 6.7.3.0 or higher. The page revision range is 6.7.8.0.

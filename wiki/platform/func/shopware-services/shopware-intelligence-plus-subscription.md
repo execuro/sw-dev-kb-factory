@@ -5,40 +5,43 @@ docType: functional
 version: "6.5"
 versions: ["6.5", "6.6", "6.7"]
 sourceUrl: https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-intelligence-plus-subscription
-sourceHash: efb5b68caddd1559b634aaed5776242f5deecfef8a3991d690c2795eea30b132
+sourceHash: 73de6bd243887bacd330b637e0aa831012d4546723f8b3dabf199df8d464b578
 revision:
   current: true
-  range: "current"
-  swMax: null
-  swMin: null
-keywords: ["Shopware Intelligence+", "Copilot Data Insights", "Copilot Agentic", "Image Editor", "3D Preview Generator", "CAD to 3D File Conversion", "free trial", "request quota", "Media Manager", "discount campaigns", "bulk product updates"]
-summary: "Shopware Intelligence+ bundles Copilot Data Insights, Copilot Agentic, Image Editor, 3D Preview Generator and CAD-to-3D, with free monthly trial quotas."
-lastBuilt: "2026-09-15"
+  range: "01.06.2026 - 08.09.2026"
+  swMax: "08.09.2026"
+  swMin: "01.06.2026"
+keywords: ["shopware intelligence+", "intelligence plus", "copilot data insights", "copilot agentic", "image editor", "3d pipeline", "cad to 3d", "glb", "free trial requests", "shopware services"]
+summary: Services in Shopware Intelligence+ (Copilot Data Insights, Agentic, Image Editor, 3D Pipeline, CAD to 3D), free monthly requests, Image Editor end date.
+lastBuilt: 2026-10-20
 ---
 ## What it is
 
-Shopware Intelligence+ is a set of services: Copilot Data Insights (data-related Q&A with numbers/charts), Copilot Agentic (Copilot performs tasks such as creating discount campaigns, setting up flows, or bulk product updates), Image Editor (background removal/blending for product images), 3D Preview Generator (auto-creates preview images for `.glb` 3D files), and CAD to 3D File Conversion (converts CAD files into web-compatible GLB 3D models within the Media Manager).
+Shopware Intelligence+ is a subscription bundling Shopware services: Copilot Data Insights, Copilot Agentic, Image Editor, 3D Pipeline and CAD to 3D File Conversion. During the initial launch phase all services are usable without fixed request quotas.
 
 ## When to use
 
-Relevant for merchants wanting AI-assisted admin insights/automation, image editing, or 3D asset generation/conversion for storefront use.
+Use it to see which services belong to the subscription and how many free requests each trial service offers.
 
 ## Key steps / config
 
-During the initial launch phase, full access to all Shopware Intelligence+ services is available without fixed request quotas (subject to temporary rate reduction for atypically high or abusive usage).
+Services:
+- **Copilot Data Insights**: ask Copilot questions about customers, orders or shop performance; answers come as numbers and charts.
+- **Copilot Agentic**: Copilot performs tasks in the admin, e.g. creating discount campaigns, setting up flows, bulk product updates.
+- **Image Editor**: removes product image backgrounds and blends products into new backgrounds with matching light and shadow.
+- **3D Pipeline**: 3D file optimisation plus preview image generation; once enabled for a media folder, uploaded 3D files are processed in the background.
+- **CAD to 3D File Conversion**: converts CAD files into web-compatible 3D models (GLB) in the Media Manager.
 
-Free trial monthly request limits per service:
-- Copilot Data Insights + Copilot Agentic: 10
-- Image Editor: 20
-- 3D Preview Generator: n/a
-- CAD to 3D File Conversion: 1
+Free trial requests per month:
 
-## Essential identifiers
-
-- Services: Copilot Data Insights, Copilot Agentic, Image Editor, 3D Preview Generator, CAD to 3D File Conversion
-- File format for 3D previews: `.glb` / GLB
+| Service | Free requests |
+|---|---|
+| Copilot Data Insights + Copilot Agentic | 10 |
+| Image Editor | 20 |
+| 3D Pipeline | n/a |
+| CAD to 3D File Conversion | 1 |
 
 ## Gotchas
 
-- Free trial usage is limited to a fixed number of requests per month per service; only the request count is limited, not functionality.
-- In the initial launch phase there are no fixed request quotas, but atypically high or abusive usage may trigger a temporary rate reduction.
+- In case of atypically high or abusive usage, the request rate may be temporarily reduced.
+- The Image Editor is available until 31 October 2026 and is discontinued on 1 November 2026; afterwards it is neither part of Intelligence+ nor a free trial service.

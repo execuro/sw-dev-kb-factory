@@ -1,14 +1,21 @@
 {
-  "lastSync": "2026-09-15T09:47:39.281Z",
+  "lastSync": "2026-10-20T19:31:49.363Z",
   "pages": {
     "platform/func/Productcomparison.md": {
-      "builtHash": "ac1de92a62aead0664a270e668e0908c561572057912d1739b15d4a3a0358566",
-      "date": 1789459644,
-      "hash": "ac1de92a62aead0664a270e668e0908c561572057912d1739b15d4a3a0358566",
+      "builtHash": "4238a2fca2b177c9bef0d0a27ed448b1ad7427597015a6d6fc6ba70000ace5f5",
+      "date": 1792524636,
+      "hash": "4238a2fca2b177c9bef0d0a27ed448b1ad7427597015a6d6fc6ba70000ace5f5",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.4.0.0 - 6.6.10.29",
+          "swMax": "6.6.10.29",
+          "swMin": "6.4.0.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/Productcomparison?version=1.3.1.1&amp;category=shopware-6-en/swsaleschannel"
+        },
+        {
+          "current": false,
           "range": "6.3.0.0 - 6.3.5.4",
           "swMax": "6.3.5.4",
           "swMin": "6.3.0.0",
@@ -78,71 +85,92 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/catalogues/categories"
     },
     "platform/func/catalogues/product-overview.md": {
-      "builtHash": "907fb1891def147c165ec9ff0ac5a66bd21d46e76a402661300f5a088d020b5a",
-      "date": 1789459633,
-      "hash": "907fb1891def147c165ec9ff0ac5a66bd21d46e76a402661300f5a088d020b5a",
+      "builtHash": "a5179b53b36bc16c02e53fd844b88acd304b3ee6f90a0ffc7a570c81f853a5a7",
+      "date": 1792524624,
+      "hash": "a5179b53b36bc16c02e53fd844b88acd304b3ee6f90a0ffc7a570c81f853a5a7",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.7.0.0 - 6.7.14.2",
+          "swMax": "6.7.14.2",
+          "swMin": "6.7.0.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.4.0.0&amp;category=shopware-6-en/catalogues"
+        },
+        {
+          "current": false,
+          "range": "6.4.10.0 - 6.6.10.25",
+          "swMax": "6.6.10.25",
+          "swMin": "6.4.10.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.3.3.0&amp;category=shopware-6-en/catalogues"
+        },
+        {
+          "current": false,
           "range": "6.4.8.0 - 6.4.9.0",
           "swMax": "6.4.9.0",
           "swMin": "6.4.8.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.6.1&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.3.2.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
           "range": "6.4.5.0 - 6.4.7.0",
           "swMax": "6.4.7.0",
           "swMin": "6.4.5.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.6.0&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.3.1.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
-          "range": "6.3.4.0 - 6.4.4.1",
+          "range": "6.4.0.0 - 6.4.4.1",
           "swMax": "6.4.4.1",
-          "swMin": "6.3.4.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.5.0&amp;category=shopware-6-en/catalogues"
+          "swMin": "6.4.0.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.3.0.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
           "range": "6.3.4.0 - 6.3.5.2",
           "swMax": "6.3.5.2",
           "swMin": "6.3.4.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.4.0&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.2.1.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
           "range": "6.3.0.0 - 6.3.3.1",
           "swMax": "6.3.3.1",
           "swMin": "6.3.0.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.3.0&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.2.0.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
           "range": "6.2.0 - 6.2.3",
           "swMax": "6.2.3",
           "swMin": "6.2.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.2.0&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.1.0.0&amp;category=shopware-6-en/catalogues"
         },
         {
           "current": false,
           "range": "6.0.0 - 6.1.6",
           "swMax": "6.1.6",
           "swMin": "6.0.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.0.0&amp;category=shopware-6-en/catalogues"
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview?version=1.0.0.0&amp;category=shopware-6-en/catalogues"
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/catalogues/product-overview"
     },
     "platform/func/catalogues/products.md": {
-      "builtHash": "77b35e187b799e70afedf68eb05a0face2307a839324f8cd5201707bed68e8f4",
-      "date": 1789459632,
-      "hash": "77b35e187b799e70afedf68eb05a0face2307a839324f8cd5201707bed68e8f4",
+      "builtHash": "79b3d5c5f39269e99a08c9d0708115526cb7f23198c8f08da1ed476c34c321f7",
+      "date": 1792524623,
+      "hash": "79b3d5c5f39269e99a08c9d0708115526cb7f23198c8f08da1ed476c34c321f7",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.7.14.0 - 6.7.14.2",
+          "swMax": "6.7.14.2",
+          "swMin": "6.7.14.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/catalogues/products?version=1.4.2.0&amp;category=shopware-6-en/catalogues"
+        },
+        {
+          "current": false,
           "range": "6.7.9.0 - 6.7.13.1",
           "swMax": "6.7.13.1",
           "swMin": "6.7.9.0",
@@ -320,9 +348,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/catalogues/products"
     },
     "platform/func/commercial-features/b2b-components.md": {
-      "builtHash": "7b83e22a8ab5b9473423fb0a47578eedd695395cb01f2097a7f1d199b790e200",
-      "date": 1789459637,
-      "hash": "7b83e22a8ab5b9473423fb0a47578eedd695395cb01f2097a7f1d199b790e200",
+      "builtHash": "ad53f4ab0925eca1d426e9deae4f5cd54b088526b5ae4897224cbd5937a4bb53",
+      "date": 1792524628,
+      "hash": "ad53f4ab0925eca1d426e9deae4f5cd54b088526b5ae4897224cbd5937a4bb53",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -429,9 +457,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/commercial-features/cad-to-3d-file-conversion"
     },
     "platform/func/commercial-features/scene-editor.md": {
-      "builtHash": "5984585772a365dd3eff289c98cc8d2ed3b09c3f688adbfebad8d2cbafc5a96c",
-      "date": 1789459716,
-      "hash": "5984585772a365dd3eff289c98cc8d2ed3b09c3f688adbfebad8d2cbafc5a96c",
+      "builtHash": "9d32975378ba5e25edb042662d997cad3aa61e7107db9383c11465a21b0aa71d",
+      "date": 1792524707,
+      "hash": "9d32975378ba5e25edb042662d997cad3aa61e7107db9383c11465a21b0aa71d",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -619,13 +647,20 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/content/Themes"
     },
     "platform/func/content/media.md": {
-      "builtHash": "9a8c55ff954da86a9532a13b455fd2d2dc0c783a5ff8fdd6be2f574a9521c1ed",
-      "date": 1789459635,
-      "hash": "9a8c55ff954da86a9532a13b455fd2d2dc0c783a5ff8fdd6be2f574a9521c1ed",
+      "builtHash": "e514f97221c58f2df44ceaa8d048c95ae2682ce2cfe02328851520434be8866a",
+      "date": 1792524626,
+      "hash": "e514f97221c58f2df44ceaa8d048c95ae2682ce2cfe02328851520434be8866a",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.7.10.0 - 6.7.13.1",
+          "swMax": "6.7.13.1",
+          "swMin": "6.7.10.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/content/media?version=1.6.2.0&amp;category=shopware-6-en/content"
+        },
+        {
+          "current": false,
           "range": "6.7.8.0 - 6.7.9.1",
           "swMax": "6.7.9.1",
           "swMin": "6.7.8.0",
@@ -786,17 +821,17 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/customers/overview"
     },
     "platform/func/extensions/3d-preview-generator.md": {
-      "builtHash": "f6e4634b9245e97887e9f7284217b6540ac75daeb31c0d2eedf5fedad6152c2f",
-      "date": 1789459696,
-      "hash": "f6e4634b9245e97887e9f7284217b6540ac75daeb31c0d2eedf5fedad6152c2f",
+      "builtHash": "ceaeaccb579de668fca4e59b1f8375b59aa9288e3fb964ca8885508c7f59891d",
+      "date": 1792524686,
+      "hash": "ceaeaccb579de668fca4e59b1f8375b59aa9288e3fb964ca8885508c7f59891d",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
-          "range": "current",
-          "swMax": null,
-          "swMin": null,
-          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/3d-preview-generator"
+          "range": "6.7.1.0 - 6.7.13.1",
+          "swMax": "6.7.13.1",
+          "swMin": "6.7.1.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/3d-preview-generator?version=1.0.0.1&amp;category=shopware-6-en/shopware-services/cservices"
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/3d-preview-generator"
@@ -818,24 +853,24 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/advanced-search"
     },
     "platform/func/extensions/agentic-commerce.md": {
-      "builtHash": "98a80007cf3d479f1bef5355cc28c64c92b14b2706b36f15ece4fcda6a36a9b8",
-      "date": 1789459622,
-      "hash": "98a80007cf3d479f1bef5355cc28c64c92b14b2706b36f15ece4fcda6a36a9b8",
+      "builtHash": "2545837938ca6209f4868208b70c884f1453ff24d59e3160fddfe3dc4d3d2726",
+      "date": 1792524613,
+      "hash": "2545837938ca6209f4868208b70c884f1453ff24d59e3160fddfe3dc4d3d2726",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
-          "range": "6.7.0.0",
-          "swMax": null,
-          "swMin": null,
-          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/agentic-commerce?version=1.2.0.0&amp;category=shopware-6-en/extensions"
+          "range": "6.6.0.0 - 6.6.10.29",
+          "swMax": "6.6.10.29",
+          "swMin": "6.6.0.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/agentic-commerce?version=1.1.0.1&amp;category=shopware-6-en/extensions"
         },
         {
           "current": false,
-          "range": "6.6.0.0 - 6.6.10.18",
-          "swMax": "6.6.10.18",
-          "swMin": "6.6.0.0",
-          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/agentic-commerce?version=1.1.0.0&amp;category=shopware-6-en/extensions"
+          "range": "6.5.8.0 - 6.5.8.19",
+          "swMax": "6.5.8.19",
+          "swMin": "6.5.8.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/agentic-commerce?version=1.0.0.0&amp;category=shopware-6-en/extensions"
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/agentic-commerce"
@@ -959,9 +994,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/cms-extensions"
     },
     "platform/func/extensions/copilot.md": {
-      "builtHash": "8b7735c637ee8cdf4f5e0fb14abfb9dcf97f6df310b7b71e95e7071fe4dd636c",
-      "date": 1789459695,
-      "hash": "8b7735c637ee8cdf4f5e0fb14abfb9dcf97f6df310b7b71e95e7071fe4dd636c",
+      "builtHash": "431d739ca77d40b60b2a8baaf443b97bb9e5feeca61eafcfa61633016844a1cd",
+      "date": 1792524687,
+      "hash": "431d739ca77d40b60b2a8baaf443b97bb9e5feeca61eafcfa61633016844a1cd",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -1162,9 +1197,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/error-messages"
     },
     "platform/func/extensions/image-editor.md": {
-      "builtHash": "057d9c7a23fcf59537a346d792d93ca6dceff7d7e790b2e84c57d814f15c9d13",
-      "date": 1789459697,
-      "hash": "057d9c7a23fcf59537a346d792d93ca6dceff7d7e790b2e84c57d814f15c9d13",
+      "builtHash": "0f5736e293e9bf103d37dbd4f8657697b852f1122f831b25bdbdb3eb9843c735",
+      "date": 1792524688,
+      "hash": "0f5736e293e9bf103d37dbd4f8657697b852f1122f831b25bdbdb3eb9843c735",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -1265,17 +1300,31 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/myextensions"
     },
     "platform/func/extensions/paypal.md": {
-      "builtHash": "61ee409052a1aaf9fc0b03a52d4f734f01423f4e01c906ac02bcb423d288996f",
-      "date": 1789459622,
-      "hash": "61ee409052a1aaf9fc0b03a52d4f734f01423f4e01c906ac02bcb423d288996f",
+      "builtHash": "c59bca00d8f666e1df10516fcd1248b6da2237a76cb7108b1a1cd6ecf4ff5307",
+      "date": 1792524613,
+      "hash": "c59bca00d8f666e1df10516fcd1248b6da2237a76cb7108b1a1cd6ecf4ff5307",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "10.7.0 - 10.8.0",
+          "swMax": "10.8.0",
+          "swMin": "10.7.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/paypal?version=1.7.1.0&amp;category=shopware-6-en/settings/plugins-menu"
+        },
+        {
+          "current": false,
           "range": "8.0.0 - 9.7.6",
           "swMax": "9.7.6",
           "swMin": "8.0.0",
           "url": "https://docs.shopware.com/en/shopware-6-en/extensions/paypal?version=1.6.2.0&amp;category=shopware-6-en/settings/plugins-menu"
+        },
+        {
+          "current": false,
+          "range": "10.0.0 - 10.6.4",
+          "swMax": "10.6.4",
+          "swMin": "10.0.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/paypal?version=1.7.0.0&amp;category=shopware-6-en/settings/plugins-menu"
         },
         {
           "current": false,
@@ -1395,13 +1444,20 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/extensions/sales-agent"
     },
     "platform/func/extensions/shopware-analytics.md": {
-      "builtHash": "e1d81ba49497070b3bf6386cc31f5abf1a7a6fcb5c50157c285380487622c294",
-      "date": 1789459623,
-      "hash": "e1d81ba49497070b3bf6386cc31f5abf1a7a6fcb5c50157c285380487622c294",
+      "builtHash": "c3001b5c688ae830e8cb8c36959d8188bef9d4bac1dcdf017771845441937486",
+      "date": 1792524614,
+      "hash": "c3001b5c688ae830e8cb8c36959d8188bef9d4bac1dcdf017771845441937486",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "2.10.0 - 2.12.0",
+          "swMax": "2.12.0",
+          "swMin": "2.10.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/extensions/shopware-analytics?version=1.4.4.1&amp;category=shopware-6-en/extensions"
+        },
+        {
+          "current": false,
           "range": "1.9.1 - 1.9.1",
           "swMax": "1.9.1",
           "swMin": "1.9.1",
@@ -1599,6 +1655,22 @@
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/features/b2b-components"
     },
+    "platform/func/features/bundles.md": {
+      "builtHash": "34262fd1eeb74e857653e7f47cf8c4129a527868f3c8f3e65c7d2a3906246c4d",
+      "date": 1792524698,
+      "hash": "34262fd1eeb74e857653e7f47cf8c4129a527868f3c8f3e65c7d2a3906246c4d",
+      "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
+      "revisions": [
+        {
+          "current": true,
+          "range": "current",
+          "swMax": null,
+          "swMin": null,
+          "url": "https://docs.shopware.com/en/shopware-6-en/features/bundles"
+        }
+      ],
+      "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/features/bundles"
+    },
     "platform/func/features/cms-extensions.md": {
       "builtHash": "a8e886e8e75691e455a9a79a59b48828c3bca4044d1c630d70c0ae47e10902ec",
       "date": 1789459708,
@@ -1792,9 +1864,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/features/rule-builder-preview"
     },
     "platform/func/features/scene-editor.md": {
-      "builtHash": "8865c80ca46a33cbb1bbcef11c9a670456c41819a99c8af801f93136aa728039",
-      "date": 1789459698,
-      "hash": "8865c80ca46a33cbb1bbcef11c9a670456c41819a99c8af801f93136aa728039",
+      "builtHash": "10a53023a90ee1f103855858d3b6bc72581deece867439034283f5831285e1b8",
+      "date": 1792524689,
+      "hash": "10a53023a90ee1f103855858d3b6bc72581deece867439034283f5831285e1b8",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -2515,9 +2587,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/orders/create-order-in-admin"
     },
     "platform/func/orders/overview.md": {
-      "builtHash": "151a66c9aa56ddbca8266e70bc1eb8c7bb1a61ec0d125a55cc4b11eed36db7cb",
-      "date": 1789459645,
-      "hash": "151a66c9aa56ddbca8266e70bc1eb8c7bb1a61ec0d125a55cc4b11eed36db7cb",
+      "builtHash": "468088bbb761aae3d59fb11fe2471dee6b25040ef9d25e781b33c328fad100b6",
+      "date": 1792524636,
+      "hash": "468088bbb761aae3d59fb11fe2471dee6b25040ef9d25e781b33c328fad100b6",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -3091,13 +3163,20 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/settings/Profilesettings"
     },
     "platform/func/settings/Shopping-cart.md": {
-      "builtHash": "57f41565a1b09c5fc98723bd58c69cf3d7a4fc423e6d158b2d3017125c0c8326",
-      "date": 1789459613,
-      "hash": "57f41565a1b09c5fc98723bd58c69cf3d7a4fc423e6d158b2d3017125c0c8326",
+      "builtHash": "16a563b2bff49fe95c83efe5cfc17ed6718953c9edee0dc505e86d7f4b68660d",
+      "date": 1792524604,
+      "hash": "16a563b2bff49fe95c83efe5cfc17ed6718953c9edee0dc505e86d7f4b68660d",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.7.14.0 - 6.7.14.2",
+          "swMax": "6.7.14.2",
+          "swMin": "6.7.14.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/settings/Shopping-cart?version=1.4.1.0&amp;category=shopware-6-en/settings/shop"
+        },
+        {
+          "current": false,
           "range": "6.7.1.0 - 6.7.13.1",
           "swMax": "6.7.13.1",
           "swMin": "6.7.1.0",
@@ -4612,17 +4691,17 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-gmv-reporting"
     },
     "platform/func/shopware-services/bundles.md": {
-      "builtHash": "b698b4f3218d3e71b236929b9161d2c7cd73233dc195455f6041bd5dd90de19c",
-      "date": 1789459715,
-      "hash": "b698b4f3218d3e71b236929b9161d2c7cd73233dc195455f6041bd5dd90de19c",
+      "builtHash": "2ddc3e667effb69091e51748c4e59ab388d5186524695e143602b090490a1ad8",
+      "date": 1792524627,
+      "hash": "2ddc3e667effb69091e51748c4e59ab388d5186524695e143602b090490a1ad8",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
-          "range": "current",
-          "swMax": null,
-          "swMin": null,
-          "url": "https://docs.shopware.com/en/shopware-6-en/shopware-services/bundles"
+          "range": "6.7.9.0 - 6.7.14.2",
+          "swMax": "6.7.14.2",
+          "swMin": "6.7.9.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/shopware-services/bundles?version=1.0.0.0&amp;category=shopware-6-en/features/commercial"
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/shopware-services/bundles"
@@ -4644,17 +4723,17 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/shopware-services/recommendation-preview"
     },
     "platform/func/shopware-services/shopware-intelligence-plus-subscription.md": {
-      "builtHash": "efb5b68caddd1559b634aaed5776242f5deecfef8a3991d690c2795eea30b132",
-      "date": 1789459717,
-      "hash": "efb5b68caddd1559b634aaed5776242f5deecfef8a3991d690c2795eea30b132",
+      "builtHash": "73de6bd243887bacd330b637e0aa831012d4546723f8b3dabf199df8d464b578",
+      "date": 1792524708,
+      "hash": "73de6bd243887bacd330b637e0aa831012d4546723f8b3dabf199df8d464b578",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
-          "range": "current",
-          "swMax": null,
-          "swMin": null,
-          "url": "https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-intelligence-plus-subscription"
+          "range": "01.06.2026 - 08.09.2026",
+          "swMax": "08.09.2026",
+          "swMin": "01.06.2026",
+          "url": "https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-intelligence-plus-subscription?version=1.0.0.2&amp;category=shopware-6-en/shopware-services/shopware-intelligence-plus"
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-intelligence-plus-subscription"
@@ -4676,9 +4755,9 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/shopware-services/shopware-nexus"
     },
     "platform/func/shopware-services/shopware-payments.md": {
-      "builtHash": "e3043aeb6298fee7773bc7e45da5feb2fdedd381305c47d531c5b475b2009951",
-      "date": 1789465636,
-      "hash": "e3043aeb6298fee7773bc7e45da5feb2fdedd381305c47d531c5b475b2009951",
+      "builtHash": "7125a879148e747948035ce7b1d27b550c6056ffe2052dc6e3c6946b542b90c3",
+      "date": 1792524686,
+      "hash": "7125a879148e747948035ce7b1d27b550c6056ffe2052dc6e3c6946b542b90c3",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
@@ -4861,6 +4940,22 @@
       "fetchError": "HTTP 404 for https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/debugging",
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/debugging"
     },
+    "platform/func/tutorials-and-faq/documentv2.md": {
+      "builtHash": "a17080cbd3264852f33cbba0e85f0535ea2bd360ad6dad497ec32343d882cbad",
+      "date": 1792524654,
+      "hash": "a17080cbd3264852f33cbba0e85f0535ea2bd360ad6dad497ec32343d882cbad",
+      "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
+      "revisions": [
+        {
+          "current": true,
+          "range": "current",
+          "swMax": null,
+          "swMin": null,
+          "url": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/documentv2"
+        }
+      ],
+      "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/documentv2"
+    },
     "platform/func/tutorials-and-faq/dynamic-access-example-configuration.md": {
       "builtHash": "99cfb4983889a2462ca9270b419a18c7d57f9e75438a0712f4693ba334db1f7e",
       "date": 1789459689,
@@ -4993,22 +5088,6 @@
         }
       ],
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/howto/disable-stock-calculation"
-    },
-    "platform/func/tutorials-and-faq/insider-previews.md": {
-      "builtHash": "20af6bb95c76771f05fd238a10d5b590d8afea0b85845057922870d382b6ef3f",
-      "date": 1789459665,
-      "hash": "20af6bb95c76771f05fd238a10d5b590d8afea0b85845057922870d382b6ef3f",
-      "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
-      "revisions": [
-        {
-          "current": true,
-          "range": "current",
-          "swMax": null,
-          "swMin": null,
-          "url": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/insider-previews"
-        }
-      ],
-      "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/insider-previews"
     },
     "platform/func/tutorials-and-faq/message-queue-and-scheduled-tasks.md": {
       "builtHash": "490375c5f969f38e32f26c6f8233013ef01f00e6bc23f2f540dac836168905b5",
@@ -5511,13 +5590,20 @@
       "sourceUrl": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/tipsforusingtheadmin"
     },
     "platform/func/tutorials-and-faq/tipsforusingtheadmin/create-test-environment.md": {
-      "builtHash": "88b8da7804301cbf9b58d16c323061cbdd995e6042a1cf881f9025623849913d",
-      "date": 1789459649,
-      "hash": "88b8da7804301cbf9b58d16c323061cbdd995e6042a1cf881f9025623849913d",
+      "builtHash": "8b88b69be12394de66b83895300084d7fb934ee997d36e16f3ff49454ac34f08",
+      "date": 1792524640,
+      "hash": "8b88b69be12394de66b83895300084d7fb934ee997d36e16f3ff49454ac34f08",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "revisions": [
         {
           "current": true,
+          "range": "6.6.1.0 - 6.6.10.29",
+          "swMax": "6.6.10.29",
+          "swMin": "6.6.1.0",
+          "url": "https://docs.shopware.com/en/shopware-6-en/tutorials-and-faq/tipsforusingtheadmin/create-test-environment?version=1.2.0.0&amp;category=shopware-6-en/tutorials-und-faq/howto"
+        },
+        {
+          "current": false,
           "range": "6.0.0 - 6.6.0.3",
           "swMax": "6.6.0.3",
           "swMin": "6.0.0",

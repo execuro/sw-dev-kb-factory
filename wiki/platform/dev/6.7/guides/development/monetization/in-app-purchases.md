@@ -5,29 +5,30 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/monetization/in-app-purchases.html
-sourceHash: 0af7f9ba63a014111b159d5b3dc549f1f4da6c1e
-codeCheckedAgainst: "6.7.13.0"
+sourceHash: d03bcdee422d7363c4341814002c75b7feb2e43e
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["in-app purchases", "iap", "sw.iap.purchase", "inAppPurchases", "in-app-purchases", "sw-main-hidden", "jwt", "jwks", "shopware/app-bundle", "shopware/app-php-sdk", "ModuleAction", "paywall", "meteor admin sdk", "extension monetization"]
+summary: How extensions sell In-App Purchases via sw.iap.purchase() and validate the IAP JWT (in-app-purchases / inAppPurchases) against Shopware's JWKS.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/concepts/framework/in-app-purchases.md"]
-keywords: ["in-app purchases", "iap", "sw.iap.purchase", "iapCheckout", "in-app-purchases", "inAppPurchases", "jwt", "jwks", "shopware/app-bundle", "shopware/app-php-sdk", "ModuleAction", "meteor admin sdk", "paywall", "InAppPurchase"]
-summary: "In-App Purchases: start checkout via Admin SDK sw.iap.purchase(), read bought IAPs from the in-app-purchases JWT, verify it against Shopware's JWKS."
-lastBuilt: 2026-09-15
 ---
 ## What it is
 
-In-App Purchases (IAP) let an extension lock features behind a paywall inside the same extension (e.g. free base version plus paid features). This guide covers starting the purchase checkout and reading which IAPs are active on the app server and in the app's admin UI. Concept: [In-App purchases concept](platform/dev/6.7/concepts/framework/in-app-purchases.md); extension-partner docs: [Documentation for Extension Partner](https://docs.shopware.com/en/account-en/extension-partner/in-app-purchases).
+In-App Purchases (IAP) let an extension lock features behind a paywall inside the same extension, e.g. a free tier with limited features plus paid features. Available since Shopware 6.6.9.0. Concept background: [In-App purchases concept](platform/dev/6.7/concepts/framework/in-app-purchases.md); partner-side documentation: [Documentation for Extension Partner](https://docs.shopware.com/en/account-en/extension-partner/in-app-purchases).
 
 ## When to use
 
-When building an app/extension with free and paid feature tiers and you need to sell a feature and check whether a shop has bought it.
+- You want users to buy a feature of your app/plugin from inside the Administration.
+- Your app server must decide which features are unlocked for a shop based on purchased IAPs.
 
 ## Key steps / config
 
-1. **Start checkout**: call `sw.iap.purchase()` from the [Meteor Admin SDK](https://github.com/shopware/meteor/tree/main/packages/admin-sdk). The Administration handles the resulting `iapCheckout` message and opens the Shopware-provided checkout. You provide the button yourself and must hide it if the IAP cannot be bought more than once. Alternatively send a correctly formatted `postMessage` with the IAP identifier to the Admin.
-2. **Receive active IAPs**: every request Shopware sends to the app carries a JWT whose claims list all bought IAPs:
+1. **Start a checkout**: call `sw.iap.purchase()` from the [Meteor Admin SDK](https://github.com/shopware/meteor/tree/main/packages/admin-sdk). Shopware provides the checkout flow itself; the Admin handles the SDK message `iapCheckout` and stores the request in the `inAppPurchaseCheckout` store. You must render the buy button yourself and hide it when the IAP cannot be bought more than once. Alternatively, post a correctly formatted `postMessage` with an IAP identifier to the Admin.
+2. **Read active purchases**: every request Shopware sends to your app carries a JWT whose claims list all bought IAPs:
    - GET requests: query parameter `in-app-purchases`
-   - POST requests: `source.inAppPurchases` in the request body
-3. **Validate on PHP servers**: use `shopware/app-php-sdk` (plain PHP) or `shopware/app-bundle` (Symfony, via the matching action argument of the route).
-4. **Admin module**: IAPs are also sent with the initial `sw-main-hidden` admin request; inject them into your JS app, e.g. with `shopware/app-bundle`:
+   - POST requests: `inAppPurchases` inside the `source` object of the body
+3. **PHP / Symfony app servers**: validate and decode the JWT with `shopware/app-php-sdk` (plain PHP) or `shopware/app-bundle` (Symfony, via the action argument of your route).
+4. **Admin iframe**: purchases also arrive with the initial `sw-main-hidden` admin request; inject them into your JS app, e.g.:
 
 ```php
 #[Route(path: '/app/admin', name: 'admin')]
@@ -38,34 +39,40 @@ public function admin(ModuleAction $action): Response {
 }
 ```
 
-5. **Validate on non-PHP servers**: verify the JWT signature with a JWT/JOSE library against Shopware's JWKS at `https://api.shopware.com/inappfeatures/jwks`, then read the purchased IAP identifiers from the claims (Node.js: `jwtVerify` + `createRemoteJWKSet` from `jose`).
-6. **Manipulate available IAPs**: apps can alter the offered IAPs through the In-App purchase gateway (manifest `<gateways><inAppPurchases>` URL).
+5. **Non-PHP app servers**: verify the JWT signature with any JWT/JOSE library against the JWKS at `https://api.shopware.com/inappfeatures/jwks`, then read the claims:
+
+```js
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+const JWKS = createRemoteJWKSet(new URL('https://api.shopware.com/inappfeatures/jwks'));
+const { payload } = await jwtVerify(token, JWKS);
+```
+
+6. **Manipulating available IAPs**: apps can alter the offered IAPs through the In-App purchase gateway (separate page).
 
 ## Essential identifiers
 
-- `sw.iap.purchase()`, `iapCheckout`
-- `in-app-purchases` (query param), `inAppPurchases` (body `source` field / JWT claim)
-- `https://api.shopware.com/inappfeatures/jwks`
-- `shopware/app-php-sdk`, `shopware/app-bundle`, `ModuleAction`
-- `Shopware\Core\Framework\Store\InAppPurchase` (core-side active purchases, `getByExtension()`, `isActive()`)
+- `sw.iap.purchase()` (Meteor Admin SDK), Admin handler `iapCheckout`
+- Query parameter `in-app-purchases`; body field `source.inAppPurchases`
+- `sw-main-hidden` admin location
+- `shopware/app-php-sdk`, `shopware/app-bundle`, `ModuleAction::$inAppPurchases`
+- JWKS: `https://api.shopware.com/inappfeatures/jwks`
 
 ## Gotchas
 
-- Always verify the JWT signature before trusting the claims.
-- The checkout only handles payment; showing/hiding the purchase button is the extension's responsibility.
+- The checkout is purely functional: button rendering and hiding non-repeatable IAPs is your responsibility.
+- Always verify the token signature before trusting its claims.
 
 ## Version notes
 
-- Available since Shopware 6.6.9.0.
+- IAP exists since Shopware 6.6.9.0.
 
-## Code check (6.7.13.0)
-- confirmed `iapCheckout` — Admin handles the SDK checkout message and resolves the extension by origin — vendor/shopware/administration/Resources/app/administration/src/app/init/in-app-purchase-checkout.init.ts:10
-- confirmed `in-app-purchases` — signed query parameter carries the extension's IAP JWT — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:47
-- confirmed `Source::$inAppPurchases` — payload `source` field for the JWT — vendor/shopware/core/Framework/App/Payload/Source.php:24
-- confirmed `InAppPurchase::getJWTByExtension()` — JWT per extension sent to apps — vendor/shopware/core/Framework/Store/InAppPurchase.php:60
-- confirmed `InAppPurchase::isActive()` — core check for an identifier per extension — vendor/shopware/core/Framework/Store/InAppPurchase.php:70
-- confirmed `/inappfeatures/jwks` — core fetches the JWKS from the Store API — vendor/shopware/core/Framework/Store/InAppPurchase/Services/KeyFetcher.php:66
-- confirmed `inAppPurchases` — manifest gateway element — vendor/shopware/core/Framework/App/Manifest/Schema/manifest-3.0.xsd:517
-- unverified `sw.iap.purchase()` — Meteor Admin SDK package, out of scope
-- unverified `ModuleAction` — shopware/app-bundle, out of scope
-- unverified `sw-main-hidden` — not found in the checked vendor roots; app-server side
+## Code check (6.7.15.1)
+- confirmed `in-app-purchases` — query parameter added to signed app requests with the extension's IAP JWT — vendor/shopware/core/Framework/App/Hmac/QuerySigner.php:47
+- confirmed `Source::$inAppPurchases` — POST payload `source` carries the IAP JWT — vendor/shopware/core/Framework/App/Payload/Source.php:24
+- confirmed `inAppPurchases` — claim added to the app JWT generated for the Admin — vendor/shopware/core/Framework/App/Api/AppJWTGenerateRoute.php:62
+- confirmed `iapCheckout` — Admin ExtensionAPI handler for the SDK checkout request — vendor/shopware/administration/Resources/app/administration/src/app/init/in-app-purchase-checkout.init.ts:10
+- confirmed `inAppPurchaseCheckout` — Admin store holding pending checkout requests — vendor/shopware/administration/Resources/app/administration/src/app/store/in-app-purchase-checkout.store.ts:22
+- confirmed `/inappfeatures/jwks` — core fetches the IAP JWKS from the Store API at this path — vendor/shopware/core/Framework/Store/InAppPurchase/Services/KeyFetcher.php:66
+- confirmed `api.store.active-in-app-purchases` — Admin API route returning an app's active IAPs — vendor/shopware/core/Framework/Store/InAppPurchase/Api/InAppPurchasesController.php:35
+- unverified `sw.iap.purchase()` — lives in the Meteor Admin SDK package, out of scope
+- unverified `ModuleAction` — lives in shopware/app-bundle, out of scope

@@ -1,31 +1,32 @@
 ---
-id: platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-listing-filters.md
-title: Add Custom Listing Filters
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/add-listing-filters.html
+id: platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-listing-filters.md
+relatedPages:
+  - platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-custom-sorting-product-listing.md
 sourceHash: f5707c3a1d0892ea215affa775ae7fa11eeb4223
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["listing filter", "custom filter", "product filter", "ProductListingCollectFilterEvent", "Filter", "FilterCollection", "EqualsFilter", "FilterAggregation", "MaxAggregation", "EntityAggregation", "filter-panel.html.twig", "component_filter_panel_items", "filter-boolean", "isCloseout"]
-summary: Register a Storefront product listing filter via ProductListingCollectFilterEvent and a Filter struct, then render it by extending filter-panel.html.twig.
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/howto/add-custom-sorting-product-listing.md"]
+sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/storefront/howto/add-listing-filters.html
+title: Add Custom Listing Filters
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["ProductListingCollectFilterEvent", "Filter", "FilterCollection", "EventSubscriberInterface", "EqualsFilter", "FilterAggregation", "MaxAggregation", "component_filter_panel_items", "component_filter_panel_item_price", "filter-panel.html.twig", "filter-boolean", "listing filter", "product listing facet", "storefront filter"]
+summary: Register a custom product listing filter via ProductListingCollectFilterEvent and render it by extending the Storefront filter-panel.html.twig blocks.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How to add a custom product listing filter in the Storefront: define the filter metadata in a subscriber to `ProductListingCollectFilterEvent` (the core decides whether and how it is applied), then show it in the filter panel by extending a Twig block.
+How to add a custom filter to the Storefront product listing: register filter metadata (name, aggregations, DAL filter, values) in a subscriber on `\Shopware\Core\Content\Product\Events\ProductListingCollectFilterEvent`, then render a filter UI element by extending `filter-panel.html.twig`. Whether and how the filter is applied to the criteria is handled by the core.
 
 ## When to use
 
-A plugin needs an extra facet in category/search listings, e.g. a boolean filter on `product.isCloseout`.
+You need an extra facet in the category/search listing (e.g. a boolean "closeout" filter on `product.isCloseout`) beyond the built-in manufacturer, price, rating, properties and shipping-free filters.
 
 ## Key steps / config
 
-1. Create a subscriber `<plugin root>/src/Subscriber/ExampleListingSubscriber.php` that subscribes to `\Shopware\Core\Content\Product\Events\ProductListingCollectFilterEvent` (`ProductListingCollectFilterEvent::class => 'addFilter'`).
-2. In the listener, get `$event->getFilters()` (a `FilterCollection`) and `$event->getRequest()`, build a `Shopware\Core\Content\Product\SalesChannel\Listing\Filter` and `$filters->add($filter)`.
-
-`Filter` constructor arguments, in order: `name` (unique string), `filtered` (bool, `true` when active), `aggregations` (list of DAL aggregations), `filter` (DAL filter added to the criteria), `values` (added as `currentFilter` to the result), `exclude` (bool, defaults to `true`).
+1. Create a subscriber (e.g. `<plugin root>/src/Subscriber/ExampleListingSubscriber.php`) implementing `EventSubscriberInterface`, subscribing `ProductListingCollectFilterEvent::class => 'addFilter'`.
+2. In the handler, read `$event->getFilters()` (a `FilterCollection`) and `$event->getRequest()`, build a `Shopware\Core\Content\Product\SalesChannel\Listing\Filter`, and `$filters->add($filter)`.
+3. `Filter` constructor arguments, in order: `name` (unique string), `filtered` (bool, filter is active), `aggregations` (list of DAL aggregations), `filter` (DAL filter added to the criteria), `values` (added as `currentFilter` to the result), `exclude` (bool, default `true`).
 
 ```php
 $filtered = (bool) $request->get('isCloseout');
@@ -40,9 +41,7 @@ $filters->add(new Filter(
 ));
 ```
 
-A multi-value example: `new Filter('manufacturer', !empty($ids), [new EntityAggregation('manufacturer', 'product.manufacturerId', 'product_manufacturer')], new EqualsAnyFilter('product.manufacturerId', $ids), $ids)`.
-
-3. Render it: in the plugin create `src/Resources/views/storefront/component/listing/filter-panel.html.twig` and extend block `component_filter_panel_items`:
+4. Render it: extend `@Storefront/storefront/component/listing/filter-panel.html.twig` in `<plugin root>/src/Resources/views/storefront/component/listing/filter-panel.html.twig`:
 
 ```twig
 {% sw_extends '@Storefront/storefront/component/listing/filter-panel.html.twig' %}
@@ -55,33 +54,34 @@ A multi-value example: `new Filter('manufacturer', !empty($ids), [new EntityAggr
 {% endblock %}
 ```
 
-Filter components under `component/listing/filter/`: `filter-boolean`, `filter-multi-select`, `filter-property-select`, `filter-range`, `filter-rating-select` and `filter-rating-select-item`.
+5. Placement: `parent()` first appends after existing filters; `parent()` last prepends. To position relative to one filter, extend that filter's block instead, e.g. `component_filter_panel_item_price`.
+
+Available filter components under `component/listing/filter/`: `filter-boolean`, `filter-multi-select`, `filter-property-select`, `filter-range`, `filter-rating-select` / `filter-rating-select-item`.
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Product\Events\ProductListingCollectFilterEvent`
-- `Shopware\Core\Content\Product\SalesChannel\Listing\Filter`
-- `FilterAggregation`, `MaxAggregation`, `EntityAggregation`, `EqualsFilter`, `EqualsAnyFilter`
-- `@Storefront/storefront/component/listing/filter-panel.html.twig`
-- Blocks `component_filter_panel_items`, `component_filter_panel_item_price`
+- `\Shopware\Core\Content\Product\Events\ProductListingCollectFilterEvent` (`getFilters()`, `getRequest()`)
+- `Shopware\Core\Content\Product\SalesChannel\Listing\Filter`, `FilterCollection::add()`
+- `EqualsFilter`, `EqualsAnyFilter`, `EntityAggregation`, `FilterAggregation`, `MaxAggregation`
+- Template `src/Storefront/Resources/views/storefront/component/listing/filter-panel.html.twig`; blocks `component_filter_panel_items`, `component_filter_panel_item_price`
+- `filter-boolean.html.twig` parameters `name`, `displayName`
 
 ## Gotchas
 
-- `{{ parent() }}` first places the new filter after the existing ones; move it to the end of the block to place the filter first.
-- To position relative to a specific filter, extend that filter's block instead, e.g. `component_filter_panel_item_price` to place it after the price filter.
-- The `name` passed to the Twig component should match the filter name and request parameter read in the subscriber (`isCloseout`).
+- The request parameter read in the subscriber (`isCloseout`) must match the `name` passed to the filter template, as the template uses `name` for the input name.
 
 ## Version notes
 
 - Block `component_filter_panel_items` is available from Shopware 6.4.8.0.
 
-## Code check (6.7.13.0)
-- confirmed `ProductListingCollectFilterEvent` — event class exists — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:14
-- confirmed `ProductListingCollectFilterEvent::getFilters()` — returns FilterCollection — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:28
-- confirmed `ProductListingCollectFilterEvent::getRequest()` — returns Request — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:23
-- confirmed `Filter` — namespace Shopware\Core\Content\Product\SalesChannel\Listing — vendor/shopware/core/Content/Product/SalesChannel/Listing/Filter.php:11
-- confirmed `Filter::__construct()` — name, filtered, aggregations, filter, values, exclude = true — vendor/shopware/core/Content/Product/SalesChannel/Listing/Filter.php:17
-- confirmed `component_filter_panel_items` — block in filter panel — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter-panel.html.twig:18
-- confirmed `component_filter_panel_item_price` — block in filter panel — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter-panel.html.twig:55
-- confirmed `displayName` — variable consumed by filter-boolean component — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter/filter-boolean.html.twig:4
-- unverified `$request->get()` — Symfony Request API, vendor/symfony out of scope
+## Code check (6.7.15.1)
+- confirmed `ProductListingCollectFilterEvent` — event class carrying request and FilterCollection — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:17
+- confirmed `ProductListingCollectFilterEvent::getFilters()` — returns FilterCollection — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:31
+- confirmed `ProductListingCollectFilterEvent::getRequest()` — returns Symfony Request — vendor/shopware/core/Content/Product/Events/ProductListingCollectFilterEvent.php:26
+- confirmed `Filter` — listing Filter struct in SalesChannel\Listing namespace — vendor/shopware/core/Content/Product/SalesChannel/Listing/Filter.php:11
+- confirmed `Filter::$exclude` — sixth constructor arg, defaults to true — vendor/shopware/core/Content/Product/SalesChannel/Listing/Filter.php:23
+- confirmed `FilterCollection::add()` — adds a Filter to the collection — vendor/shopware/core/Content/Product/SalesChannel/Listing/FilterCollection.php:31
+- confirmed `ProductListingCollectFilterEvent` — dispatched by AggregationListingProcessor — vendor/shopware/core/Content/Product/SalesChannel/Listing/Processor/AggregationListingProcessor.php:90
+- confirmed `component_filter_panel_items` — block in filter-panel template — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter-panel.html.twig:18
+- confirmed `component_filter_panel_item_price` — price filter block — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter-panel.html.twig:55
+- confirmed `displayName` — filter-boolean template parameter alongside name — vendor/shopware/storefront/Resources/views/storefront/component/listing/filter/filter-boolean.html.twig:4

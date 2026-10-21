@@ -6,23 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2024-02-11-transactional-flow-actions.html
 sourceHash: 20a1687610407342583df2456d32ffb6bd5b9d5d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["TransactionalAction", "TransactionFailedException", "FlowAction", "FlowExecutor", "DelayableAction", "handleFlow", "flow action", "flow builder", "database transaction", "rollback", "savepoints", "FlowException"]
-summary: "ADR: flow actions implementing TransactionalAction run inside a DB transaction; throw TransactionFailedException::because() to force a rollback."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["TransactionalAction", "TransactionFailedException", "TransactionFailedException::because", "FlowAction", "FlowExecutor", "DelayableAction", "handleFlow", "RetryableTransaction", "flow action transaction", "database transaction", "rollback", "flow builder"]
+summary: "ADR: flow actions implementing the TransactionalAction marker interface run inside a DB transaction; throw TransactionFailedException to roll back."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (Core, 2024-02): the marker interface `\Shopware\Core\Content\Flow\Dispatching\TransactionalAction` makes the flow executor wrap a flow action's execution in a database transaction, so actions no longer begin/commit transactions themselves.
+An architecture decision record that introduces the marker interface `\Shopware\Core\Content\Flow\Dispatching\TransactionalAction`. The flow executor runs any flow action that implements it inside a database transaction, so the action no longer starts, commits or rolls back transactions itself.
 
 ## When to use
 
-- Writing a custom flow action whose database writes must be atomic.
-- Debugging failing outer transactions after a flow action commit failed.
+Use it when a custom flow action writes to the database and those writes must succeed or fail together. Before this ADR, actions managed transactions by hand. If a commit failed, the flow dispatcher caught the error and logged a vague message, and the flows kept running. When a transaction was already open before the flow ran, a failed nested commit marked the connection as rollback-only. Shopware's default connection has no save points, so the outer commit failed later without knowing why.
 
 ## Key steps / config
 
-1. Extend `FlowAction` and additionally implement `TransactionalAction` (an empty marker interface) — nothing else is required. Do not call `beginTransaction()`/`commit()` in the action.
+1. Extend `FlowAction` and also implement `TransactionalAction`. The interface has no methods. `FlowAction` requires `requirements()`, `handleFlow()` and the static `getName()`:
 
 ```php
 class SetOrderStateAction extends FlowAction implements DelayableAction, TransactionalAction
@@ -31,42 +30,38 @@ class SetOrderStateAction extends FlowAction implements DelayableAction, Transac
     public function requirements(): array { /* ... */ }
     public function handleFlow(StorableFlow $flow): void
     {
-        // wrapped in a transaction by the flow executor
+        // do stuff - wrapped in a transaction by the executor
     }
 }
 ```
 
-2. To force a rollback, throw `\Shopware\Core\Content\Flow\Dispatching\TransactionFailedException`, built from another exception with the static `because()`:
+2. Remove manual `beginTransaction()` / `commit()` calls from `handleFlow()`.
+3. To force a rollback, throw `\Shopware\Core\Content\Flow\Dispatching\TransactionFailedException`. Its static `because(\Throwable $e)` builds it from another exception, for example `throw TransactionFailedException::because($e);` inside a `catch (NotFoundException $e)` block.
 
-```php
-} catch (NotFoundException $e) {
-    throw TransactionFailedException::because($e);
-}
-```
-
-3. `FlowExecutor` runs non-transactional actions directly; transactional ones go through `RetryableTransaction::transactional($this->connection, ...)`. Any `\Throwable` is converted via `FlowException::transactionFailed()` into a distinct error for a `TransactionFailedException`, a Doctrine DBAL exception on commit, or any other uncaught exception.
+In the installed code, `FlowExecutor` checks `$action instanceof TransactionalAction` and calls `handleFlow()` through `RetryableTransaction::transactional($this->connection, ...)`. Any `\Throwable` thrown inside is wrapped with `FlowException::transactionFailed($e)` and rethrown. A `TransactionFailedException` becomes the error code `FLOW_ACTION_TRANSACTION_ABORTED` ("transaction was aborted and rolled back").
 
 ## Essential identifiers
 
-- `Shopware\Core\Content\Flow\Dispatching\TransactionalAction`
-- `Shopware\Core\Content\Flow\Dispatching\TransactionFailedException::because()`
-- `Shopware\Core\Content\Flow\Dispatching\Action\FlowAction` (`getName`, `requirements`, `handleFlow`)
-- `Shopware\Core\Content\Flow\Dispatching\FlowExecutor`
-- `Shopware\Core\Content\Flow\FlowException::transactionFailed()`
+- `\Shopware\Core\Content\Flow\Dispatching\TransactionalAction`: marker interface
+- `\Shopware\Core\Content\Flow\Dispatching\TransactionFailedException`, `TransactionFailedException::because()`
+- `Shopware\Core\Content\Flow\Dispatching\Action\FlowAction`: base class (`requirements`, `handleFlow`, `getName`)
+- `FlowExecutor`, `FlowException::transactionFailed()`
+- `RetryableTransaction::transactional()`
 
 ## Gotchas
 
-- Rollback happens when Doctrine throws `Doctrine\DBAL\Exception` during commit, when the action throws `TransactionFailedException`, or when any other unhandled exception is thrown in the action.
-- Background: Shopware connections default to no savepoints, so a failed nested commit marks the connection rollback-only and the outer commit also fails. Per the ADR, a failed transaction is logged and, inside a nested transaction without savepoints, the exception is rethrown so calling code can roll back — then remaining scheduled actions are not executed.
-- Without the interface, commit errors in an action are caught by the flow dispatcher, logged vaguely, and flows continue.
+- The ADR says the transaction is rolled back when Doctrine throws a `Doctrine\DBAL\Exception` during commit, when the action throws `TransactionFailedException`, or when the action throws any other unhandled exception (to help debugging).
+- The ADR also says a failure inside a nested transaction without save points is rethrown, so the calling code can roll back. Once that happens, other scheduled actions do not run. In 6.7.15.1, `RetryableTransaction::transactional()` rethrows when it was entered at a nesting level above 0. However, `FlowExecutor::executeFlows()` catches every `\Throwable` per flow and logs "Could not execute flow". The failing flow stops and the next flow still runs. Only the direct `FlowExecutor::execute()` path lets the exception reach the caller.
+- The ADR's examples use `SetOrderStateAction`. In 6.7.15.1 the core `SetOrderStateAction` implements `TransactionalAction` itself.
 
-## Code check (6.7.13.0)
+## Code check (6.7.15.1)
 - confirmed `TransactionalAction` — empty marker interface — vendor/shopware/core/Content/Flow/Dispatching/TransactionalAction.php:11
-- confirmed `TransactionFailedException::because()` — static factory wrapping a `\Throwable` — vendor/shopware/core/Content/Flow/Dispatching/TransactionFailedException.php:14
-- confirmed `FlowAction::requirements()` — abstract, required in subclasses — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:14
-- confirmed `FlowAction::handleFlow()` — abstract, required in subclasses — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:16
-- confirmed `FlowAction::getName()` — abstract static, required in subclasses — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:18
-- confirmed `FlowExecutor` — only `TransactionalAction` instances are wrapped in `RetryableTransaction::transactional` — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:40
-- confirmed `FlowException::transactionFailed()` — maps TransactionFailedException, DBAL exception and other throwables — vendor/shopware/core/Content/Flow/FlowException.php:52
-- confirmed `SetOrderStateAction` — core action implements `DelayableAction, TransactionalAction` — vendor/shopware/core/Content/Flow/Dispatching/Action/SetOrderStateAction.php:26
-- unverified `rethrow in nested transaction without savepoints` — no savepoint/nesting-level check found under Content/Flow; behaviour likely inside `RetryableTransaction`, not read
+- confirmed `TransactionFailedException::because()` — static factory taking a `\Throwable` — vendor/shopware/core/Content/Flow/Dispatching/TransactionFailedException.php:14
+- confirmed `FlowAction::requirements()` — abstract member — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:14
+- confirmed `FlowAction::handleFlow()` — abstract member — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:16
+- confirmed `FlowAction::getName()` — abstract static member — vendor/shopware/core/Content/Flow/Dispatching/Action/FlowAction.php:18
+- confirmed `TransactionalAction` — executor wraps only implementing actions in a transaction — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:224
+- confirmed `RetryableTransaction::transactional()` — used to wrap `handleFlow()` — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:231
+- confirmed `FlowException::transactionFailed()` — wraps any throwable from a transactional action — vendor/shopware/core/Content/Flow/FlowException.php:51
+- corrected `FlowExecutor::executeFlows()` — docs: exception rethrown to caller, scheduled actions not executed; code catches, logs per flow and continues — vendor/shopware/core/Content/Flow/Dispatching/FlowExecutor.php:68
+- confirmed `SetOrderStateAction` — core action implements `TransactionalAction` — vendor/shopware/core/Content/Flow/Dispatching/Action/SetOrderStateAction.php:26

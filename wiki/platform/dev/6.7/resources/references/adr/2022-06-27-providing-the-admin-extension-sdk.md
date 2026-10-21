@@ -6,48 +6,43 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2022-06-27-providing-the-admin-extension-sdk.html
 sourceHash: 5380d419b44f6f1fd1b14e2ca59b4408662c102d
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["admin extension sdk", "meteor extension sdk", "@shopware-ag/meteor-admin-sdk", "postmessage api", "iframe", "administration", "app development", "plugin development", "adr", "separate repository", "monorepo", "extension-api.ts"]
-summary: ADR explaining why the Admin Extension SDK (now Meteor Extension SDK) lives in its own repository, released independently of Shopware versions.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["admin extension sdk", "meteor extension sdk", "@shopware-ag/meteor-admin-sdk", "postmessage api", "iframe", "administration", "separate repository", "monorepo", "lerna", "app development", "plugin development"]
+summary: "ADR: the Admin (now Meteor) Extension SDK, a PostMessage convenience layer for apps/plugins, lives in its own GitHub repo with independent releases."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record (ADR, 2022) explaining why the Admin Extension SDK — a toolkit for plugin and app developers to extend or modify the Administration — was created in a separate GitHub repository instead of inside the Shopware platform monorepo. The SDK has since been renamed to **Meteor Extension SDK**. It is a convenience layer whose methods talk to the Administration in the background via the PostMessage API for iFrames.
+An architecture decision record (2022-06-15) explaining why the Admin Extension SDK — renamed to the Meteor Extension SDK — is developed in a separate GitHub repository instead of the Shopware platform monorepo. The SDK is a toolkit for plugin and app developers to extend or modify the Administration; its methods talk to the Administration in the background through the PostMessage API for iFrames.
 
 ## When to use
 
-Read this when you need to understand where the SDK is developed and released, why its version is not tied to a Shopware release, or what it takes to change SDK behaviour that the Administration also depends on.
+When contributing to the SDK, or when wondering why SDK fixes ship independently of Shopware releases and how a new SDK feature reaches the Administration.
 
 ## Key steps / config
 
 Reasons given for the separate repository:
 
-- **Faster development** — the SDK pipeline (tests, documentation generation) runs quickly; small changes do not trigger the large platform pipeline.
-- **Independent deployment** — the SDK is not hard-bound to a Shopware version; apps include it directly as a dependency, and it supports newer Shopware versions. Bug fixes can be released in minutes.
-- **Convenience layer only** — it wraps the PostMessage API, so being bound to the monorepo release cycle brings no benefit.
-- **Independent documentation** — docs live in the same repository, so features without documentation are not merged.
-- **JS packages in a PHP monorepo are difficult** — nested packages and traversal `node_modules` resolution caused differing dependency versions (already seen in the component library).
-- **No monorepo tooling (Lerna)** — past experience produced broken package-lock files and failing npm installs; with multiple repositories you change the SDK repo and bump the version in `package.json`.
+- **Faster development** — the large platform pipeline does not have to run for small changes; the SDK pipeline is fast and covers testing and documentation generation.
+- **Independent deployment** — the SDK is not hard-bound to a Shopware version. Apps include it directly as a dependency, and it supports newer Shopware versions, so a bug fix can be released in minutes.
+- **Convenience layer only** — the SDK wraps the PostMessage API; putting it in the monorepo would tie it to the Shopware release cycle.
+- **Independent documentation** — docs live in the same repository, so a feature without documentation is not merged.
+- **PHP monorepo mixed with JS packages is difficult** — nested JS packages inside the platform structure (plugin folder, component library inside the administration package) cause build and dependency-resolution problems, e.g. traversal lookup of a parent `node_modules` loading unexpected dependency versions, which already happened with the component library.
+- **No monorepo tool like Lerna** — earlier Lerna experience led to broken package-lock files and failing npm installs; multi-repo means change, bump the version in `package.json`, bump the dependency where it is consumed.
+- **No real monorepo advantage** — deployment, separate testing, documentation and independent versions would all be harder.
 
-Consequence / workflow for changing the SDK:
-
-1. Check out the SDK GitHub repository and publish the change there.
-2. If the change is also relevant to the Administration side, bump the SDK dependency version in the Administration as well.
-
-In the installed Administration the SDK is consumed as the npm package `@shopware-ag/meteor-admin-sdk` (e.g. its `channel` module's `handle` is used by the Administration's extension API bridge).
+Workflow consequence: to add something to the SDK, check out its GitHub repository and publish the change there; if the change also matters on the Administration side, bump the SDK version in the Administration too.
 
 ## Essential identifiers
 
-- Admin Extension SDK / Meteor Extension SDK
-- `@shopware-ag/meteor-admin-sdk`
+- Package `@shopware-ag/meteor-admin-sdk` (imported by the Administration, e.g. `@shopware-ag/meteor-admin-sdk/es/channel`)
 - PostMessage API (iFrame communication)
 
 ## Gotchas
 
-- The name "Admin Extension SDK" is outdated; search for "Meteor Extension SDK" / `meteor-admin-sdk`.
-- An SDK change needed by the Administration requires two steps: a release in the SDK repository and a version bump in the Administration.
+- The name "Admin Extension SDK" is outdated; current material refers to the Meteor Extension SDK.
 
-## Code check (6.7.13.0)
-- confirmed `@shopware-ag/meteor-admin-sdk` — Administration imports the renamed package for global types — vendor/shopware/administration/Resources/app/administration/src/global.types.ts:10
-- confirmed `@shopware-ag/meteor-admin-sdk/es/channel` — Administration uses the SDK channel `handle` (PostMessage bridge) — vendor/shopware/administration/Resources/app/administration/src/core/extension-api.ts:8
+## Code check (6.7.15.1)
+- confirmed `@shopware-ag/meteor-admin-sdk/es/channel` — Administration imports the SDK channel handle as an external package — vendor/shopware/administration/Resources/app/administration/src/core/extension-api.ts:8
+- confirmed `@shopware-ag/meteor-admin-sdk` — SDK consumed as dependency, not in-repo source — vendor/shopware/administration/Resources/app/administration/src/core/telemetry/ServiceTracking.md:21
+- unverified `admin-extension-sdk` — old package name not referenced in the Administration source; rename to Meteor stated by docs only

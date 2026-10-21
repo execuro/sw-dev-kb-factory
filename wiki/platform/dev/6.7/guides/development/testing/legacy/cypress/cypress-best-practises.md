@@ -6,39 +6,46 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/legacy/cypress/cypress-best-practises.html
 sourceHash: 5539b79ed5b1ce36801d22f822516df943e0ab39
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["cypress", "e2e", "end-to-end tests", "best practices", "selectors", "cy.get", "cy.wait", "cy.route", "beforeEach", "flaky tests", "test fixtures", "btn-buy", "checkout-confirm-tos-label", "sw-category-tree", "workflow-based testing"]
-summary: "Legacy Cypress E2E best practices for Shopware: prioritise workflows, isolate tests, use Shopware-specific selectors, wait on assertions/route aliases."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["cypress", "e2e best practices", "end-to-end tests", "selectors", "flaky tests", "cy.wait", "cy.route", "beforeEach", "btn-buy", "checkout-confirm-tos-label", "workflow-based tests", "test isolation", "test pyramid"]
+summary: Cypress E2E best practices for Shopware - test prioritisation, workflow-based scope, isolation, stable selectors, no fixed waits, command queue.
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Guidance (legacy Cypress section) on designing and writing Shopware end-to-end tests: which workflows to cover, how to scope and isolate tests, which selectors to use, how to wait, and how to handle the Cypress command queue. It also points to Cypress's own best-practices guide, which Shopware recommends following as well.
+Shopware's do/don't list for writing Cypress end-to-end tests: which workflows deserve E2E coverage, how to scope and isolate tests, how to choose selectors, how to wait, and how to handle the Cypress command queue. It complements Cypress's own best practices, which Shopware strongly recommends following too.
 
 ## When to use
 
-When writing or reviewing Cypress E2E tests for the Shopware Storefront or Administration (core contributions or extensions), especially when tests are slow, flaky or depend on each other.
+When writing or reviewing Cypress E2E tests for the Shopware platform or a plugin, especially when tests are slow, flaky or hard to maintain.
 
 ## Key steps / config
 
-1. **Prioritise test cases** (test pyramid): cover the most-used "happy path" workflows (e.g. CRUD), the critical paths whose breakage causes the most damage, and avoid duplicate coverage. Test the application's reaction to a failed validation in E2E, the validation itself in unit tests.
-2. **Write workflow-based tests** from the end user's point of view, not as unit tests.
-3. **One test per workflow.** Perform setup (sales channel, products, categories, Administration login) via API operations or test fixtures in the `beforeEach` hook, then let the test exercise only the workflow under test (e.g. only the checkout).
-4. **Stability first:** keep tests simple and isolated so they run in any order; create data with fixtures beforehand and restore a clean installation / reset between tests.
-5. **Selectors:** avoid XPath (text-dependent) and framework-specific (Bootstrap) selectors; use Shopware-specific classes. If none exists, add a descriptive class or ID.
+**Prioritise (test pyramid)** - do not cover every workflow. Cover:
+- the most general, most used workflows (happy path, e.g. CRUD);
+- the critical path - workflows that cause the most damage if broken;
+- no duplicate coverage: test the UI's reaction to a failed validation, not the validation itself (unit tests).
+
+**Workflow-based** - write tests from the user's point of view, not like unit tests.
+
+**Scope** - one test per workflow. Create prerequisites (sales channel, products, categories, fixtures) via API in `beforeEach`; do not repeat login steps in every test.
+
+**Stability** - keep tests isolated, runnable independently or in random order, with data created beforehand and the installation reset between tests. Keep tests small with little logic.
+
+**Selectors** - avoid XPath and framework (Bootstrap) selectors; use Shopware-specific classes, adding a descriptive class if none exists:
 
 ```javascript
-cy.get('.btn.btn-primary').click();          // avoid
-cy.get('.btn-buy').click();                  // prefer
-cy.get('.custom-checkbox label').click();    // avoid
-cy.get('.checkout-confirm-tos-label').click(); // prefer
+cy.get('.btn.btn-primary').click();     // avoid
+cy.get('.btn-buy').click();             // prefer
+cy.get('[data-toggle="modal"]').click(); // avoid
+cy.get('.btn-open-settings').click();   // prefer
+cy.get('.checkout-confirm-tos-label').click();
 ```
 
-6. **No fixed waits** like `cy.wait(500)`. Rely on Cypress retryability and assertions, or wait on a route alias:
+**Waiting** - never `cy.wait(500)`; use assertions or route aliases:
 
 ```javascript
 cy.get('.sw-category-tree').should('be.visible');
-
 cy.server();
 cy.route({ url: '/api/search/category', method: 'post' }).as('getData');
 cy.wait('@getData').then((xhr) => {
@@ -46,32 +53,25 @@ cy.wait('@getData').then((xhr) => {
 });
 ```
 
-7. **Command queue:** Cypress commands are asynchronous and queued; plain JavaScript runs immediately. Wrap vanilla JS in `then` or a custom command so it is queued.
+**Command queue** - Cypress commands are asynchronous and queued; vanilla JavaScript runs immediately. Wrap it in `then` or a custom command.
 
 ## Essential identifiers
 
-- `beforeEach` (setup via API / fixtures)
-- `cy.get(...).should('be.visible')`
-- `cy.server()`, `cy.route(...).as('getData')`, `cy.wait('@getData')`
-- `.then(...)` for queuing vanilla JS
-- Storefront classes `.btn-buy`, `.checkout-confirm-tos-label`; Administration class `.sw-category-tree`
-- Admin API search route `/api/search/category`
+- `beforeEach` (API setup), `cy.get()`, `.should('be.visible')`
+- `cy.server()`, `cy.route()`, `cy.wait('@alias')`
+- Selector examples: `.btn-buy`, `.btn-open-settings`, `.checkout-confirm-tos-label`, `.sw-category-tree`
+- Route example: `/api/search/category`
 
 ## Gotchas
 
-- Cypress `then` looks like a promise but is not one; do not treat commands as promises.
-- Tests that depend on each other or leave written data behind produce flaky, non-deterministic results and can block CI pipelines.
-- Long tests covering many workflows slow runtime and make failures hard to attribute.
-- `.btn-open-settings` in the source's modal example is an illustrative class, not one found in the installed Storefront templates.
+- Flaky tests block the deployment pipeline and give no valid result.
+- Cypress commands look like promises but are not; see the Cypress docs on "Commands Are Not Promises".
+- The `.btn-buy` selector stays stable if the button variant changes (e.g. to `.btn-secondary`).
 
-## Version notes
-
-This page lives in the legacy Cypress testing section of the 6.7 docs.
-
-## Code check (6.7.13.0)
-- confirmed `btn-buy` — Storefront buy button carries `btn btn-primary btn-buy` — vendor/shopware/storefront/Resources/views/storefront/component/buy-widget/buy-widget-form.html.twig:139
-- confirmed `checkout-confirm-tos-label` — TOS label class on checkout confirm page — vendor/shopware/storefront/Resources/views/storefront/page/checkout/confirm/index.html.twig:76
-- confirmed `sw-category-tree` — root element class of the admin category tree component — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/component/sw-category-tree/sw-category-tree.html.twig:2
-- confirmed `/api/search/` — dynamic Admin API search route per entity (e.g. category) — vendor/shopware/core/Framework/Api/Route/ApiRouteLoader.php:109
-- unverified `btn-open-settings` — not found in installed Storefront twig templates; illustrative example only
-- unverified `cy.route` — Cypress API, outside the vendor/shopware roots
+## Code check (6.7.15.1)
+- confirmed `btn-buy` — Storefront buy button carries `btn btn-primary btn-buy` — vendor/shopware/storefront/Resources/views/storefront/component/buy-widget/buy-widget-form.html.twig:148
+- confirmed `checkout-confirm-tos-label` — label class on the checkout confirm TOS checkbox — vendor/shopware/storefront/Resources/views/storefront/page/checkout/confirm/index.html.twig:97
+- confirmed `sw-category-tree` — Administration root element class — vendor/shopware/administration/Resources/app/administration/src/module/sw-category/component/sw-category-tree/sw-category-tree.html.twig:2
+- confirmed `/api/search/` — POST search route generated per entity, e.g. `/api/search/category` — vendor/shopware/core/Framework/Api/Route/ApiRouteLoader.php:109
+- unverified `btn-open-settings` — illustrative markup in the docs; no Storefront template match found
+- unverified `cy.route` — Cypress API, outside the scanned vendor roots

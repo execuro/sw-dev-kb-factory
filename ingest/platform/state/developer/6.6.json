@@ -1,6 +1,7 @@
 {
-  "headSha": "4a6a2b66630ff5317e26349bc1e81b759b6f2e47",
-  "lastSync": "2026-09-15T09:45:29.520Z",
+  "configHash": "48de691f1dbf3d64e7d3fc418635c8abcda524403ed14af52b4ba790fbc25673",
+  "headSha": "4c8e12a2dda0677bead251ff562d622d2678fdd8",
+  "lastSync": "2026-10-20T19:29:38.693Z",
   "pages": {
     "platform/dev/6.6/_index.md": {
       "builtHash": "da0920b0ac34b5664b451e496939717b03d55861",
@@ -5036,23 +5037,23 @@
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/config-reference/server/"
     },
     "platform/dev/6.6/resources/references/config-reference/server/apache.md": {
-      "builtHash": "b40222374d08e186623670962afe27f208f610e6",
-      "date": 1789459492,
-      "hash": "b40222374d08e186623670962afe27f208f610e6",
+      "builtHash": "d0f6f911360db56b1a6c18f101bf892601c2ca60",
+      "date": 1792524569,
+      "hash": "d0f6f911360db56b1a6c18f101bf892601c2ca60",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/config-reference/server/apache.html"
     },
     "platform/dev/6.6/resources/references/config-reference/server/caddy.md": {
-      "builtHash": "9db63a85b1309f2f72d023fa012b4879bdc56567",
-      "date": 1789459492,
-      "hash": "9db63a85b1309f2f72d023fa012b4879bdc56567",
+      "builtHash": "4ca6bb8f13ce91d0440ba988be5306a31ac16e18",
+      "date": 1792524570,
+      "hash": "4ca6bb8f13ce91d0440ba988be5306a31ac16e18",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/config-reference/server/caddy.html"
     },
     "platform/dev/6.6/resources/references/config-reference/server/nginx.md": {
-      "builtHash": "a1521c4336826a30e5987d19bcabbd505db02bf7",
-      "date": 1789459493,
-      "hash": "a1521c4336826a30e5987d19bcabbd505db02bf7",
+      "builtHash": "5b49327c8a57ee72bce421c120dca2ec5c712e6d",
+      "date": 1792524570,
+      "hash": "5b49327c8a57ee72bce421c120dca2ec5c712e6d",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/config-reference/server/nginx.html"
     },
@@ -5141,9 +5142,9 @@
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/core-reference/rules-reference.html"
     },
     "platform/dev/6.6/resources/references/security.md": {
-      "builtHash": "3f3b64b60ffacb454d99650c6ada9bb05f5fc427",
-      "date": 1789459496,
-      "hash": "3f3b64b60ffacb454d99650c6ada9bb05f5fc427",
+      "builtHash": "0eda9adbf2d19d836cc214baaa58bcfb466e1e37",
+      "date": 1792524574,
+      "hash": "0eda9adbf2d19d836cc214baaa58bcfb466e1e37",
       "promptHash": "c341ea2cfaf400a2dca105c9bbc0a2613135def44ee3fc316bf081eebba00a8c",
       "sourceUrl": "https://developer.shopware.com/docs/v6.6/resources/references/security.html"
     },

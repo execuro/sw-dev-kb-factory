@@ -1,74 +1,79 @@
 ---
 id: platform/dev/6.7/guides/development/testing/e2e-playwright/install-configure.md
-title: "Install & Configure"
+title: Install & Configure
 docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/development/testing/e2e-playwright/install-configure.html
 sourceHash: 73d319ecae2a65f282c1427dedddb1d35e3c0aba
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["@shopware-ag/acceptance-test-suite", "APP_URL", "SHOPWARE_ACCESS_KEY_ID", "SHOPWARE_SECRET_ACCESS_KEY", "SHOPWARE_ADMIN_USERNAME", "SHOPWARE_ADMIN_PASSWORD", "MAILPIT_BASE_URL", "FixtureTypes", "integration:create", "playwright setup", "acceptance test suite", "ats", "e2e testing", "BaseTestFile"]
-summary: Installing the Shopware Acceptance Test Suite in a Playwright project; .env auth variables (integration or admin user), Mailpit, and a BaseTestFile.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["@shopware-ag/acceptance-test-suite", "APP_URL", "SHOPWARE_ACCESS_KEY_ID", "SHOPWARE_SECRET_ACCESS_KEY", "SHOPWARE_ADMIN_USERNAME", "SHOPWARE_ADMIN_PASSWORD", "MAILPIT_BASE_URL", "BaseTestFile.ts", "playwright.config.ts", "FixtureTypes", "npm init playwright", "ats setup", "e2e test install"]
+summary: Setup of the Shopware Acceptance Test Suite - npm install, APP_URL plus integration or admin-user env vars, Mailpit, BaseTestFile.ts extending the ATS test.
+lastBuilt: 2026-10-20
 relatedPages: ["platform/dev/6.7/guides/development/testing/e2e-playwright/fixtures.md"]
 ---
 ## What it is
 
-Setup guide for the Shopware Acceptance Test Suite (ATS): creating a Playwright project, installing `@shopware-ag/acceptance-test-suite`, configuring access to the Shopware instance under test via environment variables, and creating a base test file that extends the ATS `test`.
+Setup guide for the Shopware Acceptance Test Suite (ATS): creating a Playwright project, installing the `@shopware-ag/acceptance-test-suite` package, configuring access to the Shopware instance under test, and wiring a base test file.
 
 ## When to use
 
-Starting a new Playwright acceptance test project for Shopware, or preparing a local environment to run existing ATS-based tests.
+Starting a new E2E test project against a Shopware instance, or preparing an environment to run existing ATS tests locally (including email tests via Mailpit).
 
 ## Key steps / config
 
-1. Create a Playwright project and install the ATS and browsers:
-   - `npm init playwright@latest`
-   - `npm install @shopware-ag/acceptance-test-suite`
-   - `npm install`, `npx playwright install`, `npx playwright install-deps`
-2. Configure access in `.env`. The suite works against any Shopware instance through the API. Two auth options: integration (recommended) or admin user.
+Install:
+
+```shell
+npm init playwright@latest
+npm install @shopware-ag/acceptance-test-suite
+npm install
+npx playwright install
+npx playwright install-deps
+```
+
+The suite tests any Shopware instance purely through its APIs. Access is configured with environment variables; choose integration credentials (recommended) or an admin user:
 
 ```dotenv
 APP_URL="<url-to-the-shopware-instance>"
-SHOPWARE_ACCESS_KEY_ID="<integration-id>"
-SHOPWARE_SECRET_ACCESS_KEY="<integration-secret>"
-SHOPWARE_ADMIN_USERNAME="<admin-user>"
-SHOPWARE_ADMIN_PASSWORD="<admin-password>"
+# integration
+SHOPWARE_ACCESS_KEY_ID="<your-shopware-integration-id>"
+SHOPWARE_SECRET_ACCESS_KEY="<your-shopware-integration-secret>"
+# admin user
+SHOPWARE_ADMIN_USERNAME="<administrator-user-name>"
+SHOPWARE_ADMIN_PASSWORD="<administrator-user-password>"
 ```
 
-   On the Shopware side, `bin/console integration:create <name> --admin` creates an integration and prints exactly the `SHOPWARE_ACCESS_KEY_ID=` / `SHOPWARE_SECRET_ACCESS_KEY=` lines.
-3. Point Playwright at the same instance in `playwright.config.ts`: `defineConfig({ use: { baseURL: process.env['APP_URL'] } })`.
-4. Mailpit (for email tests such as `tests/Mailpit.spec.ts`): run a local Mailpit; by default its web UI listens on localhost port 8025 and SMTP on port 1025. Set `MAILPIT_BASE_URL` in `playwright.config.ts` to the Mailpit web UI address.
-5. Set `"type": "module",` in `package.json` and create a base test file used by all tests:
+Point Playwright at the same instance in `playwright.config.ts`: `defineConfig({ use: { baseURL: process.env['APP_URL'] } })`.
 
-```TypeScript
-// BaseTestFile.ts
+Mailpit: run a local Mailpit instance (web UI on localhost port 8025, SMTP on port 1025 by default) and set `MAILPIT_BASE_URL` in `playwright.config.ts` to the web UI address; then email tests such as `tests/Mailpit.spec.ts` can run.
+
+Base test file: set `"type": "module",` in `package.json`, then create e.g. `BaseTestFile.ts`:
+
+```typescript
 import { test as base } from '@shopware-ag/acceptance-test-suite';
 import type { FixtureTypes } from '@shopware-ag/acceptance-test-suite';
 export * from '@shopware-ag/acceptance-test-suite';
 export const test = base.extend<FixtureTypes>({ /* your fixtures */ });
 ```
 
-6. In tests, import from it: `import { test, expect } from './../BaseTestFile';` and request fixtures such as `AdminApiContext` and `DefaultSalesChannel` as arguments. See [Fixtures](platform/dev/6.7/guides/development/testing/e2e-playwright/fixtures.md).
+Tests import from it: `import { test, expect } from './../BaseTestFile';` and receive fixtures such as `AdminApiContext` and `DefaultSalesChannel` as test-function arguments (see [fixtures](platform/dev/6.7/guides/development/testing/e2e-playwright/fixtures.md)).
 
 ## Essential identifiers
 
-- `@shopware-ag/acceptance-test-suite`, `FixtureTypes`, `base.extend<FixtureTypes>`
+- `@shopware-ag/acceptance-test-suite`
 - `APP_URL`, `SHOPWARE_ACCESS_KEY_ID`, `SHOPWARE_SECRET_ACCESS_KEY`, `SHOPWARE_ADMIN_USERNAME`, `SHOPWARE_ADMIN_PASSWORD`, `MAILPIT_BASE_URL`
-- `integration:create` (Shopware CLI)
-- `playwright.config.ts`, `BaseTestFile.ts`
+- `playwright.config.ts`, `BaseTestFile.ts`, `FixtureTypes`
 
 ## Gotchas
 
-- The ATS works as a complete drop-in for Playwright via Playwright's extension system; a custom base file is the recommended central reference only when you add your own fixtures.
-- Integration credentials are the recommended auth option over admin user credentials.
+- The ATS uses Playwright's extension system and works as a drop-in for Playwright; add your own fixtures via a base test file rather than importing the package directly in every test.
+- `package.json` must declare `"type": "module"`.
 
-## Code check (6.7.13.0)
-- confirmed `integration:create` — console command creating an integration, `--admin` option — vendor/shopware/core/Framework/Api/Command/CreateIntegrationCommand.php:18
-- confirmed `SHOPWARE_ACCESS_KEY_ID` — printed by integration:create — vendor/shopware/core/Framework/Api/Command/CreateIntegrationCommand.php:56
-- confirmed `SHOPWARE_SECRET_ACCESS_KEY` — printed by integration:create — vendor/shopware/core/Framework/Api/Command/CreateIntegrationCommand.php:57
-- confirmed `APP_URL` — Shopware env parameter, default empty — vendor/shopware/core/Framework/Resources/config/packages/shopware.yaml:3
-- unverified `SHOPWARE_ADMIN_USERNAME` — read by the ATS npm package, outside vendor/shopware
-- unverified `SHOPWARE_ADMIN_PASSWORD` — read by the ATS npm package, outside vendor/shopware
-- unverified `MAILPIT_BASE_URL` — read by the ATS npm package, outside vendor/shopware
-- unverified `FixtureTypes` — exported by the ATS npm package, outside vendor/shopware
+## Code check (6.7.15.1)
+- confirmed `APP_URL` — the Shopware instance's own base URL env var — vendor/shopware/core/Maintenance/System/Service/AppUrlVerifier.php:37
+- confirmed `client_credentials` — integration access key/secret authenticate via the OAuth client-credentials grant — vendor/shopware/core/Framework/Api/OAuth/ClientRepository.php:50
+- unverified `SHOPWARE_ACCESS_KEY_ID` — env var read by the external ATS package, out of scope
+- unverified `SHOPWARE_ADMIN_USERNAME` — env var read by the external ATS package, out of scope
+- unverified `MAILPIT_BASE_URL` — ATS/Playwright config, out of scope
+- unverified `FixtureTypes` — type exported by @shopware-ag/acceptance-test-suite, out of scope

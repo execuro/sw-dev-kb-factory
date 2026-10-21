@@ -6,27 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/integrations/commercial/customer-specific-pricing.html
 sourceHash: 42c56ed537c1f428912c51cfddd781087ef55e9e
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["/api/_action/custom-price", "customer-specific pricing", "custom prices", "custom_price", "customerId", "productId", "customerGroupIds", "upsert", "delete", "sync api", "erp price override", "commercial plugin", "indexing-behavior"]
-summary: "Commercial plugin route /api/_action/custom-price: sync-style upsert/delete of per-customer product price overrides, payload shape and known caveats."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["customer-specific pricing", "custom prices", "custom price", "/api/_action/custom-price", "upsert", "delete", "productId", "customerId", "customerIds", "productIds", "customerGroupIds", "sync api", "price override", "erp pricing", "commercial plugin"]
+summary: Commercial plugin route /api/_action/custom-price - sync-style upsert/delete of per-customer product price overrides from an ERP.
+lastBuilt: 2026-10-21
 relatedPages: ["platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md"]
 ---
 ## What it is
 
-Customer-specific pricing is a Commercial plugin feature that lets an external data source or ERP override a product's price for an individual customer. It defines a relationship between the price and the Customer entity and is driven through a single Admin API action route modelled on the sync API.
+Customer-specific pricing is a Commercial plugin feature that lets an external data source or ERP override the price of a product for a particular customer. It defines a custom relationship between the current price and the Customer entity and is driven through an Admin API route.
 
 ## When to use
 
-When prices negotiated per customer live in an ERP or other external system and must override the standard product price in Shopware.
+When an ERP or external pricing system must push granular per-customer price overrides into Shopware.
 
 ## Key steps / config
 
-1. Prerequisites: a Shopware 6 installation, the Commercial plugin installed and activated (see [plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)), and the `Custom Prices` feature activated in the relevant merchant account.
-2. Authenticate like any other Admin API request.
-3. `POST` to `/api/_action/custom-price` with a sync-style array of commands. `upsert` and `delete` can be sent alone or combined; each command runs independently and isolated.
+1. Install and activate the Commercial plugin (see the [plugin base guide](platform/dev/6.7/guides/plugins/plugins/plugin-base-guide.md)), and have the `Custom Prices` feature activated within the merchant account.
+2. Authenticate against the Admin API like any other admin request.
+3. Send commands to `/api/_action/custom-price`. The body is shaped like a sync API request; `upsert` and `delete` actions can be used alone or combined in one request, and each command runs independently and isolated.
 
-`upsert` payload — `productId`, `customerId`, `price` (price rules with quantity range and per-currency prices):
+`upsert` payload entries take `productId`, `customerId` and `price` (a price-rule list with quantity ranges and per-currency prices):
 
 ```json
 [{ "action": "upsert", "payload": [{
@@ -36,7 +36,7 @@ When prices negotiated per customer live in an ERP or other external system and 
 }]}]
 ```
 
-`delete` payload — any combination of `customerIds`, `productIds`, `customerGroupIds`, but at least one UUID must be supplied across the three arrays:
+`delete` payload entries accept any combination of the ID arrays `customerIds`, `productIds`, `customerGroupIds`; at least one UUID must be supplied in one of them:
 
 ```json
 [{ "action": "delete", "payload": [{
@@ -44,28 +44,25 @@ When prices negotiated per customer live in an ERP or other external system and 
 }]}]
 ```
 
-4. Check the response body: validation errors do not produce an error status code; they are reported under the `errors` key.
-
 ## Essential identifiers
 
 - `/api/_action/custom-price`
-- Actions: `upsert`, `delete`
-- Upsert fields: `productId`, `customerId`, `price` (`quantityStart`, `quantityEnd`, `currencyId`, `gross`, `net`, `linked`)
-- Delete fields: `customerIds`, `productIds`, `customerGroupIds`
-- Feature toggle in the merchant account: `Custom Prices`
+- Actions `upsert`, `delete`
+- Upsert fields `productId`, `customerId`, `price` (`quantityStart`, `quantityEnd`, `currencyId`, `gross`, `net`, `linked`)
+- Delete fields `customerIds`, `productIds`, `customerGroupIds`
+- Response key `errors`
 
 ## Gotchas
 
-- Unlike the core `/api/_action/sync`, you cannot send headers to change the endpoint's behaviour; the source names `indexing-behavior` and `single-operation` as unsupported. Product indexing is handled per request automatically.
-- Price filtering on the product listing page does not take overridden prices into account.
-- Elasticsearch product mapping does not include customer-specific pricing data.
-- The `customerGroupId` parameter in the request body is a stub kept to avoid future breaking changes; it has no effect on the Storefront.
+- Errors do not produce an error status code (as with the sync API); validation errors are returned in the `errors` key.
+- Unlike the core `sync` route, headers cannot be used to adapt the endpoint's behaviour; the optional sync header flags (`indexing-behavior`, `single-operation`) are not supported. Indexing of relevant product data is handled per request.
+- Price filtering on the product listing page does not support the overridden prices.
+- Elasticsearch product mapping does not support customer-specific pricing data.
+- The `customerGroupId` parameter in the request body is a non-functional stub kept to avoid future breaking changes; data passed for it does not affect the Storefront.
 
-## Code check (6.7.13.0)
-- unverified `/api/_action/custom-price` — route is shipped by the Commercial plugin, not in the installed vendor/shopware packages
-- confirmed `custom_price` — entity listed with id, productId, customerId, customerGroupId, price in core's usage-data allow list — vendor/shopware/core/System/UsageData/usage-data-allow-list.json:1794
-- confirmed `customerGroupId` — field exists on custom_price per the allow list (docs: stub, no Storefront effect) — vendor/shopware/core/System/UsageData/usage-data-allow-list.json:1798
-- confirmed `/api/_action/sync` — core sync route the custom-price API is modelled on — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
-- confirmed `indexing-behavior` — core sync API header constant — vendor/shopware/core/PlatformRequest.php:29
-- confirmed `single-operation` — only still sent by the Administration repository client; core PHP does not read it — vendor/shopware/administration/Resources/app/administration/src/core/data/repository.data.ts:204
-- unverified `errors` — response error key of the Commercial route, not in installed packages
+## Code check (6.7.15.1)
+- unverified `/api/_action/custom-price` — route ships in the Commercial plugin, outside core/storefront/administration
+- unverified `Custom Prices` — Commercial plugin feature toggle, out of scope
+- confirmed `/api/_action/sync` — core sync route the custom-price API models itself on — vendor/shopware/core/Framework/Api/Controller/SyncController.php:43
+- confirmed `PlatformRequest::HEADER_INDEXING_BEHAVIOR` — core sync header `indexing-behavior`, not honoured by the custom-price route per docs — vendor/shopware/core/PlatformRequest.php:29
+- unverified `single-operation` — no core PHP constant; only sent by the administration client's repository code

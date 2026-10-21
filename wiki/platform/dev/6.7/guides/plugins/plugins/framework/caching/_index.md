@@ -6,27 +6,27 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/framework/caching/
 sourceHash: 62e27575614a00f08b4859e71c2fa4f40ffa6372
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["http cache", "cache hash", "HttpCacheCookieEvent", "HttpCacheKeyEvent", "CacheHashRequiredExtension", "ResolveCacheRelevantRuleIdsExtension", "CacheTagCollector", "CacheInvalidator", "CacheInvalidationSubscriber", "RemoveEventListener", "shopware.http_cache.cookies", "cache:clear:all", "delayed invalidation", "cache tags", "object cache"]
-summary: "Plugin control of Shopware caches: cache hash/key events, cache tags, CacheInvalidator (delayed or forced), invalidation tweaks, cache clear commands."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/guides/plugins/plugins/storefront/advanced/add-caching-to-custom-controller.md", "platform/dev/6.7/guides/hosting/performance/caches.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-complex-data-to-existing-entities.md"]
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["HttpCacheCookieEvent", "HttpCacheKeyEvent", "CacheHashRequiredExtension", "ResolveCacheRelevantRuleIdsExtension", "CacheTagCollector", "CacheInvalidator", "CacheInvalidationSubscriber", "RemoveEventListener", "shopware.http_cache.cookies", "cache:clear:delayed", "sw-force-cache-invalidate", "cache hash", "cache tags", "cache invalidation", "http cache"]
+summary: "Shopware HTTP and object cache hooks: cache hash/key events, cache tags, CacheInvalidator, delayed invalidation, cache:clear commands."
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/concepts/framework/http_cache.md", "platform/dev/6.7/guides/hosting/performance/caches.md", "platform/dev/6.7/guides/plugins/plugins/storefront/advanced/add-caching-to-custom-controller.md", "platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-complex-data-to-existing-entities.md"]
 ---
 ## What it is
 
-How a plugin adjusts Shopware's multi-layer cache: the outer HTTP cache (cache hash, cache key, tags, invalidation) and the internal Symfony-based object caches (invalidation only). Routes are added to the HTTP cache per [custom controller caching](platform/dev/6.7/guides/plugins/plugins/storefront/advanced/add-caching-to-custom-controller.md); layer configuration is in [caches](platform/dev/6.7/guides/hosting/performance/caches.md).
+How a plugin adjusts Shopware's multi-layer cache: the outer HTTP-Cache (cache hash cookie, cache key, tags, invalidation) and the internal Symfony-based object caches, which only support invalidation by tag. Concept: [HTTP-Cache](platform/dev/6.7/concepts/framework/http_cache.md); configuration: [caches hosting guide](platform/dev/6.7/guides/hosting/performance/caches.md).
 
 ## When to use
 
-Responses must vary by extra state (campaign parameter, customer group, cookie), custom data needs its own cache tags, or default invalidation is too aggressive for a project.
+- Responses vary by state the default cache hash ignores (campaign parameters, customer group, custom rule areas).
+- A plugin renders its own data into cached pages and must tag and invalidate them.
+- Core invalidation fires too often for a project.
 
 ## Key steps / config
 
-### Cache hash (context cookie)
+**1. When a hash is computed.** Default: only outside the "default state" (no logged-in customer, default currency, empty cart). Subscribe to `CacheHashRequiredExtension::NAME . '.post'` and set `$extension->result = true` (e.g. if `$extension->request->query->has('campaignId')`).
 
-- `Shopware\Core\Framework\Adapter\Cache\Http\Extension\CacheHashRequiredExtension` decides whether a hash is needed: subscribe to `CacheHashRequiredExtension::NAME . '.post'` and set `$extension->result = true` (e.g. if `$extension->request->query->has('campaignId')`).
-- `Shopware\Core\Framework\Adapter\Cache\Event\HttpCacheCookieEvent`: default parts `rule-ids`, `version-id`, `currency-id`, `tax-state`, `logged-in` (plus `language-id` on Store API requests). Add parts with `$event->add('customer-group', ...)`; `$event->isCacheable = false` bypasses caching.
-- Cookie-based parts without code:
+**2. Hash parts.** Defaults: `rule-ids`, `version-id`, `currency-id`, `tax-state`, `logged-in` (plus `language-id` on Store API requests). Subscribe to `HttpCacheCookieEvent::class`; `$event->add('customer-group', ...)`, or `$event->isCacheable = false` to bypass the cache (e.g. filled cart). `$event->context` is the `SalesChannelContext`. The hash travels as a cookie, so reverse proxies can use it. Cookie-based parts without code:
 
 ```yaml
 shopware:
@@ -35,71 +35,54 @@ shopware:
             - 'my-custom-cookie'
 ```
 
-- Rule areas: `Shopware\Core\Framework\Adapter\Cache\Http\Extension\ResolveCacheRelevantRuleIdsExtension` starts with `[RuleAreas::PRODUCT_AREA]`; subscribe to `ResolveCacheRelevantRuleIdsExtension::NAME . '.pre'` and append to `$extension->ruleAreas`. Declare the area via DAL flag `Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\RuleAreas`:
+**3. Cache-relevant rule areas.** Subscribe to `ResolveCacheRelevantRuleIdsExtension::NAME . '.pre'` and append to `$extension->ruleAreas` (default `[RuleAreas::PRODUCT_AREA]`). Declare the area with the DAL flag `Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\RuleAreas` on the rule association, e.g. an `EntityExtension` with `getEntityName()` returning `RuleDefinition::ENTITY_NAME` whose `extendFields()` adds a `ManyToManyAssociationField` with `->addFlags(new CascadeDelete(), new RuleAreas(self::MY_CUSTOM_RULE_AREA))` ([DAL guide](platform/dev/6.7/guides/plugins/plugins/framework/data-handling/add-complex-data-to-existing-entities.md)).
 
-```php
-class RuleExtension extends EntityExtension
-{
-    public const MY_CUSTOM_RULE_AREA = 'custom';
-    public function getEntityName(): string { return RuleDefinition::ENTITY_NAME; }
-    public function extendFields(FieldCollection $collection): void
-    {
-        $collection->add((new ManyToManyAssociationField(/* ... */))
-            ->addFlags(new CascadeDelete(), new RuleAreas(self::MY_CUSTOM_RULE_AREA)));
-    }
-}
-```
+**4. Cache key (Symfony HTTP-Cache only).** Subscribe to `HttpCacheKeyEvent::class`; `$event->add('myCustomKey', $key)` or `$event->isCacheable = false`. Prefer the hash.
 
-### Cache key (Symfony HTTP cache only)
+**5. Tags.** Inject `CacheTagCollector`, call `addTag('my-custom-entity-' . $id)`.
 
-`Shopware\Core\Framework\Adapter\Cache\Event\HttpCacheKeyEvent`: `$event->add('myCustomKey', $key)` or `$event->isCacheable = false`. Prefer the cache hash (reverse proxies use it too).
+**6. Invalidate.** Inject `CacheInvalidator`, call `invalidate(array $tags, bool $force = false)`, e.g. from an `EntityWrittenContainerEvent` subscriber via `$event->getPrimaryKeys(ExampleDefinition::ENTITY_NAME)`. Object caches: `invalidate([CachedSystemConfigLoader::CACHE_TAG])`.
 
-### Tags and invalidation
-
-- Tag: `CacheTagCollector::addTag('my-custom-entity-' . $id)`.
-- Invalidate: `CacheInvalidator::invalidate(array $tags, bool $force = false)`, e.g. in an `EntityWrittenContainerEvent` subscriber via `$event->getPrimaryKeys(...)`. Same for object caches, e.g. `CachedSystemConfigLoader::CACHE_TAG`.
-- Default invalidation: `Shopware\Core\Framework\Adapter\Cache\CacheInvalidationSubscriber`, wired with `kernel.event_listener` tags (priority 2000+). In a compiler pass, `->clearTag('kernel.event_listener')` on its definition, or remove selected listeners:
+**7. Tweak core invalidation.** `CacheInvalidationSubscriber` listens via `kernel.event_listener` tags. In a `CompilerPassInterface` either `->clearTag('kernel.event_listener')` on its definition, or:
 
 ```php
 RemoveEventListener::remove($container, CacheInvalidationSubscriber::class, [
-    [InvalidateProductCache::class, 'invalidateProduct'],
-    [EntityWrittenContainerEvent::class, 'invalidateCmsPageIds'],
+    [ProductIndexerEvent::class, 'invalidateListings'],
 ]);
 ```
 
-### Delayed / forced invalidation, clearing
+**8. Delayed invalidation.** Batched by scheduled task `shopware.invalidate_cache` (default every 5 minutes). Flush with `cache:clear:delayed`, `CacheInvalidator::invalidateExpired()` or `DELETE /api/_action/cache-delayed`; watch with `cache:watch:delayed`. Immediate: `invalidate([...], true)` or header `sw-force-cache-invalidate: 1` on an Admin API request.
 
-- Delayed by default; task `shopware.invalidate_cache` runs every 5 minutes. Manual: `cache:clear:delayed`, `CacheInvalidator::invalidateExpired()`, or `DELETE /api/_action/cache-delayed`; inspect with `cache:watch:delayed`.
-- Immediate: `invalidate($tags, true)`, or header `sw-force-cache-invalidate: 1` on an API write.
-- `cache:clear:all` = HTTP + object caches + old kernel cache dirs; `cache:clear` = object caches only; `cache:clear:http` = HTTP cache only.
+**9. Manual clear.** `cache:clear:all` (HTTP + object caches + kernel cache dirs), `cache:clear` (object caches only), `cache:clear:http` (HTTP-Cache only).
 
 ## Essential identifiers
 
-- `CacheHashRequiredExtension`, `ResolveCacheRelevantRuleIdsExtension`, `HttpCacheCookieEvent`, `HttpCacheKeyEvent`, `RuleAreas`
-- `CacheTagCollector`, `CacheInvalidator`, `CacheInvalidationSubscriber`, `Shopware\Core\Framework\DependencyInjection\CompilerPass\RemoveEventListener`
-- `shopware.http_cache.cookies`, `shopware.invalidate_cache`, `sw-force-cache-invalidate`
+- `Shopware\Core\Framework\Adapter\Cache\Http\Extension\CacheHashRequiredExtension`
+- `Shopware\Core\Framework\Adapter\Cache\Event\HttpCacheCookieEvent`
+- `Shopware\Core\Framework\Adapter\Cache\Http\Extension\ResolveCacheRelevantRuleIdsExtension`
+- `Shopware\Core\Framework\Adapter\Cache\Event\HttpCacheKeyEvent`
+- `CacheTagCollector`, `CacheInvalidator`, `CacheInvalidationSubscriber`
+- `Shopware\Core\Framework\DependencyInjection\CompilerPass\RemoveEventListener`
 
 ## Gotchas
 
-- Default state (no hash) = no customer, default currency, empty cart, and no configured cache-relevant cookie set.
-- Each extra part multiplies permutations and lowers hit rate. `HttpCacheKeyEvent` runs on every request (no DB queries); behind an external reverse proxy the key may be built there.
-- Caches never invalidating usually means scheduled tasks are not running.
-- `cache:clear` only clears the current kernel configuration's directory; CLI and web may differ. Use `cache:clear:all`.
-- The docs' example removes `invalidateListings` listeners; that method does not exist in 6.7.13 — use methods from the actual `cache.xml` tags.
+- Each extra hash/key part multiplies permutations and lowers hit rate.
+- `HttpCacheKeyEvent` runs on every request; no database queries. External reverse proxies may build the key themselves.
+- If caches never invalidate, check that scheduled tasks run.
+- `cache:clear` clears only the current kernel configuration's cache dir; CLI and web server may differ (e.g. plugin installed via Composer but not activated). Use `cache:clear:all`.
 
 ## Version notes
 
-- Filtering `rule-ids` by rule area is v6.8.0.0 behaviour; in 6.7 it applies only with feature flag `v6.8.0.0`, `PERFORMANCE_TWEAKS` or `CACHE_REWORK`, otherwise all context rule IDs are used.
-- The subscriber is wired in `cache.xml`, not `cache.php`, in 6.7.13.
+- Docs: rule-area filtering of `rule-ids` starts with v6.8.0.0. In 6.7.15.1 it is applied only when feature `v6.8.0.0`, `PERFORMANCE_TWEAKS` or `CACHE_REWORK` is active; otherwise all matched rule IDs are hashed.
 
-## Code check (6.7.13.0)
-- corrected `CacheInvalidationSubscriber` — docs: service defined in cache.php — vendor/shopware/core/Framework/DependencyInjection/cache.xml:117
-- absent `invalidateListings` — docs' RemoveEventListener example method; not found anywhere in the code index
-- corrected `HttpCacheCookieEvent::LANGUAGE_ID` — docs: five default hash parts; Store API requests also add language-id — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:110
-- confirmed `getRuleIdsByAreas` — rule-area filtering only behind v6.8.0.0/PERFORMANCE_TWEAKS/CACHE_REWORK flags — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:91
-- confirmed `RuleAreas::PRODUCT_AREA` — default cache-relevant area — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheRelevantRulesResolver.php:31
-- confirmed `CacheHashRequiredExtension::NAME` — value cache-hash.required — vendor/shopware/core/Framework/Adapter/Cache/Http/Extension/CacheHashRequiredExtension.php:19
-- confirmed `shopware.http_cache.cookies` — scalar list config node — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1368
-- confirmed `CacheInvalidator::invalidate()` — second parameter force defaults to false — vendor/shopware/core/Framework/Adapter/Cache/CacheInvalidator.php:54
-- confirmed `shopware.invalidate_cache` — scheduled task, default interval 5 minutes — vendor/shopware/core/Framework/Adapter/Cache/InvalidateCacheTask.php:14
-- confirmed `RemoveEventListener::remove()` — removes event::method listener pairs from a service — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/RemoveEventListener.php:14
+## Code check (6.7.15.1)
+- confirmed `CacheHashRequiredExtension::NAME` — value `cache-hash.required` — vendor/shopware/core/Framework/Adapter/Cache/Http/Extension/CacheHashRequiredExtension.php:19
+- confirmed `ResolveCacheRelevantRuleIdsExtension::$ruleAreas` — public mutable list of rule areas — vendor/shopware/core/Framework/Adapter/Cache/Http/Extension/ResolveCacheRelevantRuleIdsExtension.php:38
+- confirmed `RuleAreas::PRODUCT_AREA` — sole default cache-relevant area — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheRelevantRulesResolver.php:31
+- corrected `HttpCacheCookieEvent::LANGUAGE_ID` — docs: five default parts; code adds `language-id` for Store API requests — vendor/shopware/core/Framework/Adapter/Cache/Http/CacheHeadersService.php:105
+- confirmed `HttpCacheKeyEvent::add()` — adds a key part; `$isCacheable` public — vendor/shopware/core/Framework/Adapter/Cache/Event/HttpCacheKeyEvent.php:57
+- confirmed `CacheInvalidator::invalidate()` — `array $tags, bool $force = false` — vendor/shopware/core/Framework/Adapter/Cache/CacheInvalidator.php:54
+- confirmed `InvalidateCacheTask::getTaskName()` — `shopware.invalidate_cache`, default interval 5 minutes — vendor/shopware/core/Framework/Adapter/Cache/InvalidateCacheTask.php:14
+- confirmed `sw-force-cache-invalidate` — `PlatformRequest::HEADER_FORCE_CACHE_INVALIDATE` — vendor/shopware/core/PlatformRequest.php:32
+- confirmed `RemoveEventListener::remove()` — static compiler-pass helper — vendor/shopware/core/Framework/DependencyInjection/CompilerPass/RemoveEventListener.php:14
+- confirmed `http_cache.cookies` — array config node — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:1413

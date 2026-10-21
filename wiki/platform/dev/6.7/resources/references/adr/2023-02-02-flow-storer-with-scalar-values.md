@@ -6,64 +6,69 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/resources/references/adr/2023-02-02-flow-storer-with-scalar-values.html
 sourceHash: c29863c405534abe6c4c64a10b4ad3e370dae0de
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["ScalarValuesAware", "ScalarValuesStorer", "FlowStorer", "FlowEventAware", "StorableFlow", "STORE_VALUES", "getValues", "flow builder", "flow event", "storer", "scalar values", "aware interface"]
-summary: "ADR: ScalarValuesAware + ScalarValuesStorer store/restore scalar flow event values generically, replacing per-value Aware interfaces and Storer classes."
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["ScalarValuesAware", "ScalarValuesStorer", "FlowStorer", "FlowEventAware", "StorableFlow", "STORE_VALUES", "getValues", "flow builder", "flow storer", "scalar values", "aware interface", "adr", "flow data storage"]
+summary: "ADR: generic ScalarValuesAware interface plus ScalarValuesStorer store/restore scalar flow event data, replacing per-value Aware/Storer pairs."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-An architecture decision record introducing a generic interface, `ScalarValuesAware`, plus one built-in `FlowStorer` implementation, `ScalarValuesStorer`, so flow events can hand simple values (URLs, names, form data) to the flow builder without a dedicated `*Aware` interface and `*Storer` class per value.
+An architecture decision record (2023-02-02) introducing one generic way to persist simple scalar data of flow events. Instead of one `*Aware` interface plus one `FlowStorer` subclass per value (URL, contents, name, subject, ...), an event implements `ScalarValuesAware` and returns its values from `getValues()`; the generic `ScalarValuesStorer` stores and restores them one to one.
 
 ## When to use
 
-When writing a flow-capable event that needs to pass scalar or array values into flows, or when replacing old per-value storer/aware pairs.
+- You write a custom flow event (`FlowEventAware`) that must carry simple values (strings, ints, arrays, null) into flow actions, e.g. a URL or a name for a mail template.
+- You maintain a plugin that implemented its own storer only to store and restore scalar values.
 
 ## Key steps / config
 
-1. Implement `Shopware\Core\Content\Flow\Dispatching\Aware\ScalarValuesAware` on the event next to `FlowEventAware`, returning the values from `getValues()` (`array<string, scalar|array|null>`):
+1. Implement `Shopware\Core\Content\Flow\Dispatching\Aware\ScalarValuesAware` on the event, next to `FlowEventAware`, and return the values keyed by the name under which they become available as flow data:
 
 ```php
 class SomeFlowAwareEvent extends Event implements ScalarValuesAware, FlowEventAware
 {
-    public function __construct(private readonly string $url, private readonly Context $context) {}
-    public function getValues(): array { return ['url' => $this->url]; }
+    public function __construct(private readonly string $url) { }
     public static function getAvailableData(): EventDataCollection { /* ... */ }
     public function getName(): string { /* ... */ }
-    public function getContext(): Context { return $this->context; }
+    public function getValues(): array
+    {
+        return ['url' => $this->url];
+    }
 }
 ```
 
-2. No storer is needed: `Shopware\Core\Content\Flow\Dispatching\Storer\ScalarValuesStorer` (extends `FlowStorer`) writes `getValues()` into the stored array under `ScalarValuesAware::STORE_VALUES` in `store(FlowEventAware $event, array $stored): array`, and in `restore(StorableFlow $storable): void` calls `$storable->setData($key, $value)` for each entry.
-3. A custom storer still extends `FlowStorer` and must implement both abstract methods `store()` and `restore()`.
+2. Nothing else is needed: `Shopware\Core\Content\Flow\Dispatching\Storer\ScalarValuesStorer` (extends `FlowStorer`) stores `getValues()` under `ScalarValuesAware::STORE_VALUES` in `store()`, and in `restore()` calls `StorableFlow::setData($key, $value)` for every stored entry.
+
+3. A custom storer still extends the abstract `FlowStorer` and must declare both `store(FlowEventAware $event, array $stored): array` and `restore(StorableFlow $storable): void`.
 
 ## Essential identifiers
 
-- `ScalarValuesAware`, `ScalarValuesAware::STORE_VALUES` (value `store_values`), `getValues()`
-- `ScalarValuesStorer`, `FlowStorer::store()`, `FlowStorer::restore()`
-- `FlowEventAware::getAvailableData()`, `FlowEventAware::getName()`
+- `Shopware\Core\Content\Flow\Dispatching\Aware\ScalarValuesAware` — constant `STORE_VALUES`, method `getValues(): array`
+- `Shopware\Core\Content\Flow\Dispatching\Storer\ScalarValuesStorer`
+- `Shopware\Core\Content\Flow\Dispatching\Storer\FlowStorer` — `store()`, `restore()`
+- `Shopware\Core\Framework\Event\FlowEventAware` — `getAvailableData()`, `getName()`
 - `StorableFlow::getStore()`, `StorableFlow::setData()`
 
 ## Gotchas
 
-- The ADR's event example implements `ScalarStoreAware`; that name does not exist — the interface is `ScalarValuesAware`.
-- The ADR shows `STORE_VALUES = 'scalar_values'`; the installed constant value is `store_values`.
-- `ScalarValuesStorer::store()` throws a `RuntimeException` ("Can not store generic values twice.") if the key is already set, and `restore()` returns early when the store key is absent.
-- `FlowEventAware` extends `ShopwareEvent`, so the event also needs `getContext()`.
+- The ADR's event snippet implements `ScalarStoreAware` and its consequences list says events move to `ScalarStoreAware`; no such interface exists in the code. The real interface is `ScalarValuesAware`.
+- The ADR shows `STORE_VALUES = 'scalar_values'`; the installed constant value is `'store_values'`. Always use the constant, not the literal.
+- `ScalarValuesStorer::store()` throws a `RuntimeException` ("Can not store generic values twice.") if the store key is already set, and `restore()` returns early when nothing was stored — the ADR snippet has neither check.
+- An event's `FlowEventAware` side still needs `getAvailableData()` and `getName()`; the ADR snippet omits them.
 
 ## Version notes
 
-- The ADR deprecated these per-value pairs for removal in v6.6.0.0: ConfirmUrlStorer/ConfirmUrlAware, ContactFormDataStorer/ContactFormDataAware, ContentsStorer/ContentsAware, ContextTokenStorer/ContextTokenAware, DataStorer/DataAware, EmailStorer/EmailAware, MailStorer/MailAware, NameStorer/NameAware, RecipientsStorer/RecipientsAware, ResetUrlStorer/ResetUrlAware, ReviewFormDataStorer/ReviewFormDataAware, ShopNameStorer/ShopNameAware, SubjectStorer/SubjectAware, TemplateDataStorer/TemplateDataAware, UrlStorer/UrlAware.
-- In 6.7.13.0 e.g. `ConfirmUrlStorer` and `ContactFormDataStorer` are gone, while a `MailStorer` class and `MailAware` interface still exist; events such as `ReviewFormEvent` implement `ScalarValuesAware`.
+- The ADR deprecated these storer/interface pairs in favour of the scalar approach, to be removed in v6.6.0.0: ConfirmUrlStorer/ConfirmUrlAware, ContactFormDataStorer/ContactFormDataAware, ContentsStorer/ContentsAware, ContextTokenStorer/ContextTokenAware, DataStorer/DataAware, EmailStorer/EmailAware, MailStorer/MailAware, NameStorer/NameAware, RecipientsStorer/RecipientsAware, ResetUrlStorer/ResetUrlAware, ReviewFormDataStorer/ReviewFormDataAware, ShopNameStorer/ShopNameAware, SubjectStorer/SubjectAware, TemplateDataStorer/TemplateDataAware, UrlStorer/UrlAware.
+- In 6.7 the listed scalar storers are gone from the storer directory; `MailStorer` (for `MailAware`) still exists. Core events such as `CustomerPasswordChangedEvent` implement `ScalarValuesAware`.
 
-## Code check (6.7.13.0)
-- confirmed `ScalarValuesAware` — interface in Content/Flow/Dispatching/Aware — vendor/shopware/core/Content/Flow/Dispatching/Aware/ScalarValuesAware.php:10
-- corrected `ScalarValuesAware::STORE_VALUES` — docs: `'scalar_values'`; code: `'store_values'` — vendor/shopware/core/Content/Flow/Dispatching/Aware/ScalarValuesAware.php:12
-- confirmed `ScalarValuesAware::getValues()` — returns array of scalar/array/null — vendor/shopware/core/Content/Flow/Dispatching/Aware/ScalarValuesAware.php:17
-- confirmed `ScalarValuesStorer::store()` — throws on double store — vendor/shopware/core/Content/Flow/Dispatching/Storer/ScalarValuesStorer.php:18
-- confirmed `ScalarValuesStorer::restore()` — skips when store key missing — vendor/shopware/core/Content/Flow/Dispatching/Storer/ScalarValuesStorer.php:33
-- confirmed `FlowStorer::store()` — abstract, `restore()` abstract at line 19 — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:17
-- confirmed `FlowEventAware::getAvailableData()` — static, `getName()` at line 13 — vendor/shopware/core/Framework/Event/FlowEventAware.php:11
-- confirmed `ShopwareEvent::getContext()` — inherited by FlowEventAware — vendor/shopware/core/Framework/Event/ShopwareEvent.php:11
-- absent `ScalarStoreAware` — name used in the ADR example; real interface is ScalarValuesAware
-- absent `ConfirmUrlStorer` — removed deprecated storer (likewise `ContactFormDataStorer`)
+## Code check (6.7.15.1)
+- confirmed `ScalarValuesAware` — interface with `getValues(): array` — vendor/shopware/core/Content/Flow/Dispatching/Aware/ScalarValuesAware.php:10
+- corrected `STORE_VALUES` — docs: value 'scalar_values'; code: 'store_values' — vendor/shopware/core/Content/Flow/Dispatching/Aware/ScalarValuesAware.php:12
+- confirmed `ScalarValuesStorer` — extends FlowStorer — vendor/shopware/core/Content/Flow/Dispatching/Storer/ScalarValuesStorer.php:11
+- corrected `store` — docs: plain write; code throws RuntimeException if values already stored — vendor/shopware/core/Content/Flow/Dispatching/Storer/ScalarValuesStorer.php:18
+- confirmed `restore` — returns early without stored values, else setData per key — vendor/shopware/core/Content/Flow/Dispatching/Storer/ScalarValuesStorer.php:33
+- confirmed `FlowStorer` — abstract base with abstract store() and restore() — vendor/shopware/core/Content/Flow/Dispatching/Storer/FlowStorer.php:10
+- confirmed `getAvailableData` — static method required by FlowEventAware — vendor/shopware/core/Framework/Event/FlowEventAware.php:11
+- confirmed `getName` — required by FlowEventAware — vendor/shopware/core/Framework/Event/FlowEventAware.php:13
+- absent `ScalarStoreAware` — not found in the installed code; the interface is ScalarValuesAware
+- absent `ConfirmUrlStorer` — removed, as the ADR planned for 6.6

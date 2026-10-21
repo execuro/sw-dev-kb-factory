@@ -6,83 +6,82 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/guides/plugins/plugins/administration/permissions-error-handling/add-error-handling.html
 sourceHash: 99b562e3e9414dd8c05f30f5c4803183d620e570
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["getApiError", "getApiErrorFromPath", "mapPropertyErrors", "mapPageErrors", "getComponentHelper", "error store", "Shopware.Store", "hasError", "api validation errors", "form field errors", "tab error indicator", "error.cfg.json"]
-summary: Read Administration API validation errors from the error store (getApiError) and map them to computed props with mapPropertyErrors and mapPageErrors.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["getApiError", "getApiErrorFromPath", "mapPropertyErrors", "mapPageErrors", "getComponentHelper", "error.cfg.json", "Shopware.Store.get('error')", "existsErrorInProperty", "api errors", "field validation errors", "error store", "tab error indicator", "administration"]
+summary: "Admin API error store (Pinia store 'error'): getApiError/getApiErrorFromPath, mapPropertyErrors for fields, mapPageErrors for tab error flags."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The Administration keeps API validation errors in a central error store with a flat structure: entity name, then entity id, then property. This page covers reading those errors and mapping them to computed properties for fields and for whole pages/tabs.
+The Administration keeps API (validation) errors in a central error store, keyed flat by entity name, then entity id, then property path. Components read errors from it directly via getters or through helper mappers that generate computed properties. In 6.7 this store is the Pinia store with id `error` (the docs still describe it as a Vuex store).
+
+```text
+(state.api)
+ |- entityNameA
+    |- id1
+        |- property1
+        |- property2
+ |- entityNameB
+```
 
 ## When to use
 
-- A plugin form field should show the API error for its property after a failed save.
-- A detail page with tabs must indicate that another tab contains an error.
+- Showing a field-level error on an input after a failed save (e.g. empty product name).
+- Flagging a tab or nested view that contains an error the user cannot currently see.
 
 ## Key steps / config
 
-**Read errors directly** from the Pinia error store `Shopware.Store.get('error')`:
-
-- `getApiErrorFromPath(entityName, id, path)` — `path` is an array of nested property names.
-- `getApiError(entity, field)` — takes the entity object (uses `entity.getEntityName()` and `entity.id`) and a dotted field string like `'myFieldName.nested'`.
-
-```javascript
-computed: {
-    propertyError() {
-        return Shopware.Store.get('error').getApiError(this.myEntity, 'myFieldName');
-    }
-}
-```
-
-Bind it on a field: `<mt-text-field v-model="product.name" :error="propertyError" />`.
-
-**Map property errors** with the component helper:
-
-```javascript
-const { mapPropertyErrors } = Shopware.Component.getComponentHelper();
-
-Shopware.Component.register('sw-product-basic-form', {
-    computed: {
-        ...mapPropertyErrors('product', ['name', 'description', 'productNumber'])
-    }
-});
-```
-
-The first argument is the name of the component property holding the entity (`this.product`), not the entity itself. Generated names are camelCase of `<subject>.<property>.error`, e.g. `productNameError`.
-
-**Page/tab errors.** An error config (e.g. `error.cfg.json`) maps route names to entity => properties:
-
-```json
-{
-  "sw.product.detail.base": { "product": ["taxId", "price", "stock", "name"] },
-  "sw.product.detail.cross.selling": { "product_cross_selling": ["name", "type"] }
-}
-```
-
-Import it and spread `...mapPageErrors(errorConfiguration)` into `computed` (helper from `Shopware.Component.getComponentHelper()`). Each route yields a boolean `<camelCase route>Error`, e.g. `swProductDetailBaseError`, usable as `<sw-tabs-item :hasError="swProductDetailBaseError">`.
+1. **Read a single error.** Access the store with `Shopware.Store.get('error')`:
+   - `getApiErrorFromPath(entityName, id, path)` — `path` is an array of nested property names, e.g. `['name']`.
+   - `getApiError(entity, field)` — wrapper taking the entity object (needs `getEntityName()` and `id`) and a dotted field such as `'name'` or `'myFieldName.nested'`; it splits the field on `.` and calls `getApiErrorFromPath`.
+   Wrap calls in computed properties and bind them to the input's `error` prop.
+   ```javascript
+   computed: {
+       propertyError() {
+           return Shopware.Store.get('error').getApiError(this.myEntity, 'myFieldName');
+       }
+   }
+   ```
+2. **Map many fields at once** with `mapPropertyErrors(subject, properties)` from `Shopware.Component.getComponentHelper()`. `subject` is the entity *name*, and the component must expose that entity under the same property name (`this.product`). Each generated computed is camelCase of `<subject>.<property>.error`, e.g. `productNameError`.
+   ```javascript
+   const { mapPropertyErrors } = Shopware.Component.getComponentHelper();
+   computed: { ...mapPropertyErrors('product', ['name', 'productNumber']) }
+   ```
+   Bind with `:error="productNameError"`.
+3. **Page/tab error flags.** Write an `error.cfg.json` mapping route names to entity → property lists, then spread `mapPageErrors(errorConfiguration)`:
+   ```json
+   {
+     "sw.product.detail.base": { "product": ["taxId", "price", "name"] },
+     "sw.product.detail.cross.selling": { "product_cross_selling": ["name", "type"] }
+   }
+   ```
+   ```javascript
+   import errorConfiguration from './error.cfg.json';
+   const { mapPageErrors } = Shopware.Component.getComponentHelper();
+   computed: { ...mapPageErrors(errorConfiguration) }
+   ```
+   Each route key yields a boolean computed named camelCase(route) + `Error` (e.g. `swProductDetailBaseError`), true when any listed property of that entity has an error. Bind it to a tab's `has-error` / `hasError`.
 
 ## Essential identifiers
 
-- `Shopware.Store.get('error')`: `getApiError`, `getApiErrorFromPath`, `existsErrorInProperty`
-- `Shopware.Component.getComponentHelper()`: `mapPropertyErrors`, `mapPageErrors`
-- `sw-tabs-item` prop `hasError`
+- `Shopware.Store.get('error')`
+- `getApiErrorFromPath(entityName, id, path)`, `getApiError(entity, field)`, `existsErrorInProperty(entity, properties)`
+- `Shopware.Component.getComponentHelper()` → `mapPropertyErrors`, `mapPageErrors`
+- `error.cfg.json`, `swProductDetailBaseError`
 
 ## Gotchas
 
-- The docs use `this.$store.getters.getApiError(...)` (Vuex); in 6.7 the error store is Pinia (`Shopware.Store.get('error')`), which the mapping helpers use internally.
-- The docs bind `:hasError` on `sw-tabs`; the prop is declared on `sw-tabs-item`.
-- The docs' fields use `sw-field`; core 6.7 templates bind `:error` on Meteor fields such as `mt-text-field`.
-- `mapPropertyErrors` getters return `null` if the named property is not an entity.
+- The docs' `this.$store.getters.getApiError(...)` refers to the old Vuex store; in 6.7 there is no Vuex error module — use `Shopware.Store.get('error')`.
+- `mapPropertyErrors` returns `null` when `this[subject]` is not an entity (no `getEntityName()`), so the property name must match the subject string.
+- `mapPageErrors` checks entity-wide (any entity id), not a specific record.
 
-## Code check (6.7.13.0)
-- corrected `getApiError` — docs: `this.$store.getters.getApiError`; Pinia error store getter — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:162
-- confirmed `getApiErrorFromPath` — `(entityName, id, path: string[])` — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:141
-- confirmed `mapPropertyErrors` — reads `this[entityName]`, camelCase `<entity>.<property>.error` names — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:11
-- confirmed `Shopware.Store.get('error')` — helpers read errors from the Pinia store — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:28
-- confirmed `mapPageErrors` — builds `<camelCase routeName>Error` booleans — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:66
-- confirmed `existsErrorInProperty` — store getter used by mapPageErrors — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:190
-- confirmed `getComponentHelper` — exposed on `Shopware.Component` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:137
-- corrected `hasError` — docs: prop on `sw-tabs`; declared on `sw-tabs-item` — vendor/shopware/administration/Resources/app/administration/src/app/component/base/sw-tabs-item/index.js:81
-- confirmed `mt-text-field` — core template binds `:error` on it — vendor/shopware/administration/Resources/app/administration/src/module/sw-settings-product-feature-sets/page/sw-settings-product-feature-sets-detail/sw-settings-product-feature-sets-detail.html.twig:60
-- unverified `sw-field` — no `sw-field` registration found in the admin component index; only a form-renderer component name
+## Code check (6.7.15.1)
+- corrected `getApiError` — docs: Vuex `this.$store.getters.getApiError`; code: Pinia store `error` getter — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:162
+- confirmed `getApiErrorFromPath` — getter `(entityName, id, path: string[])` — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:141
+- confirmed `Shopware.Store.register` — error store registered with `id: 'error'` — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:87
+- confirmed `existsErrorInProperty` — backs page error flags — vendor/shopware/administration/Resources/app/administration/src/app/store/error.store.ts:190
+- confirmed `mapPropertyErrors` — computed name camelCase of `entity.property.error` — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:11
+- confirmed `mapPageErrors` — route key → `<camelCase>Error` boolean — vendor/shopware/administration/Resources/app/administration/src/app/service/map-errors.service.ts:70
+- confirmed `getComponentHelper` — exposed on `Shopware.Component` — vendor/shopware/administration/Resources/app/administration/src/core/shopware.ts:142
+- confirmed `error.cfg.json` — imported by sw-product-detail — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/page/sw-product-detail/index.js:7
+- confirmed `swProductDetailBaseError` — bound as tab error flag — vendor/shopware/administration/Resources/app/administration/src/module/sw-product/page/sw-product-detail/index.js:161

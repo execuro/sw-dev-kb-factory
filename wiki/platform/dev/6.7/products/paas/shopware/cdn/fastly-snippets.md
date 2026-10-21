@@ -5,72 +5,53 @@ docType: developer
 version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/paas/shopware/cdn/fastly-snippets.html
-sourceHash: c0f80fdb1e5ed95a5b8997140f45651c46f61629
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["fastly", "vcl snippets", "services.fastly.snippets_path", "fastly.disable_default_snippets", "application.yaml", "sw-paas application update", "snippet priority", "vcl subroutine", "storefront-", "cdn-", "config/fastly", "shopware paas native"]
-summary: "Fastly VCL snippets on Shopware PaaS Native: services.fastly.snippets_path, folder layout per subroutine, priority order, storefront-/cdn- prefixes."
-lastBuilt: 2026-09-15
-relatedPages: ["platform/dev/6.7/products/paas/shopware/cdn/_index.md", "platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md"]
+sourceHash: 1c799d9b8544e35af353d82f9d6d3a9bb44c58ca
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["fastly", "vcl snippets", "services.fastly.snippets_path", "fastly.disable_default_snippets", "application.yaml", "sw-paas application update", "snippet priority", "vcl subroutine", "recv", "deliver", "storefront-", "cdn-", "paas native"]
+summary: Custom Fastly VCL snippets on PaaS Native - services.fastly.snippets_path, per-subroutine folders, priority by file name, storefront-/cdn- prefixes.
+lastBuilt: 2026-10-21
+relatedPages: ["platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md", "platform/dev/6.7/products/paas/shopware/cdn/_index.md"]
 ---
 ## What it is
 
-How to add custom Fastly VCL snippets to the Fastly services in front of a Shopware PaaS Native shop, alongside (or instead of) the default snippets PaaS deploys out of the box.
+How to add custom Fastly VCL snippets to the Fastly services in front of a Shopware PaaS Native shop. A maintained set of default snippets is deployed and enabled out of the box; you can add your own alongside them or disable the defaults and take full control. Custom snippets are read from your project repository during deployment.
 
 ## When to use
 
-When the default caching behaviour needs extending (headers, auth, geo, routing at the edge) or you want full control by disabling the default snippets.
+When you need custom edge logic (headers, auth, geo, URL normalisation, routing) in Fastly for the shop or its assets, or need to replace the default Shopware caching snippets.
 
 ## Key steps / config
 
-1. Put snippet files in the repository, one sub-directory per VCL subroutine type.
-2. Point `services.fastly.snippets_path` at that directory in [`application.yaml`](platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md):
-
-```yaml
-services:
-  fastly:
-    disable_default_snippets: false
-    snippets_path: config/fastly
-```
-
-| Option | Default | Meaning |
-|---|---|---|
-| `snippets_path` | unset | Repo-relative snippet directory; unset = no custom snippets, defaults stay |
-| `disable_default_snippets` | `false` | `true` disables the PaaS default snippets |
-
-3. Apply with `sw-paas application update`.
-
-**Folder layout** – exactly one level deep, e.g. `config/fastly/recv/001-auth.vcl`, `config/fastly/deliver/001-headers.vcl`. Valid type directories: `init`, `recv`, `hash`, `hit`, `miss`, `pass`, `fetch`, `error`, `deliver`, `log`, `none`.
-
-**Order** – within a type, files are sorted by name; the first gets Fastly priority `1`, the second `2`, etc. Lower priority runs first. Default snippets use priority `50`, so custom snippets of the same type run before them. Defaults cover `recv`, `fetch`, `miss`, `pass`, `deliver` on `storefront` and `recv`, `fetch`, `deliver` on `cdn`.
-
-**Target service** – decided by the file name start:
-
-| File | Deployed to |
-|---|---|
-| `recv/test.vcl` | `storefront` and `cdn` |
-| `recv/storefront-test.vcl` | `storefront` only |
-| `recv/cdn-test.vcl` | `cdn` only |
-
-Put the prefix before the number: `storefront-001-shop-headers.vcl` (storefront only), not `001-storefront-shop-headers.vcl` (deployed to both). See [CDN](platform/dev/6.7/products/paas/shopware/cdn/_index.md) for the two services.
-
-**Naming** – snippet name = type + file name without extension (`recv/001-auth.vcl` → `recv-001-auth`), used as a Kubernetes resource name: lowercase alphanumerics and `-` only.
+1. Configure Fastly under `services` in [`application.yaml`](platform/dev/6.7/products/paas/shopware/fundamentals/application-yaml.md):
+   ```yaml
+   services:
+     fastly:
+       disable_default_snippets: false
+       snippets_path: config/fastly
+   ```
+   - `snippets_path` (default unset): directory relative to the application root (the directory with `application.yaml`). Unset = no custom snippets deployed, defaults stay on. **Without it, snippet files are ignored.**
+   - `disable_default_snippets` (default `false`): `true` disables the default snippets.
+2. Lay out the directory exactly one level deep - one sub-directory per VCL subroutine type, files directly inside (e.g. `config/fastly/recv/001-auth.vcl`). Valid types: `init`, `recv`, `hash`, `hit`, `miss`, `pass`, `fetch`, `error`, `deliver`, `log`, `none`.
+3. Order: within a type, files are sorted by name and get priority `1`, `2`, ... (lower runs first). Prefix with numbers (`001-`, `002-`). Default snippets use priority `50`, so custom snippets of the same type run before them. Defaults cover `recv`, `fetch`, `miss`, `pass`, `deliver` on `storefront` and `recv`, `fetch`, `deliver` on `cdn`.
+4. Target a service by file-name prefix: `recv/test.vcl` goes to `storefront` and `cdn`; `recv/storefront-test.vcl` to `storefront` only; `recv/cdn-test.vcl` to `cdn` only. The prefix must be at the start (`storefront-001-shop-headers.vcl`, not `001-storefront-shop-headers.vcl`).
+5. Apply with `sw-paas application update`.
 
 ## Essential identifiers
 
-- `services.fastly.snippets_path`, `disable_default_snippets`
+- `services.fastly.snippets_path`, `fastly.disable_default_snippets`
 - `sw-paas application update`
-- File prefixes `storefront-`, `cdn-`
+- Fastly services `storefront` and `cdn`; prefixes `storefront-`, `cdn-`
+- Snippet name = type + file name without extension (`recv/001-auth.vcl` -> `recv-001-auth`)
 
 ## Gotchas
 
-- Without `services.fastly.snippets_path`, snippet files in the repo are silently ignored.
-- Deeper nesting (`config/fastly/recv/custom/default.vcl`) or files directly in `config/fastly/` fail the deployment.
-- Underscores are rejected (`001_auth.vcl` → use `001-auth.vcl`); `a.b.vcl` and `a-b.vcl` both map to `recv-a-b` and collide.
-- Unprefixed snippets go to both services, so they must be valid for shop and asset traffic.
-- Validation on create/update fails when `snippets_path` is set but missing/empty, a file is outside a valid type directory, names contain underscores or collide, or VCL is syntactically invalid. Fix, push, and rerun `sw-paas application update`.
+- Deeper nesting (`config/fastly/recv/custom/default.vcl`) or a file directly in `config/fastly/` fails the deployment.
+- Snippet names are Kubernetes resource names: lowercase alphanumerics and `-` only; underscores are rejected (`001_auth.vcl` -> use `001-auth.vcl`); names must be unique per type (`a.b.vcl` and `a-b.vcl` both become `recv-a-b` and collide).
+- Unprefixed snippets run on both services - make sure they are valid for shop and asset traffic; session/routing logic belongs in `storefront-` files.
+- Deployment fails when `snippets_path` is set but missing/empty, a file is outside a valid type directory, a name has an underscore or collides, or VCL is syntactically invalid. Fix, push, and rerun `sw-paas application update`.
 
-## Code check (6.7.13.0)
-- unverified `services.fastly.snippets_path` — PaaS `application.yaml` option, handled by the PaaS platform outside vendor/shopware scope
-- unverified `fastly.disable_default_snippets` — PaaS `application.yaml` option, outside vendor/shopware scope
-- unverified `sw-paas application update` — PaaS CLI, outside vendor/shopware scope
-- unverified `storefront-` — snippet file-name prefix rule enforced by PaaS deployment, outside vendor/shopware scope
+## Code check (6.7.15.1)
+- unverified `services.fastly.snippets_path` — PaaS `application.yaml` option, not read by Shopware code
+- unverified `fastly.disable_default_snippets` — PaaS deployment option, out of scope
+- unverified `sw-paas application update` — PaaS CLI, not part of Shopware code
+- confirmed `FastlyReverseProxyGateway` — core purges the Fastly service the snippets are deployed to — vendor/shopware/core/Framework/Adapter/Cache/ReverseProxy/FastlyReverseProxyGateway.php:19

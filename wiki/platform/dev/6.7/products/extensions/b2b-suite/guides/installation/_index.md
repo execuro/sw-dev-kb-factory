@@ -6,68 +6,89 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite/guides/installation/
 sourceHash: 2ce43269bafc4f391cd8f7989a7d48d09dbb3dcb
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b suite", "installation", "psh.phar", "docker:start", "docker:ssh", "./psh.phar init", "mac:init", ".psh.yaml", "DB_USER", "SW_HOST", "system requirements", "development environment"]
-summary: B2B Suite dev environment setup with psh.phar - Docker commands (docker:start, init), macOS mac:* commands, .psh.yaml DB constants, version requirements.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["b2b suite", "installation", "psh.phar", "./psh.phar docker:start", "./psh.phar init", "./psh.phar mac:init", ".psh.yaml", "docker", "development environment", "system requirements", "DB_USER", "SW_HOST"]
+summary: "B2B Suite dev setup with psh.phar: Docker commands (Linux), mac commands (OS X), .psh.yaml DB constants, per-release version requirements."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-Setup of a B2B Suite development environment using the `psh.phar` script runner, either with Docker on Linux (recommended, also used in CI) or natively on macOS, plus the minimum requirements per B2B Suite version.
+How to set up a B2B Suite development environment with the `psh.phar` script runner: a Docker-based setup (used by the B2B Suite developers and in their CI) for Linux hosts, a native setup for OS X, and common init/test scripts. Production installs must meet the Shopware core system requirements (see the system requirements page on `docs.shopware.com`).
 
 ## When to use
 
-When setting up a local or CI environment to develop or test the B2B Suite. For production, the host must meet the Shopware core system requirements.
+When installing the B2B Suite for local development or testing, or when checking which Shopware/PHP/database versions a B2B Suite release supports.
 
 ## Key steps / config
 
-Minimum requirements (B2B Suite follows core requirements):
-- B2B Suite 4.6.0 till 4.6.9: Shopware 6.4, PHP 7.4.3, MySQL 5.7.21, MariaDB 10.3.22
+**Version requirements (per source):**
+
+- B2B Suite 4.6.0 – 4.6.9: Shopware 6.4, PHP 7.4.3, MySQL 5.7.21, MariaDB 10.3.22
 - B2B Suite 4.7.0 and above: Shopware 6.5
 
-Docker (Linux, docker runtime 1.12.* or higher):
+**Linux – Docker (recommended).** Requires a Docker runtime 1.12.* or higher.
+
 ```bash
 ./psh.phar docker:start     # start & build containers
-./psh.phar docker:ssh       # ssh into web container
+./psh.phar docker:ssh       # ssh into the web container
 ./psh.phar docker:ssh-mysql # ssh into mysql
-./psh.phar docker:status    # running containers, network bridges
-./psh.phar docker:stop
+./psh.phar docker:status    # running containers / network bridges
+./psh.phar docker:stop      # stop the containers
 ./psh.phar docker:destroy   # clear the whole docker cache
 ```
-1. `./psh.phar docker:start`
-2. `./psh.phar docker:ssh`
-3. `./psh.phar init` inside the web container; after a few minutes the test environment is reachable at 10.100.200.46.
-4. `./psh.phar` without arguments lists all commands.
 
-macOS (requires Apache, MySQL and Ant, e.g. via brew): `./psh.phar mac:init`, `mac:start`, `mac:stop`, `mac:restart`. Database settings go into your own `.psh.yaml` (see `.psh.yaml.dist`):
+1. `./psh.phar docker:start` — boots several containers.
+2. `./psh.phar docker:ssh` — log into the web container.
+3. `./psh.phar init` — initialisation; after a few minutes the test environment is reachable at the IP address 10.100.200.46.
+4. `./psh.phar` alone lists all available commands.
+
+**OS X.** Requires Apache, MySQL and Ant (installable with brew).
+
+```bash
+./psh.phar mac:init      # build installation
+./psh.phar mac:start     # start apache, mysql
+./psh.phar mac:stop      # stop apache, mysql
+./psh.phar mac:restart   # restart apache, mysql
+```
+
+Database settings go into your own `.psh.yaml` (use `.psh.yaml.dist` as the template):
+
 ```yaml
 mac:
     paths:
       - "dev-ops/mac/actions"
     const:
-      DB_USER: "..."
-      DB_PASSWORD: "..."
-      DB_HOST: "..."
-      SW_HOST: "..."
+      DB_USER: "USERNAME"
+      DB_PASSWORD: "PASSWORD"
+      DB_HOST: "DB_HOST"
+      SW_HOST: "SWHost"
 ```
 
-Common scripts once the environment runs: `./psh.phar clear` (remove vendor components and state), `./psh.phar init` (Composer init, install plugins), `./psh.phar unit` (run test suite).
+**Common scripts** (after the environment is up):
+
+- `./psh.phar clear` — remove vendor components and previously set state
+- `./psh.phar init` — init Composer, install plugins
+- `./psh.phar unit` — execute the test suite
 
 ## Essential identifiers
 
-- `psh.phar`, `./psh.phar init`, `./psh.phar clear`, `./psh.phar unit`
+- `psh.phar`, `.psh.yaml`, `.psh.yaml.dist`
 - `docker:start`, `docker:ssh`, `docker:ssh-mysql`, `docker:status`, `docker:stop`, `docker:destroy`
 - `mac:init`, `mac:start`, `mac:stop`, `mac:restart`
-- `.psh.yaml`, `.psh.yaml.dist`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `SW_HOST`
+- `init`, `clear`, `unit`
+- `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `SW_HOST`
 
 ## Gotchas
 
-- Docker and native setups offer equal functionality only when the host is Linux-based.
-- The listed version requirements stop at Shopware 6.5; the page states nothing specific for 6.7.
+- The Docker setup's functions are only equivalent across systems when the host is Linux-based.
+- `psh.phar` and `.psh.yaml` belong to the B2B Suite repository, not to the Shopware platform packages.
 
-## Code check (6.7.13.0)
-- unverified `psh.phar` — B2B Suite repository tooling, not in vendor/shopware
-- unverified `docker:start` — psh script of the B2B Suite repository, out of scope
-- unverified `mac:init` — psh script of the B2B Suite repository, out of scope
-- unverified `.psh.yaml` — B2B Suite repository config file, out of scope
-- unverified `B2B Suite 4.7.0 requires Shopware 6.5` — plugin composer constraints not in vendor/shopware
+## Version notes
+
+- The documented requirements stop at "B2B Suite 4.7.0 and above: Shopware 6.5" and PHP 7.4.3; the installed core 6.7.15.1 requires PHP `~8.2.0 || ~8.3.0 || ~8.4.0 || ~8.5.0`, so the PHP 7.4 figure does not apply to a 6.7 shop.
+
+## Code check (6.7.15.1)
+- corrected `php` — docs: PHP 7.4.3 (B2B Suite 4.6.x); installed core requires ~8.2.0 through ~8.5.0 — vendor/shopware/core/composer.json:36
+- confirmed `shopware/core` — installed package is the 6.7 core, newer than the Shopware 6.4/6.5 versions the page lists — vendor/shopware/core/composer.json:2
+- unverified `psh.phar` — B2B Suite repository tooling, outside the platform packages
+- unverified `.psh.yaml` — B2B Suite repository tooling, outside the platform packages

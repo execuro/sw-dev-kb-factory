@@ -6,24 +6,22 @@ version: "6.7"
 versions: ["6.7"]
 sourceUrl: https://developer.shopware.com/docs/products/nexus/security.html
 sourceHash: 5f1b2abc199ce39ed0f732e9c0d5a6d425484d13
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["nexus", "shopware nexus", "security", "troubleshooting", "app:activate", "ShopwareNexusIngestionService", "runtime_extension_management", "event ingestion service", "sso", "aws kms", "encryption", "odata"]
-summary: Shopware Nexus data security (SSO, AES-256-GCM via AWS KMS, EU hosting), common workflow issues, and CLI activation of the Nexus ingestion app.
-lastBuilt: 2026-09-15
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware nexus", "nexus security", "troubleshooting", "app:activate", "ShopwareNexusIngestionService", "Shopware Nexus Event Ingestion Service", "runtime_extension_management", "aes-256-gcm", "aws kms", "eu-central-1", "odata", "log node"]
+summary: "Nexus security (SSO, AES-256-GCM via AWS KMS, EU hosting), fixes for common issues, and CLI activation of ShopwareNexusIngestionService."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The security and troubleshooting reference for Shopware Nexus: how Nexus handles authentication and data, a table of common problems with their fixes, and how to activate the Nexus event ingestion app when the Administration cannot do it.
+This page covers how Shopware Nexus handles security and data, lists fixes for common workflow problems, and explains how to activate the Nexus event ingestion app from the CLI.
 
 ## When to use
 
-- Answering questions about where and how Nexus stores data.
-- A Nexus workflow is stuck, returns unauthorized errors, misses event data, or a Slack/Business Central step fails.
-- The **Shopware Nexus Event Ingestion Service** app cannot be activated from the Administration (typical on composer-managed installations).
+Use it when you check how Nexus stores data, when a workflow or integration fails, or when the Nexus ingestion service cannot be activated in the Administration.
 
 ## Key steps / config
 
-Security and data handling (as stated by the docs):
+Security and data handling:
 
 - Authentication via Shopware SSO
 - AES-256-GCM encryption using AWS KMS
@@ -36,34 +34,31 @@ Troubleshooting:
 |---|---|
 | Workflow stuck deploying | Redeploy |
 | Unauthorized errors | Re-authenticate |
-| Missing event data | Inspect payload with a Log node |
-| BC filter returns empty | Validate OData syntax |
+| Missing event data | Inspect the payload with a Log node |
+| BC filter returns empty | Validate the OData syntax |
 | Slack message not sent | Re-authorize Slack |
 
-Activating the ingestion app from the CLI when runtime extension management is disabled:
+Activating the ingestion service: when runtime extension management is disabled (`shopware.deployment.runtime_extension_management: false`, common on composer-managed installations), the **Shopware Nexus Event Ingestion Service** cannot be activated from the Administration. Activate it from the CLI:
 
 ```bash
 bin/console app:activate ShopwareNexusIngestionService
 ```
 
-The command takes the app name as its single required `name` argument.
+`app:activate` takes one required `name` argument, the app's technical name.
 
 ## Essential identifiers
 
 - `bin/console app:activate ShopwareNexusIngestionService`
-- `ShopwareNexusIngestionService` (app technical name)
-- `shopware.deployment.runtime_extension_management` (when `false`, Administration extension lifecycle actions are refused)
+- `shopware.deployment.runtime_extension_management`
 
 ## Gotchas
 
-- With `shopware.deployment.runtime_extension_management: false`, the Administration's extension install/activate/deactivate/update API actions throw an error, so activation has to happen via `app:activate`. The key defaults to `true` in core.
-- `app:activate` is marked `@internal` for the app system in core; it is still the documented CLI route here.
-- For further help the docs point to the Nexus club on the Shopware hub.
+- `runtime_extension_management` defaults to `true`. When it is `false`, the Admin API info endpoint reports `disableExtensionManagement`, and the Administration does not offer extension activation.
+- If you are still stuck, ask in the Nexus club on the Shopware hub.
 
-## Code check (6.7.13.0)
-- confirmed `app:activate` — console command name of ActivateAppCommand — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:15
-- confirmed `AbstractAppActivationCommand::configure()` — `name` argument is required — vendor/shopware/core/Framework/App/Command/AbstractAppActivationCommand.php:53
-- confirmed `shopware.deployment.runtime_extension_management` — boolean, defaults to true — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:331
-- confirmed `ExtensionStoreActionsController::checkExtensionManagementAllowed()` — throws when runtime management is disabled — vendor/shopware/core/Framework/Store/Api/ExtensionStoreActionsController.php:217
-- unverified `ShopwareNexusIngestionService` — app shipped externally, not in installed core code
-- unverified `AES-256-GCM` — Nexus SaaS infrastructure claim, not in installed code
+## Code check (6.7.15.1)
+- confirmed `app:activate` — core console command, activates an installed app via the app lifecycle — vendor/shopware/core/Framework/App/Command/ActivateAppCommand.php:16
+- confirmed `AbstractAppActivationCommand::configure()` — required `name` argument — vendor/shopware/core/Framework/App/Command/AbstractAppActivationCommand.php:53
+- confirmed `shopware.deployment.runtime_extension_management` — boolean, default `true` — vendor/shopware/core/Framework/DependencyInjection/Configuration.php:352
+- confirmed `disableExtensionManagement` — the info endpoint exposes the negated setting to the Administration — vendor/shopware/core/Framework/Api/Controller/InfoController.php:217
+- unverified `ShopwareNexusIngestionService` — app name delivered as a Shopware service, not in core code

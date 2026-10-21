@@ -1,16 +1,15 @@
 ---
-codeCheckedAgainst: "6.7.13.0"
-docType: developer
 id: platform/dev/6.7/products/paas/shopware-paas/build-deploy.md
-sourceHash: c1a7045e6b47f145d9f1bb4a064bf8f6f260fb1a
-sourceUrl: https://developer.shopware.com/docs/products/paas/shopware-paas/build-deploy.html
 title: Build & Deploy
+docType: developer
 version: "6.7"
-versions:
-  - "6.7"
-keywords: ["shopware paas", "build hook", "deploy hook", "git push", "install.lock", "COMPOSER_AUTH", "REBUILD_DATE", "shopware variable:create", "shopware variable:update", "ComposerPluginLoader", "auth.json", "rebuild", "deployment"]
-summary: "Shopware PaaS build/deploy: git push to shopware remote, install.lock first install, COMPOSER_AUTH project variable, REBUILD_DATE forced rebuilds."
-lastBuilt: 2026-09-15
+versions: ["6.7"]
+sourceUrl: https://developer.shopware.com/docs/products/paas/shopware-paas/build-deploy.html
+sourceHash: c1a7045e6b47f145d9f1bb4a064bf8f6f260fb1a
+codeCheckedAgainst: "6.7.15.1"
+keywords: ["shopware paas", "build and deploy", "git push", "install.lock", "COMPOSER_AUTH", "auth.json", "REBUILD_DATE", "shopware variable:create", "shopware variable:update", "composer plugin loader", "ComposerPluginLoader", "build hook", "deploy hook", "rebuild"]
+summary: "Shopware PaaS build/deploy via git push: build and deploy phases, first-run installer and install.lock, COMPOSER_AUTH variable, forced rebuilds."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
@@ -18,69 +17,60 @@ How code reaches a Shopware PaaS environment. The PaaS project is a git reposito
 
 ## When to use
 
-After the repository/setup template is in place and you want to deploy changes, provide Composer credentials for Shopware Store extensions, or force a rebuild without code changes.
+When pushing changes to a PaaS environment, preparing the first deployment, giving the build access to Shopware Store extensions via Composer, or forcing a rebuild without a code change.
 
 ## Key steps / config
 
-**Push and deploy** (the `shopware` remote points to the PaaS environment):
+1. Push the `main` branch to the `shopware` remote (the PaaS origin):
+   ```bash
+   git add .
+   git commit -m "Applied new configuration"
+   git push -u shopware main
+   ```
+2. The push triggers a build, then a deploy:
 
-```bash
-git add .
-git commit -m "Applied new configuration"
-git push -u shopware main
-```
+   | Build | Deploy |
+   |---|---|
+   | Configuration validation | Hold app requests |
+   | Build container image | Unmount live containers |
+   | Installing dependencies | Mount file systems |
+   | Run build hook | Run deploy hook |
+   | Building app image | Serve requests |
 
-A push triggers:
-
-| Build | Deploy |
-|---|---|
-| Configuration validation | Hold app requests |
-| Build container image | Unmount live containers |
-| Installing dependencies | Mount file systems |
-| Run build hook | Run deploy hook |
-| Building app image | Serve requests |
-
-The deployed store URL is shown at the end of the deployment log.
-
-**First deployment**: Shopware's CLI installer runs once and initialises Shopware; it does not run again while `install.lock` exists. It creates an administrator with username `admin` and password `shopware` — change it immediately.
-
-**Composer authentication** — store the content of `auth.json` as a sensitive, build-visible project variable instead of committing the file:
-
-```bash
-shopware variable:create --level project --name env:COMPOSER_AUTH --json true --visible-runtime false --sensitive true --visible-build true --value '{"bearer": {"packages.shopware.com": "%place your key here%"}}'
-```
-
-Replace `%place your key here%` with the token from "Install with Composer" in your Shopware Account.
-
-**Extensions**: the PaaS recipe uses the Composer plugin loader (`Shopware\Core\Framework\Plugin\KernelPluginLoader\ComposerPluginLoader`), so all plugins and apps must be installed via Composer.
-
-**Manual rebuild** of the `main` environment:
-
-```bash
-shopware variable:create --environment main --level environment --prefix env --name REBUILD_DATE --value "$(date)" --visible-build true
-shopware variable:update --environment main --value "$(date)" "env:REBUILD_DATE"
-```
-
-Creating the variable triggers a build; updating it with a new value forces another build even without code changes.
+   After both succeed, the deployed store's link is printed at the end of the log.
+3. First deployment: Shopware's command-line installer runs once and initializes the system. It does not run again while `install.lock` exists in the project root. It creates an administrator with username `admin` and password `shopware` — change the password immediately.
+4. Composer authentication for Shopware Store extensions: do not commit `auth.json`; store its content as a project-level sensitive variable visible at build time:
+   ```bash
+   shopware variable:create --level project --name env:COMPOSER_AUTH --json true --visible-runtime false --sensitive true --visible-build true --value '{"bearer": {"packages.shopware.com": "%place your key here%"}}'
+   ```
+   Replace `%place your key here%` with the token shown under "Install with Composer" in the Shopware Account.
+5. Extensions: the PaaS recipe uses the Composer plugin loader, so every plugin/app must be installed via Composer.
+6. Force a rebuild of the `main` environment without new code by creating, then updating, a `REBUILD_DATE` variable:
+   ```bash
+   shopware variable:create --environment main --level environment --prefix env --name REBUILD_DATE --value "$(date)" --visible-build true
+   shopware variable:update --environment main --value "$(date)" "env:REBUILD_DATE"
+   ```
 
 ## Essential identifiers
 
 - `git push -u shopware main`
 - `install.lock`
-- `env:COMPOSER_AUTH`, `env:REBUILD_DATE`
+- `env:COMPOSER_AUTH`, `auth.json`
+- `env:REBUILD_DATE`
 - `shopware variable:create`, `shopware variable:update`
-- `ComposerPluginLoader`
+- `Shopware\Core\Framework\Plugin\KernelPluginLoader\ComposerPluginLoader`
 
 ## Gotchas
 
-- Removing `install.lock` makes the installer run again on the next deploy; the installer command itself skips when the file exists unless forced.
-- Never commit `auth.json`; use the `COMPOSER_AUTH` variable.
-- Default admin credentials are a security risk until changed.
+- Removing `install.lock` makes the installer run again on the next deploy. In the core, `system:install` refuses to run while `install.lock` exists unless `--force` is passed.
+- The default `admin` / `shopware` credentials are a security risk until changed.
+- Extensions not installed through Composer are not loaded by the Composer plugin loader.
 
-## Code check (6.7.13.0)
-- confirmed `install.lock` — install command aborts when the file exists unless `--force` is passed — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:70
-- confirmed `user:create` — `--basic-setup` creates user `admin` with password `shopware` — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:130
+## Code check (6.7.15.1)
+- confirmed `install.lock` — installer skips when the lock file exists unless `--force` — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:74
+- confirmed `SystemLocker::lock()` — writes `install.lock` into the project dir after install — vendor/shopware/core/Installer/Finish/SystemLocker.php:17
+- confirmed `admin` — basic setup creates user `admin` with password `shopware` — vendor/shopware/core/Maintenance/System/Command/SystemInstallCommand.php:134
 - confirmed `ComposerPluginLoader` — extends `KernelPluginLoader` — vendor/shopware/core/Framework/Plugin/KernelPluginLoader/ComposerPluginLoader.php:15
-- unverified `COMPOSER_AUTH` — Composer environment variable, not read by vendor/shopware code
-- unverified `REBUILD_DATE` — PaaS build variable, not read by vendor/shopware code
-- unverified `shopware variable:create` — PaaS CLI command, outside vendor/shopware
+- unverified `COMPOSER_AUTH` — Composer/PaaS environment variable, not read by Shopware code
+- unverified `REBUILD_DATE` — PaaS-side variable, not part of Shopware code
+- unverified `shopware variable:create` — PaaS CLI command, out of scope

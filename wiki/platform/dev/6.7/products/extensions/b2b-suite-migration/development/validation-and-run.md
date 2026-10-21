@@ -1,53 +1,69 @@
 ---
-id: platform/dev/6.7/products/extensions/b2b-suite-migration/development/validation-and-run.md
-title: Validation and Run
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/development/validation-and-run.html
+id: platform/dev/6.7/products/extensions/b2b-suite-migration/development/validation-and-run.md
 sourceHash: fdffb1a8e8d80430bbf98c617c83fa2bd0857dcf
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["b2b:migrate:validate", "b2b:migrate:progress", "b2b:migrate:commercial", "b2b:migrate:rollback", "b2b_components_migration_errors", "b2b suite migration", "b2b commercial", "validate migration config", "rollback", "migration progress", "queue worker"]
-summary: "B2B Suite migration CLI: b2b:migrate:validate, progress --watch, commercial (queue worker required), rollback; errors table listed."
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/extensions/b2b-suite-migration/development/validation-and-run.html
+title: Validation and Run
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["b2b:migrate:validate", "b2b:migrate:progress", "b2b:migrate:commercial", "b2b:migrate:rollback", "b2b_components_migration_errors", "--watch", "validate migration config", "rollback migration", "queue worker", "b2b suite migration", "b2b commercial"]
+summary: "Console sequence for the B2B Suite to Commercial migration: b2b:migrate:validate, progress --watch, commercial, then review errors or rollback."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-The command sequence for validating a B2B Suite to B2B Commercial migration configuration and then running, monitoring and rolling back the migration.
+The order of console commands to run after writing a B2B Suite to B2B Commercial migration configuration: validate it, monitor progress, start the migration, review errors, and optionally roll back.
 
 ## When to use
 
-After the migration XML (components, entities, field mappings, handlers) is configured and you are ready to check it and execute the migration.
+After you have configured (or customised) the migration mapping and want to check it and execute the migration.
 
 ## Key steps / config
 
 1. Validate the configuration:
-   `bin/console b2b:migrate:validate`
-   Checks that the XML is well-formed and matches a valid schema, and that referenced fields and tables exist in the database (throws an exception otherwise). Gives hints to fix failures.
-2. Monitor progress, in a separate terminal:
-   `bin/console b2b:migrate:progress --watch`
-3. Start the migration, with the message queue worker running:
-   `bin/console b2b:migrate:commercial`
-4. Review logs and errors in the `b2b_components_migration_errors` table.
-5. Roll back if needed:
-   `bin/console b2b:migrate:rollback`
+
+   ```bash
+   bin/console b2b:migrate:validate
+   ```
+
+   Checks that the XML is well-formed and adheres to a valid schema, and that the referenced fields and tables exist in the database; otherwise it throws an exception. On failure it prints hints for resolving the issue. Validating first catches configuration errors before a migration run.
+
+2. In a separate terminal, monitor progress:
+
+   ```bash
+   bin/console b2b:migrate:progress --watch
+   ```
+
+3. With the message queue worker running, start the migration:
+
+   ```bash
+   bin/console b2b:migrate:commercial
+   ```
+
+4. Review logs and errors in the table `b2b_components_migration_errors` to confirm the migration succeeded.
+5. To roll the migration back:
+
+   ```bash
+   bin/console b2b:migrate:rollback
+   ```
 
 ## Essential identifiers
 
-- `bin/console b2b:migrate:validate`
-- `bin/console b2b:migrate:progress --watch`
-- `bin/console b2b:migrate:commercial`
-- `bin/console b2b:migrate:rollback`
+- `b2b:migrate:validate`
+- `b2b:migrate:progress` (with `--watch`)
+- `b2b:migrate:commercial`
+- `b2b:migrate:rollback`
 - `b2b_components_migration_errors`
 
 ## Gotchas
 
-- The migration is processed through the message queue; without a running queue worker `b2b:migrate:commercial` will not make progress.
-- Validation also checks database tables/columns, so run it against the database that will be migrated.
+- The migration is processed through the message queue; without a running queue worker it does not progress.
 
-## Code check (6.7.13.0)
-- unverified `b2b:migrate:validate` — command ships with the Shopware Commercial extension, not under the installed vendor/shopware packages
-- unverified `b2b:migrate:progress` — Commercial extension command, out of scope
-- unverified `b2b:migrate:commercial` — Commercial extension command, out of scope
-- unverified `b2b:migrate:rollback` — Commercial extension command, out of scope
-- unverified `b2b_components_migration_errors` — table created by the Commercial extension, out of scope
+## Code check (6.7.15.1)
+- unverified `b2b:migrate:validate` — command provided by the Shopware Commercial plugin, out of scope of the checked core/storefront/administration code
+- unverified `b2b:migrate:progress` — Commercial plugin command, out of scope
+- unverified `b2b:migrate:commercial` — Commercial plugin command, out of scope
+- unverified `b2b:migrate:rollback` — Commercial plugin command, out of scope
+- unverified `b2b_components_migration_errors` — table created by the Commercial plugin, out of scope

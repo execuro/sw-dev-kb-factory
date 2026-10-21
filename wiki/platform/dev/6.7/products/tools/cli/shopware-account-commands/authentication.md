@@ -1,40 +1,51 @@
 ---
-id: platform/dev/6.7/products/tools/cli/shopware-account-commands/authentication.md
-title: Authentication
+codeCheckedAgainst: "6.7.15.1"
 docType: developer
-version: "6.7"
-versions: ["6.7"]
-sourceUrl: https://developer.shopware.com/docs/products/tools/cli/shopware-account-commands/authentication.html
+id: platform/dev/6.7/products/tools/cli/shopware-account-commands/authentication.md
 sourceHash: 5a6faace20ed9ab17c68a7906dd3e8dfd874c936
-codeCheckedAgainst: "6.7.13.0"
-keywords: ["shopware-cli account login", "shopware-cli account logout", "shopware-cli account producer extension list", "SHOPWARE_CLI_ACCOUNT_CLIENT_ID", "SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET", "shopware account api", "authentication", "ci/cd", "extension partner", "producer account", "login"]
-summary: shopware-cli account login/logout for the Shopware Account API; CI uses SHOPWARE_CLI_ACCOUNT_CLIENT_ID/_SECRET env vars; list producer extensions.
-lastBuilt: 2026-09-15
+sourceUrl: https://developer.shopware.com/docs/products/tools/cli/shopware-account-commands/authentication.html
+title: Authentication
+version: "6.7"
+versions:
+  - "6.7"
+keywords: ["shopware-cli account login", "shopware-cli account logout", "SHOPWARE_CLI_ACCOUNT_CLIENT_ID", "SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET", "shopware-cli account producer extension list", "shopware account api", "login", "ci/cd credentials", "extension partner", "producer account", "shopware store"]
+summary: "Shopware CLI auth for the Shopware Account API: account login/logout and CI env vars SHOPWARE_CLI_ACCOUNT_CLIENT_ID/_SECRET."
+lastBuilt: 2026-10-21
 ---
 ## What it is
 
-How Shopware CLI authenticates against the Shopware Account API: browser login, logout, environment-variable credentials for CI/CD, and listing the extensions of a producer account.
+How Shopware CLI authenticates against the Shopware Account API — interactive browser login, logout, and non-interactive credentials for CI/CD — plus the command to list the extensions in your producer account.
 
 ## When to use
 
-Before running any `shopware-cli account ...` command (e.g. uploading extensions to the Shopware Store), locally or in a CI/CD pipeline.
+Before running any `shopware-cli account ...` command (for example uploading an extension to the Shopware Store), or when configuring a CI/CD pipeline that talks to the Shopware Account.
 
 ## Key steps / config
 
+Interactive login (opens a browser window to log in):
+
 ```bash
-# Interactive login (opens a browser window)
 shopware-cli account login
-
-# Remove stored credentials from the CLI
-shopware-cli account logout
-
-# List all extensions in the producer account (all projects and versions)
-shopware-cli account producer extension list
 ```
 
-CI/CD: set the environment variables `SHOPWARE_CLI_ACCOUNT_CLIENT_ID` and `SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET` and call the desired command directly (no `login` step). Generate the client ID and secret in the Shopware Account under **Extension Partner** > **Development**.
+Log out — removes the stored credentials from the CLI:
 
-The extension list shows names, versions and status of your Store extensions, useful for scripts and automation.
+```bash
+shopware-cli account logout
+```
+
+CI/CD: pass the credentials as environment variables and call the command you need directly:
+
+- `SHOPWARE_CLI_ACCOUNT_CLIENT_ID`
+- `SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET`
+
+Generate the client ID and secret in the Shopware Account, section **Extension Partner**, navigation point **Development**.
+
+List all extensions in the producer account (across all projects and versions), showing names, versions and status — useful for scripts and automation:
+
+```bash
+shopware-cli account producer extension list
+```
 
 ## Essential identifiers
 
@@ -43,8 +54,9 @@ The extension list shows names, versions and status of your Store extensions, us
 - `shopware-cli account producer extension list`
 - `SHOPWARE_CLI_ACCOUNT_CLIENT_ID`, `SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET`
 
-## Code check (6.7.13.0)
-- unverified `shopware-cli account login` — Shopware CLI (Go tool), not part of vendor/shopware
-- unverified `SHOPWARE_CLI_ACCOUNT_CLIENT_ID` — CLI env var, not referenced in vendor/shopware
-- unverified `SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET` — CLI env var, not referenced in vendor/shopware
-- unverified `shopware-cli account producer extension list` — CLI command, out of scope of vendor/shopware
+## Code check (6.7.15.1)
+- unverified `shopware-cli account login` — Shopware CLI command against the Shopware Account API, outside vendor/shopware, out of scope
+- unverified `shopware-cli account logout` — Shopware CLI command, out of scope
+- unverified `SHOPWARE_CLI_ACCOUNT_CLIENT_ID` — env var read by Shopware CLI, not by vendor/shopware, out of scope
+- unverified `SHOPWARE_CLI_ACCOUNT_CLIENT_SECRET` — env var read by Shopware CLI, out of scope
+- unverified `shopware-cli account producer extension list` — Shopware CLI command, out of scope
