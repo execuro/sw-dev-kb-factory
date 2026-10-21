@@ -5,8 +5,16 @@ All notable changes to this project are documented in this file. The format is b
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-21
+
 ### Changed
 
+- **Wiki rebuilt for Shopware 6.7.15.1 and 6.6.10.29** (pinned sources were 6.7.13.0 / 6.6.10.24):
+  developer, merchant and guideline pages, hubs and synonyms re-ingested and code-checked against
+  the new versions.
+- `wiki:build` prunes synonym lines that point at pages removed since the last synonyms ingest,
+  so a removed page no longer fails lint without a synonyms re-run; a trailing `/*` or `/**` glob
+  in a source target is kept, not stripped as emphasis.
 - `kb-factory-setup` writes the hooks and `KB_*` roots to the git-ignored `.claude/settings.local.json`, so absolute machine paths are never committed; it warns when `settings.json` still holds `KB_*` entries.
 
 ## [0.1.6] - 2026-09-17
